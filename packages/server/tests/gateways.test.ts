@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { GatewayConfig, StartedServer } from "../src/index.js";
 import { startServer } from "../src/index.js";
+import { makeStubAdapter } from "./fixtures/stub-adapter.js";
 
 const TWO_GATEWAYS: Record<string, GatewayConfig> = {
 	hermes: {
@@ -12,6 +13,16 @@ const TWO_GATEWAYS: Record<string, GatewayConfig> = {
 		capabilities: { resume: true, streaming: false },
 	},
 };
+
+function makeAdapters(): Record<
+	string,
+	ReturnType<typeof makeStubAdapter>["adapter"]
+> {
+	return {
+		hermes: makeStubAdapter({ name: "hermes" }).adapter,
+		"claude-code": makeStubAdapter({ name: "claude-code" }).adapter,
+	};
+}
 
 describe("@sumeru/server — GET / reflects config", () => {
 	let server: StartedServer;
@@ -71,6 +82,10 @@ describe("@sumeru/server — GET /gateways", () => {
 			name: "sumeru@neko",
 			version: "0.1.0",
 			gateways: TWO_GATEWAYS,
+			adapters: makeAdapters(),
+			sseHeartbeatMs: null,
+			sseBufferSize: null,
+			sseRetentionMs: null,
 		});
 		baseUrl = `http://${server.host}:${server.port}`;
 	});
@@ -186,6 +201,10 @@ describe("@sumeru/server — GET /gateways/:name", () => {
 			name: "sumeru@neko",
 			version: "0.1.0",
 			gateways: TWO_GATEWAYS,
+			adapters: makeAdapters(),
+			sseHeartbeatMs: null,
+			sseBufferSize: null,
+			sseRetentionMs: null,
 		});
 		baseUrl = `http://${server.host}:${server.port}`;
 	});

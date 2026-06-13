@@ -14,6 +14,10 @@ export function startServer(config: StartConfig): Promise<StartedServer> {
 		name: config.name,
 		version: config.version,
 		gateways: config.gateways,
+		adapters: config.adapters ?? {},
+		sseHeartbeatMs: config.sseHeartbeatMs ?? 15_000,
+		sseBufferSize: config.sseBufferSize ?? 1024,
+		sseRetentionMs: config.sseRetentionMs ?? 30_000,
 	});
 	const server = createHttpServer(handler);
 

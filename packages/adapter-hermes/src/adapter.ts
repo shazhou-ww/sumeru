@@ -1,0 +1,294 @@
+/**
+ * Hermes adapter — implements the `Adapter` contract from `@sumeru/core`
+ * by shelling out to `hermes chat -q` for create/send and reading the
+ * Hermes session SQLite for `getTurns`.
+ *
+ * Design notes:
+ *   - createSession spawns `hermes chat -q "<initialQuery>" --pass-session-id`
+ *     and parses the printed `Session: <id>` line.
+ *   - send uses `hermes chat -q "<content>" --resume <id>` and returns the
+ *     **delta** turns recorded since the call started (per-nativeId mutex).
+ *   - close is a logical close — adds the nativeId to a per-instance Set;
+ *     no DB mutation, no process spawn.
+ *   - getTurns reads `~/.hermes/sessions.db` read-only via `node:sqlite`.
+ */
+
+import { homedir } from "node:os";
+import { join } from "node:path";
+import type {
+	Adapter,
+	AgentResponse,
+	NativeSessionRef,
+	TokenUsage,
+	Turn,
+} from "@sumeru/core";
+import { readTurnsFromDb } from "./db.js";
+import { defaultSpawn } from "./spawn.js";
+import type { HermesAdapterOptions, SpawnFn, TurnsReader } from "./types.js";
+
+const DEFAULT_HERMES_BIN = "hermes";
+const DEFAULT_SOURCE_TAG = "sumeru";
+const DEFAULT_CREATE_TIMEOUT_MS = 60_000;
+const DEFAULT_SEND_TIMEOUT_MS = 5 * 60_000;
+
+const SESSION_ID_RE = /^[0-9]{8}_[0-9]{6}_[0-9a-f]+$/;
+const SESSION_LINE_RE = /^Session:\s+(\S+)\s*$/m;
+
+const ALLOWED_CONFIG_KEYS = [
+	"model",
+	"provider",
+	"toolsets",
+	"skills",
+	"worktree",
+	"acceptHooks",
+	"yolo",
+	"maxTurns",
+	"ignoreUserConfig",
+	"ignoreRules",
+] as const;
+
+export function createHermesAdapter(
+	options: Partial<HermesAdapterOptions> = {},
+): Adapter {
+	const hermesBin = options.hermesBin ?? DEFAULT_HERMES_BIN;
+	const sourceTag = options.sourceTag ?? DEFAULT_SOURCE_TAG;
+	const dbPath = options.dbPath ?? join(homedir(), ".hermes", "sessions.db");
+	const createSessionTimeoutMs =
+		options.createSessionTimeoutMs ?? DEFAULT_CREATE_TIMEOUT_MS;
+	const sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
+	const includeSystemTurns = options.includeSystemTurns ?? false;
+	const spawnFn: SpawnFn = options.spawnFn ?? defaultSpawn;
+	const turnsReader: TurnsReader =
+		options.turnsReader ?? ((p, n) => readTurnsFromDb(p, n));
+
+	const closedRefs = new Set<string>();
+	const sendLocks = new Map<string, Promise<unknown>>();
+
+	async function withRefLock<T>(
+		nativeId: string,
+		fn: () => Promise<T>,
+	): Promise<T> {
+		const prev = sendLocks.get(nativeId) ?? Promise.resolve();
+		let release: () => void = () => {};
+		const next = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		sendLocks.set(
+			nativeId,
+			prev.then(() => next),
+		);
+		try {
+			await prev;
+			return await fn();
+		} finally {
+			release();
+			if (sendLocks.get(nativeId) === prev.then(() => next)) {
+				sendLocks.delete(nativeId);
+			}
+		}
+	}
+
+	async function createSession(
+		config: Record<string, unknown>,
+	): Promise<NativeSessionRef> {
+		const initialQuery =
+			typeof config.initialQuery === "string" && config.initialQuery.length > 0
+				? config.initialQuery
+				: "ping";
+		const args = ["chat", "-q", initialQuery, "--pass-session-id", "--quiet"];
+		args.push("--source", sourceTag);
+		for (const key of ALLOWED_CONFIG_KEYS) {
+			const value = config[key];
+			if (value === undefined || value === null) continue;
+			pushFlag(args, key, value);
+		}
+
+		const result = await spawnFn({
+			command: hermesBin,
+			args,
+			timeoutMs: createSessionTimeoutMs,
+		}).catch((err) => {
+			const detail = err instanceof Error ? err.message : String(err);
+			throw new Error(
+				`hermes adapter failed to spawn '${hermesBin}': ${detail}`,
+			);
+		});
+
+		if (result.timedOut) {
+			throw new Error(
+				`createSession timed out after ${createSessionTimeoutMs}ms`,
+			);
+		}
+		if (result.exitCode !== 0) {
+			const tail = tail500(result.stderr || result.stdout);
+			throw new Error(
+				`hermes exited with code ${result.exitCode ?? "(none)"}: ${tail}`,
+			);
+		}
+
+		const match = result.stdout.match(SESSION_LINE_RE);
+		if (match === null || match[1] === undefined) {
+			const head = result.stdout.slice(0, 500);
+			throw new Error(
+				`failed to parse Hermes session id from stdout (first 500 chars): ${head}`,
+			);
+		}
+		const nativeId = match[1];
+		if (!SESSION_ID_RE.test(nativeId)) {
+			throw new Error(
+				`failed to parse Hermes session id (got '${nativeId}', expected YYYYMMDD_HHMMSS_<hex>)`,
+			);
+		}
+
+		const meta: Record<string, unknown> = {
+			sourceTag,
+			cwd: process.cwd(),
+			model: typeof config.model === "string" ? config.model : null,
+			createdAt: new Date().toISOString(),
+		};
+		return { nativeId, meta };
+	}
+
+	async function send(
+		ref: NativeSessionRef,
+		content: string,
+	): Promise<AgentResponse> {
+		assertRef(ref);
+		if (closedRefs.has(ref.nativeId)) {
+			throw new Error(`hermes session ${ref.nativeId} is closed`);
+		}
+		if (typeof content !== "string" || content.length === 0) {
+			throw new Error("send: content must be a non-empty string");
+		}
+
+		return withRefLock(ref.nativeId, async () => {
+			if (closedRefs.has(ref.nativeId)) {
+				throw new Error(`hermes session ${ref.nativeId} is closed`);
+			}
+			const before = await turnsReader(dbPath, ref.nativeId).catch(() => []);
+			const highWater =
+				before.length === 0
+					? -1
+					: before.reduce((m, t) => (t.index > m ? t.index : m), -1);
+
+			const args = [
+				"chat",
+				"-q",
+				content,
+				"--resume",
+				ref.nativeId,
+				"--pass-session-id",
+				"--quiet",
+				"--source",
+				sourceTag,
+			];
+
+			const startedAt = Date.now();
+			const result = await spawnFn({
+				command: hermesBin,
+				args,
+				timeoutMs: sendTimeoutMs,
+			});
+
+			if (result.timedOut) {
+				throw new Error(`send timed out after ${sendTimeoutMs}ms`);
+			}
+			if (result.exitCode !== 0) {
+				const tail = tail500(result.stderr || result.stdout);
+				const stderrLower = (result.stderr ?? "").toLowerCase();
+				if (
+					stderrLower.includes("not found") ||
+					stderrLower.includes("no such session")
+				) {
+					throw new Error(`hermes session ${ref.nativeId} not found: ${tail}`);
+				}
+				throw new Error(
+					`hermes exited with code ${result.exitCode ?? "(none)"}: ${tail}`,
+				);
+			}
+
+			const after = await turnsReader(dbPath, ref.nativeId);
+			const delta = after.filter((t) => t.index > highWater);
+			const filtered = includeSystemTurns
+				? delta
+				: delta.filter((t) => t.role !== "system");
+			const tokens = aggregateTokens(filtered);
+			return {
+				turns: filtered,
+				tokens,
+				durationMs: Date.now() - startedAt,
+			};
+		});
+	}
+
+	async function close(ref: NativeSessionRef): Promise<void> {
+		assertRef(ref);
+		closedRefs.add(ref.nativeId);
+	}
+
+	async function getTurns(ref: NativeSessionRef): Promise<Turn[]> {
+		assertRef(ref);
+		const turns = await turnsReader(dbPath, ref.nativeId);
+		return includeSystemTurns
+			? turns
+			: turns.filter((t) => t.role !== "system");
+	}
+
+	return {
+		name: "hermes",
+		capabilities: { resume: true, streaming: false },
+		createSession,
+		send,
+		close,
+		getTurns,
+	};
+}
+
+function assertRef(ref: NativeSessionRef | null | undefined): void {
+	if (
+		ref === null ||
+		ref === undefined ||
+		typeof ref !== "object" ||
+		typeof (ref as NativeSessionRef).nativeId !== "string" ||
+		(ref as NativeSessionRef).nativeId.length === 0
+	) {
+		throw new Error("close: invalid NativeSessionRef");
+	}
+}
+
+function pushFlag(args: string[], key: string, value: unknown): void {
+	const flag = `--${kebab(key)}`;
+	if (typeof value === "boolean") {
+		if (value) args.push(flag);
+		return;
+	}
+	if (Array.isArray(value)) {
+		for (const v of value) {
+			args.push(flag, String(v));
+		}
+		return;
+	}
+	args.push(flag, String(value));
+}
+
+function kebab(name: string): string {
+	return name.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+}
+
+function tail500(s: string): string {
+	if (s.length <= 500) return s;
+	return s.slice(s.length - 500);
+}
+
+function aggregateTokens(turns: Turn[]): TokenUsage | null {
+	let any = false;
+	let input = 0;
+	let output = 0;
+	for (const turn of turns) {
+		if (turn.tokens === undefined) continue;
+		any = true;
+		input += turn.tokens.input;
+		output += turn.tokens.output;
+	}
+	return any ? { input, output } : null;
+}

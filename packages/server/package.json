@@ -15,6 +15,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@sumeru/core": "workspace:*",
     "yaml": "^2.7.0"
   },
   "scripts": {

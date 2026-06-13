@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Adapter } from "@sumeru/core";
 import {
 	errorEnvelope,
 	gatewayEnvelope,
@@ -8,6 +9,11 @@ import {
 	sessionListEnvelope,
 } from "./envelope.js";
 import { createSessionStore, type SessionStore } from "./session/index.js";
+import {
+	handleMessageEndpoint,
+	makeMessageBufferStore,
+	type SseBufferStore,
+} from "./sse/index.js";
 import type {
 	Gateway,
 	GatewayConfig,
@@ -31,6 +37,9 @@ import type {
  *   GET    /gateways/:name/sessions/:id    → 200 @sumeru/session OR 404
  *   DELETE /gateways/:name/sessions/:id    → 204 No Content OR 404
  *
+ * Phase 3 routes:
+ *   POST   /gateways/:name/sessions/:id/messages  → SSE (turn / heartbeat / done / error)
+ *
  * All non-success bodies are `@sumeru/error` envelopes. Method mismatches
  * return 405 with a populated `Allow` header.
  */
@@ -38,6 +47,7 @@ export function createHandler(
 	config: ServerConfig,
 ): (req: IncomingMessage, res: ServerResponse) => void {
 	const sessions = createSessionStore();
+	const bufferStore = makeMessageBufferStore(config);
 
 	return (req, res) => {
 		const method = req.method ?? "GET";
@@ -68,7 +78,9 @@ export function createHandler(
 				writeJson(
 					res,
 					200,
-					gatewayListEnvelope(buildGatewayList(config.gateways, sessions)),
+					gatewayListEnvelope(
+						buildGatewayList(config.gateways, config.adapters, sessions),
+					),
 				);
 				return;
 			}
@@ -76,15 +88,32 @@ export function createHandler(
 			return;
 		}
 
+		// /gateways/<name>/sessions/<id>/messages
+		const messagesMatch = matchSessionMessages(path);
+		if (messagesMatch !== null) {
+			void handleMessages(
+				req,
+				res,
+				method,
+				path,
+				messagesMatch,
+				config,
+				sessions,
+				bufferStore,
+			);
+			return;
+		}
+
 		// /gateways/<name>/sessions/<id> (and trailing slash variants)
 		const sessionDetail = matchSessionDetail(path);
 		if (sessionDetail !== null) {
-			handleSessionDetail(
+			void handleSessionDetail(
 				method,
 				path,
 				sessionDetail.gatewayRaw,
 				sessionDetail.idRaw,
 				config.gateways,
+				config.adapters,
 				sessions,
 				res,
 			);
@@ -101,6 +130,7 @@ export function createHandler(
 				path,
 				sessionsCollection,
 				config.gateways,
+				config.adapters,
 				sessions,
 			);
 			return;
@@ -137,7 +167,9 @@ export function createHandler(
 			writeJson(
 				res,
 				200,
-				gatewayEnvelope(buildGateway(requested, cfg, sessions)),
+				gatewayEnvelope(
+					buildGateway(requested, cfg, config.adapters, sessions),
+				),
 			);
 			return;
 		}
@@ -205,6 +237,24 @@ function matchSessionDetail(
 	return { gatewayRaw, idRaw };
 }
 
+/** Match `/gateways/<name>/sessions/<id>/messages` (with optional trailing slash). */
+function matchSessionMessages(
+	path: string,
+): { gatewayRaw: string; idRaw: string } | null {
+	const prefix = "/gateways/";
+	if (!path.startsWith(prefix)) return null;
+	const rest = path.slice(prefix.length);
+	const stripped = rest.endsWith("/") ? rest.slice(0, -1) : rest;
+	const parts = stripped.split("/");
+	if (parts.length !== 4) return null;
+	const [gatewayRaw, sessionsLiteral, idRaw, messagesLiteral] = parts;
+	if (gatewayRaw === undefined || sessionsLiteral !== "sessions") return null;
+	if (idRaw === undefined || idRaw.length === 0) return null;
+	if (messagesLiteral !== "messages") return null;
+	if (gatewayRaw.length === 0) return null;
+	return { gatewayRaw, idRaw };
+}
+
 function decodePathSegment(segment: string): string | null {
 	try {
 		return decodeURIComponent(segment);
@@ -222,6 +272,7 @@ async function handleSessionsCollection(
 	path: string,
 	gatewayRaw: string,
 	gateways: Record<string, GatewayConfig>,
+	adapters: Record<string, Adapter>,
 	sessions: SessionStore,
 ): Promise<void> {
 	const gatewayName = decodePathSegment(gatewayRaw);
@@ -233,11 +284,10 @@ async function handleSessionsCollection(
 		);
 		return;
 	}
-	if (gateways[gatewayName] === undefined) {
+	const gatewayCfg = gateways[gatewayName];
+	if (gatewayCfg === undefined) {
 		// 404 for unknown gateway is reported even on disallowed methods so
 		// callers see the most-specific failure (gateway_not_found, not 405).
-		// However the spec for the create/list endpoint reports 405 for PATCH/PUT
-		// against a known gateway; for unknown gateways we still 404 first.
 		writeJson(
 			res,
 			404,
@@ -267,7 +317,35 @@ async function handleSessionsCollection(
 			);
 			return;
 		}
-		const session = sessions.create(gatewayName, configResult.value);
+		const adapter = adapters[gatewayCfg.adapter];
+		if (adapter === undefined) {
+			writeJson(
+				res,
+				503,
+				errorEnvelope(
+					"adapter_unavailable",
+					`Adapter '${gatewayCfg.adapter}' for gateway '${gatewayName}' is not registered`,
+				),
+			);
+			return;
+		}
+		let nativeRef: Awaited<ReturnType<typeof adapter.createSession>>;
+		try {
+			nativeRef = await adapter.createSession(configResult.value);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			const isTimeout = /timed out/i.test(msg);
+			writeJson(
+				res,
+				isTimeout ? 504 : 502,
+				errorEnvelope(
+					isTimeout ? "adapter_timeout" : "adapter_error",
+					`${gatewayName} adapter failed: ${truncate(msg, 500)}`,
+				),
+			);
+			return;
+		}
+		const session = sessions.create(gatewayName, configResult.value, nativeRef);
 		writeJson(res, 201, sessionEnvelope(session));
 		return;
 	}
@@ -276,15 +354,16 @@ async function handleSessionsCollection(
 
 // ─── Session detail: GET / DELETE ────────────────────────
 
-function handleSessionDetail(
+async function handleSessionDetail(
 	method: string,
 	path: string,
 	gatewayRaw: string,
 	idRaw: string,
 	gateways: Record<string, GatewayConfig>,
+	adapters: Record<string, Adapter>,
 	sessions: SessionStore,
 	res: ServerResponse,
-): void {
+): Promise<void> {
 	const gatewayName = decodePathSegment(gatewayRaw);
 	if (gatewayName === null) {
 		writeJson(
@@ -294,7 +373,8 @@ function handleSessionDetail(
 		);
 		return;
 	}
-	if (gateways[gatewayName] === undefined) {
+	const gatewayCfg = gateways[gatewayName];
+	if (gatewayCfg === undefined) {
 		writeJson(
 			res,
 			404,
@@ -332,8 +412,8 @@ function handleSessionDetail(
 		return;
 	}
 	if (method === "DELETE") {
-		const result = sessions.close(gatewayName, id);
-		if (result === "not_found") {
+		const existing = sessions.get(gatewayName, id);
+		if (existing === null) {
 			writeJson(
 				res,
 				404,
@@ -344,11 +424,82 @@ function handleSessionDetail(
 			);
 			return;
 		}
+		const nativeRef = sessions.getNativeRef(gatewayName, id);
+		const adapter = adapters[gatewayCfg.adapter];
+		if (
+			nativeRef !== null &&
+			adapter !== undefined &&
+			existing.status !== "closed"
+		) {
+			try {
+				await adapter.close(nativeRef);
+			} catch {
+				// Adapter close failure does NOT fail the HTTP DELETE — the
+				// session is logically dead in Sumeru regardless.
+			}
+		}
 		// `closed` and `already_closed` both return 204 (idempotent).
+		sessions.close(gatewayName, id);
 		writeNoContent(res);
 		return;
 	}
 	methodNotAllowed(res, method, path, "GET, DELETE");
+}
+
+// ─── Messages endpoint ───────────────────────────────────
+
+async function handleMessages(
+	req: IncomingMessage,
+	res: ServerResponse,
+	method: string,
+	path: string,
+	parts: { gatewayRaw: string; idRaw: string },
+	config: ServerConfig,
+	sessions: SessionStore,
+	bufferStore: SseBufferStore,
+): Promise<void> {
+	const gatewayName = decodePathSegment(parts.gatewayRaw);
+	if (gatewayName === null) {
+		writeJson(
+			res,
+			404,
+			errorEnvelope(
+				"gateway_not_found",
+				`Gateway ${parts.gatewayRaw} not found`,
+			),
+		);
+		return;
+	}
+	if (config.gateways[gatewayName] === undefined) {
+		writeJson(
+			res,
+			404,
+			errorEnvelope("gateway_not_found", `Gateway ${gatewayName} not found`),
+		);
+		return;
+	}
+	const id = decodePathSegment(parts.idRaw);
+	if (id === null) {
+		writeJson(
+			res,
+			404,
+			errorEnvelope(
+				"session_not_found",
+				`Session ${parts.idRaw} not found on gateway ${gatewayName}`,
+			),
+		);
+		return;
+	}
+	if (method !== "POST") {
+		methodNotAllowed(res, method, path, "GET, POST");
+		return;
+	}
+	await handleMessageEndpoint(req, res, gatewayName, id, {
+		sessions,
+		adapters: config.adapters,
+		config,
+		bufferStore,
+	});
 }
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -372,11 +523,12 @@ function methodNotAllowed(
 
 function buildGatewayList(
 	gateways: Record<string, GatewayConfig>,
+	adapters: Record<string, Adapter>,
 	sessions: SessionStore,
 ): Gateway[] {
 	const entries: Gateway[] = [];
 	for (const [name, cfg] of Object.entries(gateways)) {
-		entries.push(buildGateway(name, cfg, sessions));
+		entries.push(buildGateway(name, cfg, adapters, sessions));
 	}
 	return entries;
 }
@@ -384,12 +536,13 @@ function buildGatewayList(
 function buildGateway(
 	name: string,
 	cfg: GatewayConfig,
+	adapters: Record<string, Adapter>,
 	sessions: SessionStore,
 ): Gateway {
 	return {
 		name,
 		adapter: cfg.adapter,
-		status: "ready",
+		status: adapters[cfg.adapter] !== undefined ? "ready" : "unavailable",
 		activeSessions: sessions.activeCount(name),
 		capabilities: {
 			resume: cfg.capabilities.resume,
@@ -421,6 +574,11 @@ function writeNoContent(res: ServerResponse): void {
 	res.removeHeader("Content-Type");
 	res.setHeader("Content-Length", "0");
 	res.end();
+}
+
+function truncate(s: string, max: number): string {
+	if (s.length <= max) return s;
+	return `${s.slice(0, max - 1)}…`;
 }
 
 // ─── JSON body parsing ───────────────────────────────────

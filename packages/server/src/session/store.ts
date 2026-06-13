@@ -1,3 +1,4 @@
+import type { NativeSessionRef } from "@sumeru/core";
 import type { Session, SessionConfig, SessionStatus } from "../types.js";
 import { generateSessionId } from "./id.js";
 
@@ -6,6 +7,11 @@ import { generateSessionId } from "./id.js";
  *
  * Phase 2: persistence is per-process and lost on restart. Adapter-level
  * persistence lands in a later phase when the message endpoint is wired up.
+ *
+ * Phase 3: each session also tracks an internal `NativeSessionRef` produced
+ * by the adapter when the session was created. The `NativeSessionRef` is
+ * NEVER exposed in HTTP envelopes — only `getNativeRef` makes it visible
+ * to internal callers (the message handler, the close path).
  *
  * Sessions are scoped to their gateway: lookups always include the gateway
  * name, and a session created on `hermes` is invisible from `claude-code`.
@@ -17,11 +23,17 @@ import { generateSessionId } from "./id.js";
 
 export type SessionStore = {
 	/** Create a new session on `gateway`. The id is generated server-side. */
-	create: (gateway: string, config: SessionConfig) => Session;
+	create: (
+		gateway: string,
+		config: SessionConfig,
+		nativeRef: NativeSessionRef | null,
+	) => Session;
 	/** List sessions on a gateway in insertion order (chronological). */
 	list: (gateway: string) => Session[];
 	/** Look up a single session, scoped by gateway. */
 	get: (gateway: string, id: string) => Session | null;
+	/** Internal-only: retrieve the NativeSessionRef recorded at create time. */
+	getNativeRef: (gateway: string, id: string) => NativeSessionRef | null;
 	/**
 	 * Mark a session closed. Returns:
 	 *   - `closed`         if the status flipped from idle/active to closed
@@ -59,6 +71,7 @@ export type TransitionResult<R extends string> =
 /** Build a fresh, empty session store. */
 export function createSessionStore(): SessionStore {
 	const byGateway = new Map<string, Map<string, Session>>();
+	const nativeRefs = new Map<string, NativeSessionRef>();
 
 	function ensureGatewayMap(gateway: string): Map<string, Session> {
 		let inner = byGateway.get(gateway);
@@ -73,7 +86,15 @@ export function createSessionStore(): SessionStore {
 		return new Date().toISOString();
 	}
 
-	function create(gateway: string, config: SessionConfig): Session {
+	function refKey(gateway: string, id: string): string {
+		return `${gateway}\u0000${id}`;
+	}
+
+	function create(
+		gateway: string,
+		config: SessionConfig,
+		nativeRef: NativeSessionRef | null,
+	): Session {
 		const inner = ensureGatewayMap(gateway);
 		const session: Session = {
 			id: generateSessionId(),
@@ -83,6 +104,9 @@ export function createSessionStore(): SessionStore {
 			config,
 		};
 		inner.set(session.id, session);
+		if (nativeRef !== null) {
+			nativeRefs.set(refKey(gateway, session.id), nativeRef);
+		}
 		return session;
 	}
 
@@ -96,6 +120,10 @@ export function createSessionStore(): SessionStore {
 		const inner = byGateway.get(gateway);
 		if (inner === undefined) return null;
 		return inner.get(id) ?? null;
+	}
+
+	function getNativeRef(gateway: string, id: string): NativeSessionRef | null {
+		return nativeRefs.get(refKey(gateway, id)) ?? null;
 	}
 
 	function close(
@@ -150,6 +178,7 @@ export function createSessionStore(): SessionStore {
 		create,
 		list,
 		get,
+		getNativeRef,
 		close,
 		activeCount,
 		tryActivate,
