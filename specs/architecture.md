@@ -149,6 +149,9 @@ POST /gateways/:name/sessions/:id/messages    # 发消息（SSE）
 GET  /gateways/:name/sessions/:id/messages    # 消息历史
 
 GET  /ocas/:hash                              # ocas 对象
+
+POST /gateways/:name/sessions/:id/export      # 导出 session recording
+POST /import                                   # 导入 recording
 ```
 
 ### 实例信息
@@ -345,6 +348,38 @@ GET /ocas/:hash
 ```
 
 返回 ocas envelope（`{ type, value }`）。用于需要底层数据的场景（调试、分析工具、跨系统集成）。
+
+### 导出 Session Recording
+
+```
+POST /gateways/:name/sessions/:id/export
+```
+
+将 session 的完整 recording 导出为 ocas export 包（`.tar.gz`）。包内含所有关联的 ocas 对象，自包含，可以导入任何其他 Sumeru 实例或 ocas store。
+
+响应 `200`，`Content-Type: application/gzip`，body 是 tar.gz 文件。
+
+### 导入 Recording
+
+```
+POST /import
+Content-Type: application/gzip
+```
+
+Body 是一个 ocas export 包。将其中的对象导入本实例的 ocas store。
+
+响应：
+
+```json
+{
+  "type": "@sumeru/import-result",
+  "value": {
+    "imported": 47,
+    "skipped": 3,
+    "sessionId": "ses_01JXYZ"
+  }
+}
+```
 
 ### 错误格式
 
