@@ -233,35 +233,76 @@ POST /gateways/:name/sessions/:id/messages
 
 调用方发的永远是 user role，agent 回的永远是 assistant role — 不需要指定。
 
+一次 `send` 背后 agent 可能产生多个 turn（思考→tool call→观察→再 tool call→...→最终回答）。返回的是这次 send 触发的**所有 turns**，每个带 ocas hash。
+
 阻塞模式 — 等 agent 完成后返回：
 
 ```json
 {
-  "role": "assistant",
-  "content": "我来看一下 login 相关的代码...",
-  "toolCalls": [
+  "turns": [
     {
-      "tool": "terminal",
-      "input": { "command": "cat src/auth/login.ts" },
-      "output": "...",
-      "durationMs": 150
+      "index": 3,
+      "role": "assistant",
+      "content": "让我看看 login 相关的代码...",
+      "toolCalls": [
+        {
+          "tool": "terminal",
+          "input": { "command": "cat src/auth/login.ts" },
+          "output": "export function login()...",
+          "durationMs": 150
+        }
+      ],
+      "tokens": { "in": 1234, "out": 567 },
+      "hash": "5MK9R2PX4KNQW"
+    },
+    {
+      "index": 4,
+      "role": "assistant",
+      "content": "找到问题了，redirect 逻辑有误。已修复。",
+      "toolCalls": [
+        {
+          "tool": "patch",
+          "input": { "path": "src/auth/login.ts", "old_string": "...", "new_string": "..." },
+          "output": "Applied.",
+          "durationMs": 80
+        }
+      ],
+      "tokens": { "in": 2345, "out": 890 },
+      "hash": "7NRT4VW8BQSM3"
     }
   ],
-  "tokens": { "in": 1234, "out": 567 }
+  "summary": {
+    "turnCount": 2,
+    "tokens": { "in": 3579, "out": 1457 },
+    "durationMs": 45000
+  }
 }
 ```
 
-流式模式（`Accept: text/event-stream`）— SSE：
+调用方拿到完整过程，也可以用 hash 去 `/ocas/:hash` 深入查看单个 turn。
+
+流式模式（`Accept: text/event-stream`）— SSE，按 turn 粒度推送：
 
 ```
+event: turn_start
+data: {"index": 3, "role": "assistant"}
+
 event: content
-data: {"delta": "我来看一下 login 相关的代码..."}
+data: {"delta": "让我看看 login 相关的代码..."}
 
 event: tool_call
 data: {"tool": "terminal", "input": {...}, "output": "...", "durationMs": 150}
 
+event: turn_end
+data: {"hash": "5MK9R2PX4KNQW", "tokens": {"in": 1234, "out": 567}}
+
+event: turn_start
+data: {"index": 4, "role": "assistant"}
+
+...
+
 event: done
-data: {"tokens": {"in": 1234, "out": 567}}
+data: {"turnCount": 2, "tokens": {"in": 3579, "out": 1457}, "durationMs": 45000}
 ```
 
 MVP 先做阻塞模式。
@@ -340,7 +381,7 @@ DELETE /gateways/:name/sessions/:id
 GET /ocas/:hash
 ```
 
-直接访问 raw ocas 对象。用于需要底层数据的场景（调试、分析工具、跨系统集成）。
+返回 ocas envelope 格式（与其他端点一致）。用于需要底层数据的场景（调试、分析工具、跨系统集成）。
 
 ### 错误格式
 
