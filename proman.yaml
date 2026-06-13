@@ -3,6 +3,10 @@ packages:
     path: packages/core
     type: lib
 
+  - name: "@sumeru/adapter-hermes"
+    path: packages/adapter-hermes
+    type: lib
+
   - name: "@sumeru/server"
     path: packages/server
     type: lib

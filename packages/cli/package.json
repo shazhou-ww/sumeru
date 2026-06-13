@@ -9,6 +9,7 @@
     "dist"
   ],
   "dependencies": {
+    "@sumeru/adapter-hermes": "workspace:^",
     "@sumeru/core": "workspace:^",
     "@sumeru/server": "workspace:^",
     "commander": "^14.0.0",

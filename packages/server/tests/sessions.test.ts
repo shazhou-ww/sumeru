@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { GatewayConfig, StartedServer } from "../src/index.js";
 import { startServer } from "../src/index.js";
+import { makeStubAdapter } from "./fixtures/stub-adapter.js";
 
 const TWO_GATEWAYS: Record<string, GatewayConfig> = {
 	hermes: {
@@ -39,12 +40,21 @@ async function startTestServer(): Promise<{
 	server: StartedServer;
 	baseUrl: string;
 }> {
+	const hermes = makeStubAdapter({ name: "hermes" });
+	const claude = makeStubAdapter({ name: "claude-code" });
 	const server = await startServer({
 		port: 0,
 		host: "127.0.0.1",
 		name: "sumeru@neko",
 		version: "0.1.0",
 		gateways: TWO_GATEWAYS,
+		adapters: {
+			hermes: hermes.adapter,
+			"claude-code": claude.adapter,
+		},
+		sseHeartbeatMs: null,
+		sseBufferSize: null,
+		sseRetentionMs: null,
 	});
 	return {
 		server,

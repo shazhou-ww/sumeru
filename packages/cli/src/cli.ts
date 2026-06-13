@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHermesAdapter } from "@sumeru/adapter-hermes";
 import {
 	type GatewayConfig,
 	type InstanceConfig,
@@ -97,6 +98,10 @@ program
 				name,
 				version: findVersion(),
 				gateways,
+				adapters: { hermes: createHermesAdapter({}) },
+				sseHeartbeatMs: null,
+				sseBufferSize: null,
+				sseRetentionMs: null,
 			});
 			console.log(`Listening on http://${server.host}:${server.port}`);
 
