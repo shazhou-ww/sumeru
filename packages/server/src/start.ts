@@ -10,7 +10,11 @@ import type { StartConfig, StartedServer } from "./types.js";
  * - Returns a `stop()` function that closes the listener.
  */
 export function startServer(config: StartConfig): Promise<StartedServer> {
-	const handler = createHandler({ name: config.name, version: config.version });
+	const handler = createHandler({
+		name: config.name,
+		version: config.version,
+		gateways: config.gateways,
+	});
 	const server = createHttpServer(handler);
 
 	return new Promise<StartedServer>((resolve, reject) => {

@@ -38,7 +38,11 @@ importers:
 
   packages/core: {}
 
-  packages/server: {}
+  packages/server:
+    dependencies:
+      yaml:
+        specifier: ^2.7.0
+        version: 2.9.0
 
 packages:
 

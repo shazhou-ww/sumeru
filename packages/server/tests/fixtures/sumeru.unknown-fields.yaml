@@ -1,0 +1,10 @@
+name: sumeru@neko
+unknown_field: 1
+
+gateways:
+  hermes:
+    adapter: hermes
+    foo: bar
+    capabilities:
+      resume: true
+      streaming: true

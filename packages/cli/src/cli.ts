@@ -2,7 +2,12 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { startServer } from "@sumeru/server";
+import {
+	type GatewayConfig,
+	type InstanceConfig,
+	loadConfig,
+	startServer,
+} from "@sumeru/server";
 import { Command } from "commander";
 
 function findVersion(): string {
@@ -59,6 +64,7 @@ program
 	.description("Start the Sumeru HTTP server")
 	.option("-p, --port <number>", "TCP port to bind (0 = ephemeral)", "7900")
 	.option("-h, --host <host>", "Bind address", "127.0.0.1")
+	.option("-c, --config <path>", "Path to sumeru.yaml configuration file")
 	.action(async (opts) => {
 		const port = Number.parseInt(opts.port, 10);
 		if (Number.isNaN(port) || port < 0) {
@@ -67,12 +73,30 @@ program
 		}
 		const host = String(opts.host);
 
+		// Load config (if any) BEFORE binding a port — we want to fail loudly
+		// on bad config without leaving a half-started listener around.
+		let name = "sumeru";
+		let gateways: Record<string, GatewayConfig> = {};
+		if (typeof opts.config === "string" && opts.config.length > 0) {
+			let cfg: InstanceConfig;
+			try {
+				cfg = await loadConfig(opts.config);
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				console.error(`Failed to load config from ${opts.config}: ${msg}`);
+				process.exit(1);
+			}
+			name = cfg.name;
+			gateways = cfg.gateways;
+		}
+
 		try {
 			const server = await startServer({
 				port,
 				host,
-				name: "sumeru",
+				name,
 				version: findVersion(),
+				gateways,
 			});
 			console.log(`Listening on http://${server.host}:${server.port}`);
 

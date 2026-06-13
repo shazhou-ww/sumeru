@@ -1,0 +1,6 @@
+gateways:
+  hermes:
+    adapter: hermes
+    capabilities:
+      resume: true
+      streaming: true

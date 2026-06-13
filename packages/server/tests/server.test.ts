@@ -12,6 +12,7 @@ describe("@sumeru/server — instance endpoint", () => {
 			host: "127.0.0.1",
 			name: "sumeru",
 			version: "0.1.0",
+			gateways: {},
 		});
 		baseUrl = `http://${server.host}:${server.port}`;
 	});
@@ -83,6 +84,7 @@ describe("@sumeru/server — startServer", () => {
 			host: "127.0.0.1",
 			name: "sumeru",
 			version: "0.1.0",
+			gateways: {},
 		});
 		try {
 			expect(s.port).toBeGreaterThan(0);
@@ -98,6 +100,7 @@ describe("@sumeru/server — startServer", () => {
 			host: "127.0.0.1",
 			name: "sumeru",
 			version: "0.1.0",
+			gateways: {},
 		});
 		try {
 			await expect(
@@ -106,6 +109,7 @@ describe("@sumeru/server — startServer", () => {
 					host: "127.0.0.1",
 					name: "sumeru",
 					version: "0.1.0",
+					gateways: {},
 				}),
 			).rejects.toThrow();
 		} finally {
