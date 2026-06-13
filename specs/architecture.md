@@ -128,7 +128,9 @@ Broker 对 Sumeru 来说就是一个普通的 HTTP client。
 
 ## HTTP API
 
-所有数据返回使用 ocas envelope 格式（structured payload + render）。
+所有数据返回使用 ocas envelope 格式：`{ type: Hash, value: unknown }`。
+
+`type` 是 ocas schema 的 hash（13-char Crockford Base32）。下文用 schema alias（如 `@sumeru/turn`）表示可读性，运行时解析为 hash。
 
 ### URL 结构
 
@@ -143,10 +145,10 @@ GET  /gateways/:name/sessions?q=<query>       # 列出/搜索 session
 GET  /gateways/:name/sessions/:id             # session 详情
 DELETE /gateways/:name/sessions/:id           # 关闭 session
 
-POST /gateways/:name/sessions/:id/messages    # 发消息
+POST /gateways/:name/sessions/:id/messages    # 发消息（SSE）
 GET  /gateways/:name/sessions/:id/messages    # 消息历史
 
-GET  /ocas/:hash                              # 访问 raw ocas 对象
+GET  /ocas/:hash                              # ocas 对象
 ```
 
 ### 实例信息
@@ -157,9 +159,12 @@ GET /
 
 ```json
 {
-  "name": "sumeru@neko",
-  "version": "0.1.0",
-  "gateways": ["hermes", "claude-code"]
+  "type": "@sumeru/instance",
+  "value": {
+    "name": "sumeru@neko",
+    "version": "0.1.0",
+    "gateways": ["hermes", "claude-code"]
+  }
 }
 ```
 
@@ -170,18 +175,21 @@ GET /gateways
 ```
 
 ```json
-[
-  {
-    "name": "hermes",
-    "adapter": "hermes",
-    "status": "ready",
-    "activeSessions": 2,
-    "capabilities": {
-      "resume": true,
-      "streaming": true
+{
+  "type": "@sumeru/gateway-list",
+  "value": [
+    {
+      "name": "hermes",
+      "adapter": "hermes",
+      "status": "ready",
+      "activeSessions": 2,
+      "capabilities": {
+        "resume": true,
+        "streaming": true
+      }
     }
-  }
-]
+  ]
+}
 ```
 
 ### 创建 Session
@@ -198,24 +206,17 @@ POST /gateways/:name/sessions
 
 `config` 是 opaque 的，由 adapter 定义接受什么。Sumeru 透传，不校验。
 
-示例 — hermes gateway 可能接受：
-```json
-{ "config": { "model": "claude-sonnet-4", "systemPrompt": "..." } }
-```
-
-示例 — 另一个 gateway 可能只接受：
-```json
-{ "config": { "timeout": 300 } }
-```
-
 响应 `201`：
 
 ```json
 {
-  "id": "ses_01JXYZ",
-  "gateway": "hermes",
-  "status": "idle",
-  "createdAt": "2026-06-13T12:00:00Z"
+  "type": "@sumeru/session",
+  "value": {
+    "id": "ses_01JXYZ",
+    "gateway": "hermes",
+    "status": "idle",
+    "createdAt": "2026-06-13T12:00:00Z"
+  }
 }
 ```
 
@@ -233,31 +234,32 @@ POST /gateways/:name/sessions/:id/messages
 
 调用方发的永远是 user role，agent 回的永远是 assistant role — 不需要指定。
 
-一次 `send` 背后 agent 可能产生多个 turn（思考→tool call→观察→再 tool call→...→最终回答）。返回格式是 **turn 级别的 SSE 流** — 每个事件是一个完整 turn，不是字符片段。
+一次 `send` 背后 agent 可能产生多个 turn（思考→tool call→观察→再 tool call→...→最终回答）。返回格式是 **turn 级别的 SSE 流** — 每个事件的 `data` 都是 ocas envelope。
 
 #### SSE 流格式
 
 ```
 id: 1
 event: turn
-data: {"index": 3, "role": "assistant", "content": "让我看看 login 相关的代码...", "toolCalls": [{"tool": "terminal", "input": {"command": "cat src/auth/login.ts"}, "output": "export function login()...", "durationMs": 150}], "tokens": {"in": 1234, "out": 567}, "hash": "5MK9R2PX4KNQW"}
+data: {"type": "@sumeru/turn", "value": {"index": 3, "role": "assistant", "content": "让我看看 login 相关的代码...", "toolCalls": [{"tool": "terminal", "input": {"command": "cat src/auth/login.ts"}, "output": "export function login()...", "durationMs": 150}], "tokens": {"in": 1234, "out": 567}, "hash": "5MK9R2PX4KNQW"}}
 
 id: 2
 event: heartbeat
-data: {"elapsed": 45000, "status": "tool_call in progress"}
+data: {"type": "@sumeru/heartbeat", "value": {"elapsed": 45000, "status": "tool_call in progress"}}
 
 id: 3
 event: turn
-data: {"index": 4, "role": "assistant", "content": "找到问题了，redirect 逻辑有误。已修复。", "toolCalls": [{"tool": "patch", "input": {"path": "src/auth/login.ts", "old_string": "...", "new_string": "..."}, "output": "Applied.", "durationMs": 80}], "tokens": {"in": 2345, "out": 890}, "hash": "7NRT4VW8BQSM3"}
+data: {"type": "@sumeru/turn", "value": {"index": 4, "role": "assistant", "content": "找到问题了，redirect 逻辑有误。已修复。", "toolCalls": [{"tool": "patch", "input": {"path": "src/auth/login.ts", "old_string": "...", "new_string": "..."}, "output": "Applied.", "durationMs": 80}], "tokens": {"in": 2345, "out": 890}, "hash": "7NRT4VW8BQSM3"}}
 
 id: 4
 event: done
-data: {"turnCount": 2, "tokens": {"in": 3579, "out": 1457}, "durationMs": 45000}
+data: {"type": "@sumeru/summary", "value": {"turnCount": 2, "tokens": {"in": 3579, "out": 1457}, "durationMs": 45000}}
 ```
 
 #### 设计要点
 
 - **Turn 粒度** — 每个 `event: turn` 是一个完整的语义单元（含 content、toolCalls、tokens、ocas hash）。不做字符级 streaming
+- **统一 envelope** — SSE 每条 `data` 都是 `{ type, value }`，跟 REST 端点一致，消费方一套解析逻辑
 - **Heartbeat 保活** — turn 之间定期发 `event: heartbeat`，防止中间代理（nginx / Cloudflare / NAT）因空闲超时掐断连接
 - **断点续传** — 每个事件带 `id`（递增序号）。客户端断连后重连时发送 `Last-Event-ID` 头，Sumeru 从断点继续推送。Turn 数据在 ocas 里，重推零成本
 - **`event: done`** — 标志本次 send 结束，附带汇总信息
@@ -273,18 +275,21 @@ GET /gateways/:name/sessions?q=login重定向
 
 ```json
 {
-  "query": "login重定向",
-  "results": [
-    {
-      "id": "ses_01JXYZ",
-      "gateway": "hermes",
-      "status": "idle",
-      "relevance": 0.87,
-      "matchContext": "我来看一下 login 页面的重定向问题...",
-      "turns": 12,
-      "lastActiveAt": "2026-06-13T12:05:00Z"
-    }
-  ]
+  "type": "@sumeru/search-result",
+  "value": {
+    "query": "login重定向",
+    "results": [
+      {
+        "id": "ses_01JXYZ",
+        "gateway": "hermes",
+        "status": "idle",
+        "relevance": 0.87,
+        "matchContext": "我来看一下 login 页面的重定向问题...",
+        "turns": 12,
+        "lastActiveAt": "2026-06-13T12:05:00Z"
+      }
+    ]
+  }
 }
 ```
 
@@ -300,25 +305,28 @@ GET /gateways/:name/sessions/:id/messages?offset=0&limit=50
 
 ```json
 {
-  "sessionId": "ses_01JXYZ",
-  "turns": [
-    {
-      "index": 0,
-      "role": "user",
-      "content": "请修复 login 页面的重定向问题",
-      "timestamp": "2026-06-13T12:00:01Z",
-      "toolCalls": null,
-      "tokens": null
-    },
-    {
-      "index": 1,
-      "role": "assistant",
-      "content": "我来看一下...",
-      "timestamp": "2026-06-13T12:00:05Z",
-      "toolCalls": [{ "tool": "terminal", "input": {}, "output": "...", "durationMs": 150 }],
-      "tokens": { "in": 1234, "out": 567 }
-    }
-  ]
+  "type": "@sumeru/message-history",
+  "value": {
+    "sessionId": "ses_01JXYZ",
+    "turns": [
+      {
+        "index": 0,
+        "role": "user",
+        "content": "请修复 login 页面的重定向问题",
+        "timestamp": "2026-06-13T12:00:01Z",
+        "toolCalls": null,
+        "tokens": null
+      },
+      {
+        "index": 1,
+        "role": "assistant",
+        "content": "我来看一下...",
+        "timestamp": "2026-06-13T12:00:05Z",
+        "toolCalls": [{ "tool": "terminal", "input": {}, "output": "...", "durationMs": 150 }],
+        "tokens": { "in": 1234, "out": 567 }
+      }
+    ]
+  }
 }
 ```
 
@@ -336,18 +344,17 @@ DELETE /gateways/:name/sessions/:id
 GET /ocas/:hash
 ```
 
-返回 ocas envelope 格式（与其他端点一致）。用于需要底层数据的场景（调试、分析工具、跨系统集成）。
+返回 ocas envelope（`{ type, value }`）。用于需要底层数据的场景（调试、分析工具、跨系统集成）。
 
 ### 错误格式
-
-错误响应也使用 ocas envelope 格式：
 
 ```json
 {
   "type": "@sumeru/error",
-  "error": "session_not_found",
-  "message": "Session ses_01JXYZ not found on gateway hermes",
-  "hash": "3QK7R9PX..."
+  "value": {
+    "error": "session_not_found",
+    "message": "Session ses_01JXYZ not found on gateway hermes"
+  }
 }
 ```
 
@@ -371,8 +378,6 @@ GET /ocas/:hash
 | 关闭 session | 更新 session status |
 
 Recording = session 生命周期内所有 turn 的有序集合。不是额外的数据结构，就是 ocas 里的数据本身。
-
-所有 API 返回使用 ocas envelope 格式，同时 `/ocas/:hash` 端点提供 raw 对象访问。
 
 ## 部署模式
 
