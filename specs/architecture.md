@@ -30,56 +30,73 @@ name: sumeru@neko
 
 gateways:
   hermes:
-    adapter: acp
-    command: hermes
-    args: ["chat"]
+    adapter: hermes
     capabilities:
       resume: true
       streaming: true
 
   claude-code:
-    adapter: cli
-    command: claude
+    adapter: claude-code
     capabilities:
       resume: true
       streaming: false
 ```
 
-Gateway 是配置声明的，不是运行时动态发现的。每个 gateway 声明 `capabilities`，告诉调用方它支持什么（resume、streaming 等）。
+Gateway 是配置声明的。每个 gateway 声明 `capabilities`，告诉调用方它支持什么（resume、streaming 等）。
+
+Adapter 的配置细节（command、args、环境变量等）由各 adapter 包自己定义，不在 Sumeru 层面规定。
 
 ### Session（会话）
 
-归属于某个 gateway，是一次 agent 对话。Session 支持 resume — 多次 `send` 在同一个 conversation history 内延续。
+归属于某个 gateway，是一次 agent 对话。Session 支持 resume — 多次 message 在同一个 conversation history 内延续。
+
+**Session ID 由 Sumeru 统一管理**：`ses_` + ULID。Sumeru 内部维护到 agent native session ID 的映射（如 Hermes 的 session ID、Claude Code 的 session 等），调用方永远不接触 native ID。
 
 Session 是运行时实体，由调用方按需创建/复用/关闭。
 
-### Adapter（通信协议）
+### Adapter（agent 适配器）
 
-Gateway 内部通过 adapter 与 agent 通信。Adapter 是代码层面的 plugin，每种协议一个实现：
+每类 agent 一个 adapter 包。不同 agent 的差异不是协议层能抹平的 — 怎么启动、怎么 resume、怎么捞 session turns，每个 agent 都不同。
 
-| Adapter | 通信方式 | 适用 agent |
-|---------|---------|-----------|
-| `acp` | Agent Communication Protocol | Hermes, 任何 ACP-compatible agent |
-| `cli` | fork 进程 + stdin/stdout | Claude Code, Codex |
+| Adapter 包 | 适配 agent | 职责 |
+|------------|-----------|------|
+| `@sumeru/adapter-hermes` | Hermes Agent | 通过 ACP 或 CLI 通信，从 session DB 提取 turns |
+| `@sumeru/adapter-claude-code` | Claude Code | 通过 CLI 通信，从 session 文件提取 turns |
+| `@sumeru/adapter-openclaw` | OpenClaw | 待定 |
 
-加新 agent 不写代码（如果已有合适的 adapter），写 gateway 配置就行。加新协议写一个 adapter。
+加新 agent = 写一个新 adapter 包。Adapter 实现统一的接口：
+
+```typescript
+type Adapter = {
+  name: string
+
+  createSession(config: Record<string, unknown>): Promise<NativeSessionRef>
+  send(ref: NativeSessionRef, content: string): Promise<AgentResponse>
+  close(ref: NativeSessionRef): Promise<void>
+  getTurns(ref: NativeSessionRef): Promise<Turn[]>
+
+  capabilities: { resume: boolean; streaming: boolean }
+}
+```
+
+`config` 是 opaque 的 — 每个 adapter 自己定义接受什么参数。Sumeru 透传，不校验。有的 agent 支持 model 选择，有的不支持；有的有 systemPrompt，有的没有。这些都是 adapter 的内部细节。
 
 ## 三层关系
 
 ```
 Sumeru Instance (一个进程，一个 endpoint)
   │
-  ├─ Gateway: hermes (adapter=acp)
-  │    ├─ Session ses_01JXYZ (active)
-  │    └─ Session ses_01JXZZ (idle)
+  ├─ Gateway: hermes (adapter=@sumeru/adapter-hermes)
+  │    ├─ Session ses_01JXYZ → native: hermes session abc123
+  │    └─ Session ses_01JXZZ → native: hermes session def456
   │
-  └─ Gateway: claude-code (adapter=cli)
-       └─ Session ses_01JY00 (active)
+  └─ Gateway: claude-code (adapter=@sumeru/adapter-claude-code)
+       └─ Session ses_01JY00 → native: claude session xyz
 ```
 
 - **Instance** — 长驻服务，共享一个文件系统
 - **Gateway** — 配置声明，跟随 Sumeru 生命周期
-- **Session** — 运行时管理，按需创建/复用/回收
+- **Session** — 运行时管理，ses_ ID 统一格式，内部映射 native ID
 
 ## 网络拓扑
 
@@ -111,6 +128,8 @@ Broker 对 Sumeru 来说就是一个普通的 HTTP client。
 
 ## HTTP API
 
+所有数据返回使用 ocas envelope 格式（structured payload + render）。
+
 ### URL 结构
 
 ```
@@ -126,6 +145,8 @@ DELETE /gateways/:name/sessions/:id           # 关闭 session
 
 POST /gateways/:name/sessions/:id/messages    # 发消息
 GET  /gateways/:name/sessions/:id/messages    # 消息历史
+
+GET  /ocas/:hash                              # 访问 raw ocas 对象
 ```
 
 ### 实例信息
@@ -152,7 +173,7 @@ GET /gateways
 [
   {
     "name": "hermes",
-    "adapter": "acp",
+    "adapter": "hermes",
     "status": "ready",
     "activeSessions": 2,
     "capabilities": {
@@ -171,15 +192,21 @@ POST /gateways/:name/sessions
 
 ```json
 {
-  "config": {
-    "model": "claude-sonnet-4",
-    "systemPrompt": "你是一个 developer...",
-    "timeout": 300
-  }
+  "config": { ... }
 }
 ```
 
-`config` 透传给 adapter → agent，Sumeru 不校验。不同 agent 接受不同参数。
+`config` 是 opaque 的，由 adapter 定义接受什么。Sumeru 透传，不校验。
+
+示例 — hermes gateway 可能接受：
+```json
+{ "config": { "model": "claude-sonnet-4", "systemPrompt": "..." } }
+```
+
+示例 — 另一个 gateway 可能只接受：
+```json
+{ "config": { "timeout": 300 } }
+```
 
 响应 `201`：
 
@@ -200,10 +227,11 @@ POST /gateways/:name/sessions/:id/messages
 
 ```json
 {
-  "role": "user",
   "content": "请修复 login 页面的重定向问题"
 }
 ```
+
+调用方发的永远是 user role，agent 回的永远是 assistant role — 不需要指定。
 
 阻塞模式 — 等 agent 完成后返回：
 
@@ -245,7 +273,7 @@ GET /sessions?q=login重定向
 GET /gateways/:name/sessions?q=login重定向
 ```
 
-对 session 内的消息内容做语义搜索。数据源是 ocas recording。
+对 session 内的消息内容做语义搜索。数据源是 ocas。
 
 ```json
 {
@@ -306,6 +334,14 @@ DELETE /gateways/:name/sessions/:id
 
 响应 `204`。关闭后消息历史仍可读取。
 
+### ocas 对象访问
+
+```
+GET /ocas/:hash
+```
+
+直接访问 raw ocas 对象。用于需要底层数据的场景（调试、分析工具、跨系统集成）。
+
 ### 错误格式
 
 ```json
@@ -318,7 +354,7 @@ DELETE /gateways/:name/sessions/:id
 | 状态码 | 场景 |
 |--------|------|
 | 400 | 请求格式错误 |
-| 404 | gateway / session 不存在 |
+| 404 | gateway / session / ocas 对象不存在 |
 | 409 | session 正在 active（并发发消息） |
 | 502 | 底层 agent 通信失败 |
 | 504 | agent 响应超时 |
@@ -335,6 +371,8 @@ DELETE /gateways/:name/sessions/:id
 | 关闭 session | 更新 session status |
 
 Recording = session 生命周期内所有 turn 的有序集合。不是额外的数据结构，就是 ocas 里的数据本身。
+
+所有 API 返回使用 ocas envelope 格式，同时 `/ocas/:hash` 端点提供 raw 对象访问。
 
 ## 部署模式
 
@@ -367,11 +405,12 @@ Recording = session 生命周期内所有 turn 的有序集合。不是额外的
 
 ```
 packages/
-  core/          # @sumeru/core — 类型定义
-  server/        # @sumeru/server — HTTP 服务
-  adapter-acp/   # @sumeru/adapter-acp — ACP 协议适配
-  adapter-cli/   # @sumeru/adapter-cli — CLI 协议适配
-  cli/           # @sumeru/cli — sumeru start / run / status
+  core/              # @sumeru/core — 类型定义（Session, Turn, Gateway 等）
+  server/            # @sumeru/server — HTTP 服务
+  adapter-hermes/    # @sumeru/adapter-hermes — Hermes Agent 适配
+  adapter-claude-code/ # @sumeru/adapter-claude-code — Claude Code 适配
+  adapter-openclaw/  # @sumeru/adapter-openclaw — OpenClaw 适配
+  cli/               # @sumeru/cli — sumeru start / run / status
 ```
 
 ## CLI（规划）
@@ -381,6 +420,6 @@ sumeru start                     # 启动本机 Sumeru 实例
 sumeru start --config sumeru.yaml
 sumeru status                    # 查看实例状态
 
-sumeru run <scene> --gateway hermes --model claude-sonnet-4
+sumeru run <scene> --gateway hermes
                                  # 一次性场景实验（Docker 模式）
 ```
