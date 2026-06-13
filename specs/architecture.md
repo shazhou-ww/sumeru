@@ -233,79 +233,34 @@ POST /gateways/:name/sessions/:id/messages
 
 调用方发的永远是 user role，agent 回的永远是 assistant role — 不需要指定。
 
-一次 `send` 背后 agent 可能产生多个 turn（思考→tool call→观察→再 tool call→...→最终回答）。返回的是这次 send 触发的**所有 turns**，每个带 ocas hash。
+一次 `send` 背后 agent 可能产生多个 turn（思考→tool call→观察→再 tool call→...→最终回答）。返回格式是 **turn 级别的 SSE 流** — 每个事件是一个完整 turn，不是字符片段。
 
-阻塞模式 — 等 agent 完成后返回：
-
-```json
-{
-  "turns": [
-    {
-      "index": 3,
-      "role": "assistant",
-      "content": "让我看看 login 相关的代码...",
-      "toolCalls": [
-        {
-          "tool": "terminal",
-          "input": { "command": "cat src/auth/login.ts" },
-          "output": "export function login()...",
-          "durationMs": 150
-        }
-      ],
-      "tokens": { "in": 1234, "out": 567 },
-      "hash": "5MK9R2PX4KNQW"
-    },
-    {
-      "index": 4,
-      "role": "assistant",
-      "content": "找到问题了，redirect 逻辑有误。已修复。",
-      "toolCalls": [
-        {
-          "tool": "patch",
-          "input": { "path": "src/auth/login.ts", "old_string": "...", "new_string": "..." },
-          "output": "Applied.",
-          "durationMs": 80
-        }
-      ],
-      "tokens": { "in": 2345, "out": 890 },
-      "hash": "7NRT4VW8BQSM3"
-    }
-  ],
-  "summary": {
-    "turnCount": 2,
-    "tokens": { "in": 3579, "out": 1457 },
-    "durationMs": 45000
-  }
-}
-```
-
-调用方拿到完整过程，也可以用 hash 去 `/ocas/:hash` 深入查看单个 turn。
-
-流式模式（`Accept: text/event-stream`）— SSE，按 turn 粒度推送：
+#### SSE 流格式
 
 ```
-event: turn_start
-data: {"index": 3, "role": "assistant"}
+id: 1
+event: turn
+data: {"index": 3, "role": "assistant", "content": "让我看看 login 相关的代码...", "toolCalls": [{"tool": "terminal", "input": {"command": "cat src/auth/login.ts"}, "output": "export function login()...", "durationMs": 150}], "tokens": {"in": 1234, "out": 567}, "hash": "5MK9R2PX4KNQW"}
 
-event: content
-data: {"delta": "让我看看 login 相关的代码..."}
+id: 2
+event: heartbeat
+data: {"elapsed": 45000, "status": "tool_call in progress"}
 
-event: tool_call
-data: {"tool": "terminal", "input": {...}, "output": "...", "durationMs": 150}
+id: 3
+event: turn
+data: {"index": 4, "role": "assistant", "content": "找到问题了，redirect 逻辑有误。已修复。", "toolCalls": [{"tool": "patch", "input": {"path": "src/auth/login.ts", "old_string": "...", "new_string": "..."}, "output": "Applied.", "durationMs": 80}], "tokens": {"in": 2345, "out": 890}, "hash": "7NRT4VW8BQSM3"}
 
-event: turn_end
-data: {"hash": "5MK9R2PX4KNQW", "tokens": {"in": 1234, "out": 567}}
-
-event: turn_start
-data: {"index": 4, "role": "assistant"}
-
-...
-
+id: 4
 event: done
 data: {"turnCount": 2, "tokens": {"in": 3579, "out": 1457}, "durationMs": 45000}
 ```
 
-MVP 先做阻塞模式。
+#### 设计要点
+
+- **Turn 粒度** — 每个 `event: turn` 是一个完整的语义单元（含 content、toolCalls、tokens、ocas hash）。不做字符级 streaming
+- **Heartbeat 保活** — turn 之间定期发 `event: heartbeat`，防止中间代理（nginx / Cloudflare / NAT）因空闲超时掐断连接
+- **断点续传** — 每个事件带 `id`（递增序号）。客户端断连后重连时发送 `Last-Event-ID` 头，Sumeru 从断点继续推送。Turn 数据在 ocas 里，重推零成本
+- **`event: done`** — 标志本次 send 结束，附带汇总信息
 
 ### Session 搜索
 
