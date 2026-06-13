@@ -1,16 +1,14 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
-import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Command } from "commander";
 
 function findVersion(): string {
 	let dir = dirname(fileURLToPath(import.meta.url));
 	for (let i = 0; i < 5; i++) {
 		try {
-			const pkg = JSON.parse(
-				readFileSync(join(dir, "package.json"), "utf-8"),
-			);
+			const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf-8"));
 			if (pkg.name === "@sumeru/cli") return pkg.version ?? "0.0.0";
 		} catch {
 			/* keep walking */
@@ -31,7 +29,10 @@ program
 	.command("run")
 	.description("Run a scene with a specified runner and model")
 	.requiredOption("-s, --scene <path>", "Path to scene directory or YAML")
-	.requiredOption("-r, --runner <type>", "Runner type (hermes, claude-code, codex)")
+	.requiredOption(
+		"-r, --runner <type>",
+		"Runner type (hermes, claude-code, codex)",
+	)
 	.requiredOption("-m, --model <model>", "Model identifier")
 	.option("-t, --timeout <seconds>", "Timeout in seconds", "300")
 	.option("--network", "Allow network access", true)

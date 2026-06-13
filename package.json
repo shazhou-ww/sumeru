@@ -5,8 +5,10 @@
   "scripts": {
     "build": "proman build",
     "test": "proman test",
+    "test:ci": "pnpm -r run test:ci",
     "check": "proman check",
-    "format": "proman format"
+    "format": "proman format",
+    "typecheck": "npx tsc --build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",

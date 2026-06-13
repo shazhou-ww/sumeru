@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: ['*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: corepack enable && pnpm install
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Lint
+        run: pnpm run check
+
+      - name: Test
+        run: pnpm run test:ci

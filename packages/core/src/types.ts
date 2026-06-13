@@ -17,16 +17,16 @@ export interface Scene {
 	/** Tools that must be available in the environment */
 	tools: string[];
 	/** Pre-loaded knowledge (runner places these per agent type) */
-	knowledge?: Knowledge;
+	knowledge: Knowledge | null;
 	/** The task prompt — natural language, agent-agnostic */
 	task: string;
 }
 
 export interface Knowledge {
 	/** Skill definitions to pre-install */
-	skills?: SkillDef[];
+	skills: SkillDef[] | null;
 	/** Memory entries to pre-load */
-	memory?: string[];
+	memory: string[] | null;
 }
 
 export interface SkillDef {
@@ -103,7 +103,7 @@ export interface Turn {
 	/** ISO timestamp */
 	timestamp: string;
 	/** Tool calls made in this turn (assistant only) */
-	toolCalls?: ToolCall[];
+	toolCalls: ToolCall[] | null;
 	/** Token usage for this turn */
 	tokens?: TokenUsage;
 }
@@ -118,5 +118,5 @@ export interface ToolCall {
 	/** Duration in milliseconds */
 	durationMs: number;
 	/** Exit code (for terminal calls) */
-	exitCode?: number;
+	exitCode: number | null;
 }

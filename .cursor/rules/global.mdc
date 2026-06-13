@@ -1,0 +1,7 @@
+---
+description: Project coding conventions
+globs: packages/*/src/**/*.ts
+alwaysApply: true
+---
+
+@CLAUDE.md

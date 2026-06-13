@@ -5,11 +5,16 @@
   "bin": {
     "sumeru": "dist/cli.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@sumeru/core": "workspace:^",
     "commander": "^14.0.0",
     "yaml": "^2.7.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "test:ci": "npx vitest run"
+  }
 }
