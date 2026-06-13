@@ -3,6 +3,10 @@ packages:
     path: packages/core
     type: lib
 
+  - name: "@sumeru/server"
+    path: packages/server
+    type: lib
+
   - name: "@sumeru/cli"
     path: packages/cli
     type: cli

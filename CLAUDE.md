@@ -9,7 +9,8 @@ Monorepo with packages under `packages/`:
 | Package | Directory | Description |
 |---------|-----------|-------------|
 | `@sumeru/core` | `packages/core` | Type definitions (Scene, Turn, Recording) |
-| `@sumeru/cli` | `packages/cli` | CLI tool (`sumeru run`, `sumeru list`) |
+| `@sumeru/server` | `packages/server` | HTTP service (instance endpoint, gateways, sessions) |
+| `@sumeru/cli` | `packages/cli` | CLI tool (`sumeru run`, `sumeru list`, `sumeru start`) |
 
 ## Tech Stack
 
