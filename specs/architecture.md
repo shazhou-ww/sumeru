@@ -340,10 +340,14 @@ GET /ocas/:hash
 
 ### 错误格式
 
+错误响应也使用 ocas envelope 格式：
+
 ```json
 {
+  "type": "@sumeru/error",
   "error": "session_not_found",
-  "message": "Session ses_01JXYZ not found on gateway hermes"
+  "message": "Session ses_01JXYZ not found on gateway hermes",
+  "hash": "3QK7R9PX..."
 }
 ```
 
