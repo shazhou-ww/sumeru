@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { startServer } from "@sumeru/server";
 import { Command } from "commander";
 
 function findVersion(): string {
@@ -51,6 +52,57 @@ program
 	.action(async (opts) => {
 		console.log("sumeru list — not yet implemented");
 		console.log("Directory:", opts.dir);
+	});
+
+program
+	.command("start")
+	.description("Start the Sumeru HTTP server")
+	.option("-p, --port <number>", "TCP port to bind (0 = ephemeral)", "7900")
+	.option("-h, --host <host>", "Bind address", "127.0.0.1")
+	.action(async (opts) => {
+		const port = Number.parseInt(opts.port, 10);
+		if (Number.isNaN(port) || port < 0) {
+			console.error(`Invalid --port value: ${opts.port}`);
+			process.exit(1);
+		}
+		const host = String(opts.host);
+
+		try {
+			const server = await startServer({
+				port,
+				host,
+				name: "sumeru",
+				version: findVersion(),
+			});
+			console.log(`Listening on http://${server.host}:${server.port}`);
+
+			const shutdown = async (): Promise<void> => {
+				try {
+					await server.stop();
+					process.exit(0);
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					console.error(`Failed to stop server: ${msg}`);
+					process.exit(1);
+				}
+			};
+			process.on("SIGINT", shutdown);
+			process.on("SIGTERM", shutdown);
+		} catch (err) {
+			const code =
+				err instanceof Error && "code" in err
+					? (err as { code: unknown }).code
+					: null;
+			if (code === "EADDRINUSE") {
+				console.error(
+					`Port ${port} is already in use on ${host}. Choose a different --port or stop the conflicting process.`,
+				);
+			} else {
+				const msg = err instanceof Error ? err.message : String(err);
+				console.error(`Failed to start server: ${msg}`);
+			}
+			process.exit(1);
+		}
 	});
 
 program.parse();

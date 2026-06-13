@@ -111,7 +111,8 @@ Recordings capture the full conversation as structured turns:
 | Package | Description |
 |---------|-------------|
 | `@sumeru/core` | Type definitions (Scene, Turn, Recording) |
-| `@sumeru/cli` | CLI tool (`sumeru run`, `sumeru list`) |
+| `@sumeru/server` | HTTP service (instance endpoint, gateways, sessions) |
+| `@sumeru/cli` | CLI tool (`sumeru run`, `sumeru list`, `sumeru start`) |
 
 ## Name
 

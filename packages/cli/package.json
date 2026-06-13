@@ -10,6 +10,7 @@
   ],
   "dependencies": {
     "@sumeru/core": "workspace:^",
+    "@sumeru/server": "workspace:^",
     "commander": "^14.0.0",
     "yaml": "^2.7.0"
   },
