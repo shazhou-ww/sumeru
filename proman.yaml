@@ -1,0 +1,13 @@
+packages:
+  - name: "@sumeru/core"
+    path: packages/core
+    type: lib
+
+  - name: "@sumeru/cli"
+    path: packages/cli
+    type: cli
+
+release:
+  registry: https://registry.npmjs.org
+  access: public
+  gitTagPrefix: v
