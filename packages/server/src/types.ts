@@ -2,6 +2,7 @@
  * @sumeru/server — HTTP service for the Sumeru observation lab.
  *
  * Phase 1: configuration-driven instance + gateway endpoints.
+ * Phase 2: session lifecycle endpoints (create / list / detail / delete).
  * All responses follow the ocas envelope: { type, value }.
  */
 
@@ -11,6 +12,41 @@
 export type Envelope<T> = {
 	type: string;
 	value: T;
+};
+
+// ─── Session ─────────────────────────────────────────────
+
+/**
+ * Session status state machine:
+ *   (none) → idle              on POST /gateways/:name/sessions
+ *   idle  → active             on send-start (future POST .../messages)
+ *   active → idle              on send-finish
+ *   idle  → closed             on DELETE /gateways/:name/sessions/:id
+ *   active → closed            on DELETE while active (Phase 3+)
+ *   closed → closed            idempotent DELETE no-op
+ *
+ * No other transitions are permitted.
+ */
+export type SessionStatus = "idle" | "active" | "closed";
+
+/** Opaque adapter-specific config blob — Sumeru does not validate or normalize. */
+export type SessionConfig = Record<string, unknown>;
+
+/** Full session shape returned by POST 201 and GET /gateways/:name/sessions/:id. */
+export type Session = {
+	id: string;
+	gateway: string;
+	status: SessionStatus;
+	createdAt: string;
+	config: SessionConfig;
+};
+
+/** Compact list entry — `config` is omitted to keep listings small. */
+export type SessionListEntry = {
+	id: string;
+	gateway: string;
+	status: SessionStatus;
+	createdAt: string;
 };
 
 // ─── Config (Phase 1) ────────────────────────────────────
@@ -45,8 +81,8 @@ export type Instance = {
 /**
  * A registered gateway, as returned by `GET /gateways` and `GET /gateways/:name`.
  *
- * In Phase 1 `status` is always `"ready"` and `activeSessions` is always `0`;
- * sessions land in Phase 2.
+ * `status` is always `"ready"` in Phase 2. `activeSessions` is the count of
+ * non-closed (idle + active) sessions on the gateway.
  */
 export type Gateway = {
 	name: string;
