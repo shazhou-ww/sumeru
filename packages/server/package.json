@@ -18,6 +18,9 @@
     "@sumeru/core": "workspace:*",
     "yaml": "^2.7.0"
   },
+  "devDependencies": {
+    "@sumeru/adapter-hermes": "workspace:*"
+  },
   "scripts": {
     "test:ci": "npx vitest run"
   }

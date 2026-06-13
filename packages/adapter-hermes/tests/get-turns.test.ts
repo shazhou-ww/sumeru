@@ -149,4 +149,26 @@ describe("@sumeru/adapter-hermes — getTurns (fixture DB)", () => {
 			adapter.getTurns({ nativeId: NATIVE, meta: {} }),
 		).rejects.toThrow(/unreadable|schema mismatch/);
 	});
+
+	// Opt-in integration: read turns from a real Hermes session DB.
+	// Skipped by default — set SUMERU_HERMES_INTEGRATION=1 to run.
+	it.skipIf(process.env.SUMERU_HERMES_INTEGRATION !== "1")(
+		"reads turns from a live Hermes session",
+		async () => {
+			const adapter = createHermesAdapter({});
+			const sessionRef = await adapter.createSession({
+				model: "anthropic/claude-haiku-4",
+			});
+			try {
+				await adapter.send(sessionRef, "Say hi briefly.");
+				const turns = await adapter.getTurns(sessionRef);
+				expect(turns.length).toBeGreaterThanOrEqual(1);
+				expect(turns.every((t) => typeof t.index === "number")).toBe(true);
+				expect(turns.some((t) => t.role === "assistant")).toBe(true);
+			} finally {
+				await adapter.close(sessionRef);
+			}
+		},
+		90_000,
+	);
 });

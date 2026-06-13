@@ -55,6 +55,10 @@ importers:
       yaml:
         specifier: ^2.7.0
         version: 2.9.0
+    devDependencies:
+      '@sumeru/adapter-hermes':
+        specifier: workspace:*
+        version: link:../adapter-hermes
 
 packages:
 

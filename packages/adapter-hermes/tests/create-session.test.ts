@@ -147,4 +147,20 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 		]);
 		expect(a.nativeId).not.toBe(b.nativeId);
 	});
+
+	// Opt-in integration: spawn the real `hermes` binary and verify createSession.
+	// Skipped by default — set SUMERU_HERMES_INTEGRATION=1 to run.
+	it.skipIf(process.env.SUMERU_HERMES_INTEGRATION !== "1")(
+		"creates a real Hermes session against a live binary",
+		async () => {
+			const adapter = createHermesAdapter({});
+			const ref = await adapter.createSession({
+				model: "anthropic/claude-haiku-4",
+			});
+			expect(ref.nativeId).toMatch(/^[0-9]{8}_[0-9]{6}_[0-9a-f]+$/);
+			expect(ref.meta.sourceTag).toBe("sumeru");
+			await adapter.close(ref);
+		},
+		60_000,
+	);
 });

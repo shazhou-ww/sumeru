@@ -187,4 +187,36 @@ describe("@sumeru/adapter-hermes — send", () => {
 		});
 		await expect(adapter.send(ref(), "")).rejects.toThrow(/non-empty/);
 	});
+
+	// Opt-in integration: verify resume context against a real Hermes binary.
+	// Sends "remember 42", then "what is my number?", confirming the second
+	// reply contains "42". Skipped by default — set SUMERU_HERMES_INTEGRATION=1.
+	it.skipIf(process.env.SUMERU_HERMES_INTEGRATION !== "1")(
+		"resume context: r2 sees the number from r1",
+		async () => {
+			const adapter = createHermesAdapter({});
+			const sessionRef = await adapter.createSession({
+				model: "anthropic/claude-haiku-4",
+				systemPrompt: "Reply tersely.",
+			});
+			try {
+				await adapter.send(
+					sessionRef,
+					"My favorite number is 42. Acknowledge briefly.",
+				);
+				const r2 = await adapter.send(
+					sessionRef,
+					"What is my favorite number? Reply with just the digits.",
+				);
+				const assistantContent = r2.turns
+					.filter((t) => t.role === "assistant")
+					.map((t) => t.content)
+					.join(" ");
+				expect(assistantContent).toContain("42");
+			} finally {
+				await adapter.close(sessionRef);
+			}
+		},
+		90_000,
+	);
 });

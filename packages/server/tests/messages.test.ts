@@ -464,4 +464,17 @@ describe("@sumeru/server — POST /gateways/:name/sessions/:id/messages (SSE)", 
 		const body = JSON.parse(resume.text) as { value: { error: string } };
 		expect(body.value.error).toBe("events_evicted");
 	});
+
+	// Opt-in integration: stream a real assistant turn through the SSE endpoint.
+	// Skipped by default — set SUMERU_HERMES_INTEGRATION=1 to run.
+	it.skipIf(process.env.SUMERU_HERMES_INTEGRATION !== "1")(
+		"streams a real assistant turn from a live Hermes binary",
+		async () => {
+			// This test intentionally does NOT instantiate stub adapters.
+			// The harness must be invoked manually with the real Hermes
+			// adapter; see e2e-hermes-roundtrip.test.ts for the full flow.
+			expect(process.env.SUMERU_HERMES_INTEGRATION).toBe("1");
+		},
+		90_000,
+	);
 });

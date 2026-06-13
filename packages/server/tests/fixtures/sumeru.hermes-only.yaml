@@ -1,0 +1,5 @@
+name: sumeru@e2e-test
+gateways:
+  hermes:
+    adapter: hermes
+    capabilities: { resume: true, streaming: false }
