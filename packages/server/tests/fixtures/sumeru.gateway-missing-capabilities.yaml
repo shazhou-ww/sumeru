@@ -1,0 +1,4 @@
+name: sumeru@neko
+gateways:
+  hermes:
+    adapter: hermes

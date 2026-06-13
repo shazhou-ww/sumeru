@@ -34,7 +34,48 @@ sumeru run -s scenes/first-uwf-usage -r hermes -m claude-sonnet-4
 
 # List available scenes
 sumeru list
+
+# Start the HTTP service (with optional config)
+sumeru start --port 7900 --config sumeru.yaml
 ```
+
+## HTTP Service
+
+`sumeru start` runs an HTTP service whose responses use the ocas envelope
+shape `{ type, value }`. With a `sumeru.yaml` config, the service exposes:
+
+| Method | Path                | Envelope                  |
+|--------|---------------------|---------------------------|
+| GET    | `/`                 | `@sumeru/instance`        |
+| GET    | `/gateways`         | `@sumeru/gateway-list`    |
+| GET    | `/gateways/:name`   | `@sumeru/gateway`         |
+
+Unknown paths return a 404 `@sumeru/error` envelope; an unknown gateway name
+returns a 404 with `error: "gateway_not_found"`. Disallowed methods return
+405 with `Allow: GET`.
+
+### sumeru.yaml
+
+```yaml
+name: sumeru@neko
+
+gateways:
+  hermes:
+    adapter: hermes
+    capabilities:
+      resume: true
+      streaming: true
+
+  claude-code:
+    adapter: claude-code
+    capabilities:
+      resume: true
+      streaming: false
+```
+
+Without `--config`, the service falls back to `name: "sumeru"` and an empty
+gateway list. A bad or missing config file causes `sumeru start` to print
+to stderr and exit non-zero before binding a port.
 
 ## Scene Structure
 

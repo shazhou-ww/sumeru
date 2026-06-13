@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { envelope, errorEnvelope, instanceEnvelope } from "../src/index.js";
+import {
+	envelope,
+	errorEnvelope,
+	gatewayEnvelope,
+	gatewayListEnvelope,
+	instanceEnvelope,
+} from "../src/index.js";
 
 describe("envelope helpers", () => {
 	it("envelope() wraps any value with the given type", () => {
@@ -17,6 +23,24 @@ describe("envelope helpers", () => {
 		});
 		expect(e.type).toBe("@sumeru/instance");
 		expect(e.value.gateways).toEqual([]);
+	});
+
+	it("gatewayListEnvelope() emits the @sumeru/gateway-list type", () => {
+		const e = gatewayListEnvelope([]);
+		expect(e.type).toBe("@sumeru/gateway-list");
+		expect(e.value).toEqual([]);
+	});
+
+	it("gatewayEnvelope() emits the @sumeru/gateway type", () => {
+		const e = gatewayEnvelope({
+			name: "hermes",
+			adapter: "hermes",
+			status: "ready",
+			activeSessions: 0,
+			capabilities: { resume: true, streaming: true },
+		});
+		expect(e.type).toBe("@sumeru/gateway");
+		expect(e.value.name).toBe("hermes");
 	});
 
 	it("errorEnvelope() emits the @sumeru/error type with error+message", () => {
