@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"a1b2c3d4-1111-2222-3333-444455556666","model":"claude-sonnet-4-5","cwd":"/tmp/work","tools":[]}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Say hi."}]},"session_id":"a1b2c3d4-1111-2222-3333-444455556666"}
+{"type":"assistant","message":{"id":"msg_01","role":"assistant","content":[{"type":"text","text":"Hi there!"}]},"session_id":"a1b2c3d4-1111-2222-3333-444455556666"}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":1234,"duration_api_ms":1100,"num_turns":1,"result":"Hi there!","session_id":"a1b2c3d4-1111-2222-3333-444455556666","total_cost_usd":0.0042,"stop_reason":"end_turn","usage":{"input_tokens":42,"output_tokens":7,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}

@@ -1,0 +1,6 @@
+{"type":"system","subtype":"init","session_id":"b2c3d4e5-1111-2222-3333-444455556666","model":"claude-sonnet-4-5","cwd":"/tmp/work","tools":["Bash"]}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"List files."}]},"session_id":"b2c3d4e5-1111-2222-3333-444455556666"}
+{"type":"assistant","message":{"id":"msg_a1","role":"assistant","content":[{"type":"text","text":"I'll list files."},{"type":"tool_use","id":"toolu_abc1","name":"Bash","input":{"command":"ls -la","description":"List files"}}]},"session_id":"b2c3d4e5-1111-2222-3333-444455556666"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_abc1","content":[{"type":"text","text":"total 0\ndrwxr-xr-x 2 root root 40 Jan 1 00:00 ."}]}]},"session_id":"b2c3d4e5-1111-2222-3333-444455556666"}
+{"type":"assistant","message":{"id":"msg_a2","role":"assistant","content":[{"type":"text","text":"Done."}]},"session_id":"b2c3d4e5-1111-2222-3333-444455556666"}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":2345,"duration_api_ms":2000,"num_turns":1,"result":"Done.","session_id":"b2c3d4e5-1111-2222-3333-444455556666","total_cost_usd":0.0099,"stop_reason":"end_turn","usage":{"input_tokens":120,"output_tokens":15,"cache_read_input_tokens":80,"cache_creation_input_tokens":0}}

@@ -119,10 +119,13 @@ export type ToolCall = {
 	tool: string;
 	/** Input arguments */
 	input: Record<string, unknown>;
-	/** Full output (untruncated) */
-	output: string;
-	/** Duration in milliseconds */
-	durationMs: number;
-	/** Exit code (for terminal calls) */
+	/** Full output (untruncated). `null` when the tool call has no matched
+	 * result yet (e.g. Claude Code's `tool_use` segment without a paired
+	 * `tool_result` user line). */
+	output: string | null;
+	/** Duration in milliseconds. `null` when the underlying source does not
+	 * surface tool execution timing (e.g. Claude Code stream-json). */
+	durationMs: number | null;
+	/** Exit code (for terminal calls). `null` when not applicable. */
 	exitCode: number | null;
 };
