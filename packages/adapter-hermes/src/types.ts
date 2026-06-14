@@ -18,6 +18,11 @@ export type HermesAdapterOptions = {
 	sourceTag: string | null;
 	/** Path to the SQLite session DB. Defaults to `~/.hermes/sessions.db`. */
 	dbPath: string | null;
+	/**
+	 * Directory holding per-session `<nativeId>.jsonl` files (hermes v0.15.1+).
+	 * Defaults to `~/.hermes/sessions`.
+	 */
+	sessionsDir: string | null;
 	/** Default 60_000 ms timeout for `createSession`. */
 	createSessionTimeoutMs: number | null;
 	/** Default 5-minute timeout for `send`. */
@@ -34,10 +39,25 @@ export type HermesAdapterOptions = {
 	 * `node:sqlite`; tests can swap in an in-memory map of `nativeId → Turn[]`.
 	 */
 	turnsReader: TurnsReader | null;
+	/**
+	 * Test-only override for the JSONL reader. Production code reads
+	 * `<sessionsDir>/<nativeId>.jsonl`. Returns `null` to signal "not present /
+	 * unparseable, fall through to DB"; returns a `Turn[]` (possibly empty) on
+	 * a clean read.
+	 */
+	jsonlReader: JsonlReader | null;
 };
 
-/** Pinned schema version for the Hermes session DB read by `getTurns`. */
+/** Pinned schema version for the legacy Hermes session DB read by `getTurns`. */
 export const SCHEMA_VERSION = 1 as const;
+
+/**
+ * Pinned schema version for the uwf-shaped Hermes session DB
+ * (`sessions(id, model, started_at, input_tokens, output_tokens)` +
+ * `messages(session_id, role, content, reasoning, tool_calls)`).
+ * Used as fallback when the JSONL file is absent.
+ */
+export const SCHEMA_VERSION_DB = 2 as const;
 
 /** Argument shape mirroring `child_process.spawn` minus the irrelevant overloads. */
 export type SpawnArgs = {
@@ -64,3 +84,13 @@ export type TurnsReader = (
 	dbPath: string,
 	nativeId: string,
 ) => Promise<import("@sumeru/core").Turn[]>;
+
+/**
+ * Test seam for the JSONL turn reader (hermes v0.15.1+).
+ * `null` return signals "fall through to DB"; a Turn array (possibly empty)
+ * is treated as the authoritative read.
+ */
+export type JsonlReader = (
+	sessionsDir: string,
+	nativeId: string,
+) => Promise<import("@sumeru/core").Turn[] | null>;

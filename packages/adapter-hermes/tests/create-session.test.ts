@@ -148,6 +148,85 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 		expect(a.nativeId).not.toBe(b.nativeId);
 	});
 
+	// v0.15.1: `--quiet --pass-session-id` prints `session_id: <id>` to STDERR.
+	it("parses 'session_id: <id>' from stderr (hermes v0.15.1)", async () => {
+		const spawnFn: SpawnFn = async () => ({
+			stdout: "",
+			stderr: `session_id: ${VALID_SESSION}\n`,
+			exitCode: 0,
+			signal: null,
+			timedOut: false,
+			durationMs: 0,
+		});
+		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
+		const ref = await adapter.createSession({});
+		expect(ref.nativeId).toBe(VALID_SESSION);
+	});
+
+	// New regex must still accept legacy `Session: <id>` on stdout.
+	it("still parses legacy 'Session: <id>' from stdout", async () => {
+		const spawnFn = makeSpawn(`Session: ${VALID_SESSION}\n`);
+		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
+		const ref = await adapter.createSession({});
+		expect(ref.nativeId).toBe(VALID_SESSION);
+	});
+
+	// And the new format on stdout too (hypothetical future re-channel).
+	it("parses 'session_id: <id>' from stdout (future channel-shift)", async () => {
+		const spawnFn = makeSpawn(`session_id: ${VALID_SESSION}\n`);
+		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
+		const ref = await adapter.createSession({});
+		expect(ref.nativeId).toBe(VALID_SESSION);
+	});
+
+	// stderr is searched first so the new format wins when both are present.
+	it("prefers stderr's session_id when both streams emit something matching", async () => {
+		const spawnFn: SpawnFn = async () => ({
+			stdout: "Session: 20260101_010101_aaaaaa\n",
+			stderr: `session_id: ${VALID_SESSION}\n`,
+			exitCode: 0,
+			signal: null,
+			timedOut: false,
+			durationMs: 0,
+		});
+		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
+		const ref = await adapter.createSession({});
+		expect(ref.nativeId).toBe(VALID_SESSION);
+	});
+
+	it("rejects on bad session-id format with a descriptive error", async () => {
+		const spawnFn: SpawnFn = async () => ({
+			stdout: "",
+			stderr: "session_id: not-an-id\n",
+			exitCode: 0,
+			signal: null,
+			timedOut: false,
+			durationMs: 0,
+		});
+		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
+		await expect(adapter.createSession({})).rejects.toThrow(
+			/expected YYYYMMDD_HHMMSS_<hex>/,
+		);
+	});
+
+	it("includes both streams in the parse-failure error message", async () => {
+		const spawnFn: SpawnFn = async () => ({
+			stdout: "stdout-only-noise",
+			stderr: "stderr-only-noise",
+			exitCode: 0,
+			signal: null,
+			timedOut: false,
+			durationMs: 0,
+		});
+		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
+		await expect(adapter.createSession({})).rejects.toThrow(
+			/stderr-only-noise/,
+		);
+		await expect(adapter.createSession({})).rejects.toThrow(
+			/stdout-only-noise/,
+		);
+	});
+
 	// Opt-in integration: spawn the real `hermes` binary and verify createSession.
 	// Skipped by default — set SUMERU_HERMES_INTEGRATION=1 to run.
 	it.skipIf(process.env.SUMERU_HERMES_INTEGRATION !== "1")(

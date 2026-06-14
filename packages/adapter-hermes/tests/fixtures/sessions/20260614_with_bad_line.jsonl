@@ -1,0 +1,3 @@
+this is not valid json at all
+{"role": "user", "content": "after-bad-line", "timestamp": "2026-06-14T08:00:00.000000"}
+{"role": "assistant", "content": "ok", "timestamp": "2026-06-14T08:00:01.000000"}

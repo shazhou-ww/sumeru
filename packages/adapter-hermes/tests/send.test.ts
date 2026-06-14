@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Turn } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import type { SpawnFn, TurnsReader } from "../src/index.js";
@@ -186,6 +189,86 @@ describe("@sumeru/adapter-hermes — send", () => {
 			turnsReader: async () => [],
 		});
 		await expect(adapter.send(ref(), "")).rejects.toThrow(/non-empty/);
+	});
+
+	it("computes delta against the JSONL file (v0.15.1 behavior)", async () => {
+		// Write a JSONL file with 2 existing rows; the spawnFn rewrites it
+		// during the call so the post-spawn read sees 4 rows total.
+		const sessionsDir = mkdtempSync(join(tmpdir(), "sumeru-send-jsonl-"));
+		const jsonlPath = join(sessionsDir, `${NATIVE}.jsonl`);
+		writeFileSync(
+			jsonlPath,
+			[
+				JSON.stringify({
+					role: "session_meta",
+					model: "x",
+					timestamp: "2026-06-13T00:00:00.000000",
+				}),
+				JSON.stringify({
+					role: "user",
+					content: "old user",
+					timestamp: "2026-06-13T00:00:01.000000",
+				}),
+				JSON.stringify({
+					role: "assistant",
+					content: "old asst",
+					timestamp: "2026-06-13T00:00:02.000000",
+				}),
+				"",
+			].join("\n"),
+			"utf-8",
+		);
+		const spawnFn: SpawnFn = async () => {
+			writeFileSync(
+				jsonlPath,
+				[
+					JSON.stringify({
+						role: "session_meta",
+						model: "x",
+						timestamp: "2026-06-13T00:00:00.000000",
+					}),
+					JSON.stringify({
+						role: "user",
+						content: "old user",
+						timestamp: "2026-06-13T00:00:01.000000",
+					}),
+					JSON.stringify({
+						role: "assistant",
+						content: "old asst",
+						timestamp: "2026-06-13T00:00:02.000000",
+					}),
+					JSON.stringify({
+						role: "user",
+						content: "new q",
+						timestamp: "2026-06-13T00:00:03.000000",
+					}),
+					JSON.stringify({
+						role: "assistant",
+						content: "new a",
+						timestamp: "2026-06-13T00:00:04.000000",
+					}),
+					"",
+				].join("\n"),
+				"utf-8",
+			);
+			return {
+				stdout: "",
+				stderr: "",
+				exitCode: 0,
+				signal: null,
+				timedOut: false,
+				durationMs: 0,
+			};
+		};
+		const adapter = createHermesAdapter({ spawnFn, sessionsDir });
+		const r = await adapter.send(ref(), "new q");
+		expect(r.turns.length).toBe(2);
+		expect(r.turns[0].role).toBe("user");
+		expect(r.turns[0].content).toBe("new q");
+		expect(r.turns[1].role).toBe("assistant");
+		expect(r.turns[1].content).toBe("new a");
+		expect(r.turns[0].index).toBe(2);
+		expect(r.turns[1].index).toBe(3);
 	});
 
 	// Opt-in integration: verify resume context against a real Hermes binary.
