@@ -38,6 +38,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@sumeru/adapter-claude-code':
+        specifier: workspace:^
+        version: link:../adapter-claude-code
       '@sumeru/adapter-hermes':
         specifier: workspace:^
         version: link:../adapter-hermes

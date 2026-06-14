@@ -6,3 +6,9 @@ gateways:
     capabilities:
       resume: true
       streaming: true
+
+  claude-code:
+    adapter: claude-code
+    capabilities:
+      resume: true
+      streaming: true

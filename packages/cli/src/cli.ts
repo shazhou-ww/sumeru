@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createClaudeCodeAdapter } from "@sumeru/adapter-claude-code";
 import { createHermesAdapter } from "@sumeru/adapter-hermes";
 import {
 	type GatewayConfig,
@@ -103,7 +104,10 @@ program
 				name,
 				version: findVersion(),
 				gateways,
-				adapters: { hermes: createHermesAdapter({}) },
+				adapters: {
+					hermes: createHermesAdapter({}),
+					"claude-code": createClaudeCodeAdapter({}),
+				},
 				sseHeartbeatMs: null,
 				sseBufferSize: null,
 				sseRetentionMs: null,
