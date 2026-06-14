@@ -57,8 +57,12 @@ export const SUMERU_TURN_SCHEMA: JSONSchema = {
 						properties: {
 							tool: { type: "string", minLength: 1 },
 							input: { type: "object" },
-							output: { type: "string" },
-							durationMs: { type: "integer", minimum: 0 },
+							output: {
+								anyOf: [{ type: "null" }, { type: "string" }],
+							},
+							durationMs: {
+								anyOf: [{ type: "null" }, { type: "integer", minimum: 0 }],
+							},
 							exitCode: {
 								anyOf: [{ type: "null" }, { type: "integer" }],
 							},

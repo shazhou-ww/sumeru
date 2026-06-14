@@ -24,6 +24,12 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@25.9.3)(yaml@2.9.0)
 
+  packages/adapter-claude-code:
+    dependencies:
+      '@sumeru/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/adapter-hermes:
     dependencies:
       '@sumeru/core':
