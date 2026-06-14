@@ -285,7 +285,7 @@ function aggregateTokens(turns: Turn[]): TokenUsage | null {
 	let input = 0;
 	let output = 0;
 	for (const turn of turns) {
-		if (turn.tokens === undefined) continue;
+		if (turn.tokens === undefined || turn.tokens === null) continue;
 		any = true;
 		input += turn.tokens.input;
 		output += turn.tokens.output;

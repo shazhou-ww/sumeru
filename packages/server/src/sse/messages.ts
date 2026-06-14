@@ -264,6 +264,8 @@ export async function handleMessageEndpoint(
 		content: body.value.content,
 		timestamp: new Date().toISOString(),
 		toolCalls: null,
+		tokens: null,
+		hash: null,
 	};
 	const userPayload = turnPayload(userTurn);
 	let userHash: string;

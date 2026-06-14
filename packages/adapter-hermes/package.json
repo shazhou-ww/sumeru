@@ -1,5 +1,6 @@
 {
 	"name": "@sumeru/adapter-hermes",
+  "description": "Sumeru adapter for Hermes Agent",
 	"version": "0.1.0",
 	"type": "module",
 	"main": "dist/index.js",

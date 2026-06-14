@@ -29,22 +29,19 @@ const program = new Command();
 
 program
 	.name("sumeru")
-	.description("Agent behavior observation lab — run scenes, record turns")
+	.description("Agent house — HTTP service for multi-agent management")
 	.version(findVersion());
 
 program
 	.command("run")
-	.description("Run a scene with a specified runner and model")
+	.description("[planned] Run a scene with a specified adapter and model")
 	.requiredOption("-s, --scene <path>", "Path to scene directory or YAML")
-	.requiredOption(
-		"-r, --runner <type>",
-		"Runner type (hermes, claude-code, codex)",
-	)
+	.requiredOption("-r, --runner <type>", "Adapter type (hermes, claude-code)")
 	.requiredOption("-m, --model <model>", "Model identifier")
 	.option("-t, --timeout <seconds>", "Timeout in seconds", "300")
 	.option("--network", "Allow network access", true)
 	.option("--no-network", "Disable network access")
-	.option("-i, --image <image>", "Docker image", "sumeru-testbox:latest")
+	.option("-i, --image <image>", "Docker image")
 	.option("-o, --output <path>", "Output path for recording")
 	.action(async (opts) => {
 		console.log("sumeru run — not yet implemented");
@@ -53,7 +50,7 @@ program
 
 program
 	.command("list")
-	.description("List available scenes")
+	.description("[planned] List available scenes")
 	.option("-d, --dir <path>", "Scenes directory", "scenes")
 	.action(async (opts) => {
 		console.log("sumeru list — not yet implemented");

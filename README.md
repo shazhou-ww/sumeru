@@ -1,132 +1,33 @@
 # Sumeru 🏔️
 
-> 芥子纳须弥 — A mustard seed contains Mount Sumeru
+> 芥子纳须弥 — 一粒芥子里装一座须弥山
 
-Agent behavior observation lab. Run scenes, record turns, analyze UX.
+**Agent house** — 一个 HTTP 服务，为同一运行环境内的多个 agent 提供统一的收发室，所有交互通过 ocas 全量记录。
 
-## Concept
-
-**Sumeru** creates isolated environments (scenes), places an agent inside,
-and records its complete behavior — every turn, every tool call, every output.
-The recording is then available for developers to analyze how agents interact
-with their tools.
+## 核心概念
 
 ```
-Scene (what)         →  Runner (how)           →  Recording (what happened)
-─────────────           ──────────────             ─────────────────────────
-tools, fixtures         agent type + model         full turns with tool calls
-task prompt             timeout, network           stored in ocas → exportable
-knowledge (skills)      docker isolation
+Instance (一个进程，一个 endpoint)
+  │
+  ├─ Gateway: hermes (adapter = @sumeru/adapter-hermes)
+  │    ├─ Session ses_01JXYZ → native: hermes session 20260614_053637_b3a39f
+  │    └─ Session ses_01JXZZ → native: hermes session 20260614_053701_1f1583
+  │
+  └─ Gateway: claude-code (adapter = @sumeru/adapter-claude-code)
+       └─ Session ses_01JY00 → native: claude session xyz
 ```
 
-### Design Principles
+- **Instance** — 一个 Sumeru 进程，一个运行环境的 agent 管理层，对外暴露一个 HTTP endpoint
+- **Gateway** — Instance 内的一个 agent 入口，由 adapter 驱动，配置声明 capabilities
+- **Session** — 一次 agent 对话，`ses_` + ULID，支持 resume（多次 message 延续同一 conversation）
+- **Adapter** — 每类 agent 一个包，实现 `createSession` / `send` / `close` / `getTurns`
 
-- **Agent-agnostic** — Scenes don't assume Hermes, Claude Code, or any specific agent
-- **Full isolation** — Each run in a fresh Docker container
-- **Full fidelity** — Record every turn untruncated, reconstruct all side effects from tool calls
-- **Separation of concerns** — Scene defines the world, Runner executes, Judge evaluates (separately)
-
-## Usage
+## Quick Start
 
 ```bash
-# Run a scene
-sumeru run -s scenes/first-uwf-usage -r hermes -m claude-sonnet-4
-
-# List available scenes
-sumeru list
-
-# Start the HTTP service (with optional config)
-sumeru start --port 7900 --config sumeru.yaml
-```
-
-## HTTP Service
-
-`sumeru start` runs an HTTP service whose responses use the ocas envelope
-shape `{ type, value }`. With a `sumeru.yaml` config, the service exposes:
-
-| Method | Path                                             | Envelope                    |
-|--------|--------------------------------------------------|-----------------------------|
-| GET    | `/`                                              | `@sumeru/instance`          |
-| GET    | `/gateways`                                      | `@sumeru/gateway-list`      |
-| GET    | `/gateways/:name`                                | `@sumeru/gateway`           |
-| GET    | `/sessions?q=<query>`                            | `@sumeru/search-result`     |
-| POST   | `/gateways/:name/sessions`                       | `@sumeru/session` (201)     |
-| GET    | `/gateways/:name/sessions`                       | `@sumeru/session-list` (or `@sumeru/search-result` when `?q=` is set) |
-| GET    | `/gateways/:name/sessions/:id`                   | `@sumeru/session`           |
-| DELETE | `/gateways/:name/sessions/:id`                   | (204 No Content)            |
-| POST   | `/gateways/:name/sessions/:id/messages`          | SSE (turn / heartbeat / done / error) |
-| GET    | `/gateways/:name/sessions/:id/messages`          | `@sumeru/message-history`   |
-| POST   | `/gateways/:name/sessions/:id/export`            | `tar.gz` (`application/gzip`) |
-| GET    | `/ocas/:hash`                                    | `@<schema-alias>` (any node)|
-
-Unknown paths return a 404 `@sumeru/error` envelope; an unknown gateway name
-returns a 404 with `error: "gateway_not_found"`; an unknown session returns
-404 `error: "session_not_found"`. Disallowed methods return 405 with a
-populated `Allow` header.
-
-### Recording (ocas)
-
-Every session and every turn is recorded into a content-addressed store
-(`@ocas/fs`-backed). On startup, the server bootstraps the store directory
-(`--ocas-dir`, falling back to `$SUMERU_OCAS_DIR`, then `~/.sumeru/ocas`)
-and registers two JSON Schemas:
-
-- `@sumeru/session-meta` — written once when a session is created.
-- `@sumeru/turn` — written for every user request and every assistant
-  turn streamed back from the adapter.
-
-Each turn's hash is stamped onto its SSE `event: turn` payload as
-`value.hash`, so clients can fetch the canonical record via
-`GET /ocas/:hash`. Messages history is reconstructed by walking the
-session's recorded turn hashes and reading each node from ocas — closed
-sessions remain readable.
-
-`GET /ocas/:hash` returns `{ type, value }` where `type` is rendered as a
-human-readable schema alias (`@sumeru/turn`, `@sumeru/session-meta`,
-`@ocas/schema`) when known. Responses carry `Cache-Control: public,
-max-age=31536000, immutable` and `ETag: "<hash>"`; `If-None-Match`
-returns `304 Not Modified`. Hashes are 13-character Crockford Base32
-strings (`^[0-9A-HJKMNP-TV-Z]{13}$`). Malformed input returns
-`400 invalid_hash`; valid format with no node returns `404 ocas_not_found`.
-
-Sessions can be exported as self-contained ocas bundles via
-`POST /gateways/:name/sessions/:id/export` (`tar.gz`); use `ocas import
-<file>` to load the recording into another store.
-
-### Search
-
-The session store is also indexed for full-text search via SQLite FTS5
-(stored in the same `_store.db` as the ocas vars/tags). Two endpoints:
-
-- `GET /sessions?q=<query>` — cross-gateway search.
-- `GET /gateways/:name/sessions?q=<query>` — per-gateway search; the
-  same path without `?q=` returns the Phase-2 `@sumeru/session-list`.
-
-Both return a `@sumeru/search-result` envelope ordered by BM25
-relevance. Supports `?gateway=<name>` (cross-gateway only),
-`?limit` (default 50, cap 100), `?offset` (default 0). Each hit
-carries a `relevance` score in `(0, 1]` and a `matchContext` snippet
-with `<<...>>` markers around the matching terms. The tokenizer is
-`unicode61 remove_diacritics 2`, so CJK and accented Latin queries
-work without configuration.
-
-### Sessions
-
-- **Session IDs** are generated by Sumeru as `ses_` + a 26-character
-  Crockford Base32 ULID. Callers never see agent-native IDs.
-- **`config` is opaque.** The body of `POST .../sessions` accepts a `config`
-  object that Sumeru passes through verbatim — different adapters accept
-  different shapes; Sumeru does not validate or normalize.
-- **Status state machine.** A session starts as `idle`. `DELETE` flips it to
-  `closed`; closed sessions are kept in memory and remain queryable through
-  the GET endpoints. Re-closing a closed session is an idempotent 204.
-- **Active counter.** `GET /gateways/:name`'s `activeSessions` counts
-  non-closed sessions on that gateway.
-
-### sumeru.yaml
-
-```yaml
-name: sumeru@neko
+# 1. 创建实例配置
+cat > sumeru.yaml << 'EOF'
+name: sumeru@local
 
 gateways:
   hermes:
@@ -134,103 +35,97 @@ gateways:
     capabilities:
       resume: true
       streaming: true
+EOF
 
-  claude-code:
-    adapter: claude-code
-    capabilities:
-      resume: true
-      streaming: false
+# 2. 启动服务
+sumeru start -c sumeru.yaml -p 7900
+
+# 3. 验证
+curl http://127.0.0.1:7900/
+# → {"type":"@sumeru/instance","value":{"name":"sumeru@local","version":"0.1.0","gateways":["hermes"]}}
 ```
 
-Without `--config`, the service falls back to `name: "sumeru"` and an empty
-gateway list. A bad or missing config file causes `sumeru start` to print
-to stderr and exit non-zero before binding a port.
+## HTTP API
 
-## Scene Structure
+所有响应使用 ocas envelope 格式 `{ type, value }`。
+
+### 实例信息
 
 ```
-scenes/first-uwf-usage/
-  scene.yaml              # Scene definition
-  home/                   # Mounted as $HOME in container
-    repos/
-      sample-project/
-        package.json
-        src/
+GET /  → @sumeru/instance
 ```
 
-### scene.yaml
+### Gateway
 
-```yaml
-name: first-uwf-usage
-description: New user's first time with uwf
-
-tools:
-  - uwf
-  - git
-  - node
-
-knowledge:
-  skills: []
-  memory: []
-
-task: |
-  You are a developer. Use uwf to create
-  a code-review workflow and run it.
+```
+GET /gateways           → @sumeru/gateways (列出所有 gateway)
+GET /gateways/:name     → @sumeru/gateway  (单个 gateway 详情)
 ```
 
-## Recording Format
+### Session
 
-Recordings capture the full conversation as structured turns:
+```
+POST   /gateways/:name/sessions          → 201 @sumeru/session (创建)
+GET    /gateways/:name/sessions/:id      → @sumeru/session     (查看)
+DELETE /gateways/:name/sessions/:id      → 204                 (关闭)
+```
 
-```json
-{
-  "meta": {
-    "scene": "first-uwf-usage",
-    "runner": "hermes",
-    "model": "claude-sonnet-4",
-    "durationMs": 183000,
-    "exit": "completed",
-    "turnCount": 24
-  },
-  "turns": [
-    {
-      "index": 0,
-      "role": "user",
-      "content": "...",
-      "timestamp": "2026-06-13T12:00:00Z"
-    },
-    {
-      "index": 1,
-      "role": "assistant",
-      "content": "Let me explore...",
-      "toolCalls": [
-        {
-          "tool": "terminal",
-          "input": { "command": "uwf --help" },
-          "output": "Usage: uwf <command>...",
-          "durationMs": 300
-        }
-      ]
-    }
-  ]
-}
+### 发消息 (SSE)
+
+```
+POST /gateways/:name/sessions/:id/messages  → text/event-stream
+```
+
+请求 body: `{ "content": "你的消息" }`
+
+SSE 事件流：
+- `event: turn` — 完整的 Turn 对象 `{ index, role, content, timestamp, hash }`
+- `event: heartbeat` — 保活
+- `event: done` — 完成，附带 summary `{ turnCount, tokens, durationMs }`
+- `event: error` — 错误
+
+支持 `Last-Event-ID` header 断点续传。
+
+### 搜索 & 导出
+
+```
+GET  /sessions?q=keyword&gateway=hermes  → FTS5 全文搜索
+POST /gateways/:name/sessions/:id/export → tar.gz 导出
 ```
 
 ## Packages
 
 | Package | Description |
 |---------|-------------|
-| `@sumeru/core` | Type definitions (Scene, Turn, Recording) |
-| `@sumeru/server` | HTTP service (instance endpoint, gateways, sessions) |
-| `@sumeru/cli` | CLI tool (`sumeru run`, `sumeru list`, `sumeru start`) |
+| `@sumeru/core` | Core type definitions (Adapter, Turn, Session types) |
+| `@sumeru/server` | HTTP service (Instance, Gateway, Session management) |
+| `@sumeru/adapter-hermes` | Adapter for Hermes Agent |
+| `@sumeru/cli` | CLI tool (`sumeru start`) |
+
+## Development
+
+```bash
+pnpm install
+pnpm run build     # tsc via proman
+pnpm run test      # vitest
+pnpm run check     # biome lint
+```
+
+## 网络拓扑
+
+每个小队节点跑一个 Sumeru 实例，小队网络 = Sumeru 网络：
+
+```
+uwf/broker (session 路由层)
+  │
+  ├─ sumeru@neko ── hermes, claude-code
+  ├─ sumeru@kuma ── hermes
+  ├─ sumeru@raku ── hermes
+  └─ sumeru@sora ── hermes
+```
+
+详细设计见 [specs/architecture.md](specs/architecture.md)。
 
 ## Name
 
-From the Buddhist concept 芥子须弥 (sarṣapa-sumeru):
-a mustard seed that contains Mount Sumeru.
-A small container that holds a complete world —
-just like a Docker container holding a full agent environment.
-
-## License
-
-MIT
+> 须弥山 — 佛教宇宙观中的世界中心。一粒芥子里装一座须弥山 — 一个小小的 HTTP 服务里，容纳了整个 agent 世界。

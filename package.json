@@ -1,5 +1,6 @@
 {
   "name": "sumeru",
+  "description": "Agent house — HTTP service for multi-agent management with ocas recording",
   "private": true,
   "type": "module",
   "scripts": {

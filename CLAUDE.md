@@ -1,6 +1,6 @@
 # CLAUDE.md — Sumeru
 
-Agent behavior observation lab — run scenes, record turns, analyze UX.
+Agent house — 每个节点的 agent 管理层，HTTP 服务，为同一运行环境内的多个 agent 提供统一的收发室，所有交互通过 ocas 全量记录。
 
 ## Trust & Authorization
 
@@ -15,9 +15,17 @@ Monorepo with packages under `packages/`:
 
 | Package | Directory | Description |
 |---------|-----------|-------------|
-| `@sumeru/core` | `packages/core` | Type definitions (Scene, Turn, Recording) |
-| `@sumeru/server` | `packages/server` | HTTP service (instance endpoint, gateways, sessions) |
-| `@sumeru/cli` | `packages/cli` | CLI tool (`sumeru run`, `sumeru list`, `sumeru start`) |
+| `@sumeru/core` | `packages/core` | Core type definitions (Adapter, Turn, Session types) |
+| `@sumeru/server` | `packages/server` | HTTP service (Instance, Gateway, Session management) |
+| `@sumeru/adapter-hermes` | `packages/adapter-hermes` | Adapter for Hermes Agent |
+| `@sumeru/cli` | `packages/cli` | CLI tool (`sumeru start`) |
+
+## Core Concepts
+
+- **Instance** — 一个 Sumeru 进程 = 一个运行环境的 agent 管理层
+- **Gateway** — Instance 内的一个 agent 入口，由 adapter 驱动
+- **Session** — 一次 agent 对话，`ses_` + ULID，支持 resume
+- **Adapter** — 每类 agent 一个，实现 `createSession` / `send` / `close` / `getTurns`
 
 ## Tech Stack
 
@@ -54,8 +62,8 @@ pnpm run typecheck # tsc --build (no emit)
 | Type | Style | Example |
 |------|-------|---------|
 | Files | kebab-case | `run-config.ts` |
-| Types | PascalCase | `Recording`, `Turn` |
-| Functions/variables | camelCase | `parseScene`, `runScene` |
+| Types | PascalCase | `Turn`, `Adapter` |
+| Functions/variables | camelCase | `createSession`, `startServer` |
 | Constants | UPPER_SNAKE | `DEFAULT_TIMEOUT` |
 
 ### Folder Module Discipline
@@ -70,24 +78,11 @@ Use `T | null` instead of `?:`:
 
 ```typescript
 // ✅ Good
-type Scene = { knowledge: Knowledge | null };
+type Turn = { tokens: TokenUsage | null };
 
 // ❌ Bad
-type Scene = { knowledge?: Knowledge };
+type Turn = { tokens?: TokenUsage };
 ```
-
-## Scenes
-
-Scene definitions live in `scenes/`. Each scene is a directory:
-
-```
-scenes/<name>/
-  scene.yaml    # Scene definition (agent-agnostic)
-  home/         # Mounted as $HOME in container
-```
-
-Scenes are agent-agnostic — they define tools, knowledge, and task.
-Runner, model, timeout are runtime config, not part of the scene.
 
 ## Git
 

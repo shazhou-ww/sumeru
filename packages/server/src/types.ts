@@ -1,5 +1,5 @@
 /**
- * @sumeru/server — HTTP service for the Sumeru observation lab.
+ * @sumeru/server — HTTP service for the Sumeru agent house.
  *
  * Phase 1: configuration-driven instance + gateway endpoints.
  * Phase 2: session lifecycle endpoints (create / list / detail / delete).

@@ -108,10 +108,9 @@ function rowToTurn(row: Row): Turn {
 		content: row.content,
 		timestamp: normalizeTimestamp(row.timestamp),
 		toolCalls,
+		tokens: tokens ?? null,
+		hash: null,
 	};
-	if (tokens !== undefined) {
-		turn.tokens = tokens;
-	}
 	return turn;
 }
 

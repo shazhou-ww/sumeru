@@ -1,5 +1,6 @@
 {
   "name": "@sumeru/server",
+  "description": "Sumeru HTTP service — Instance, Gateway, and Session management",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",

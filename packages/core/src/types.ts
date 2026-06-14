@@ -1,15 +1,14 @@
 /**
- * Sumeru — Agent behavior observation lab
+ * Sumeru — Agent house HTTP service.
  *
- * Core type definitions for scenes, runs, and recordings.
- * Designed to be agent-agnostic: scenes define the world,
- * runners handle the how, recordings capture what happened.
+ * Core type definitions: Adapter contract, Turn/ToolCall data shapes, and
+ * legacy scene/recording types (planned Docker mode).
  */
 
 // ─── Scene ───────────────────────────────────────────────
 
 /** A scene defines the world + task. No agent assumptions. */
-export interface Scene {
+export type Scene = {
 	/** Unique scene identifier (kebab-case) */
 	name: string;
 	/** Human-readable description */
@@ -22,14 +21,14 @@ export interface Scene {
 	task: string;
 }
 
-export interface Knowledge {
+export type Knowledge = {
 	/** Skill definitions to pre-install */
 	skills: SkillDef[] | null;
 	/** Memory entries to pre-load */
 	memory: string[] | null;
 }
 
-export interface SkillDef {
+export type SkillDef = {
 	/** Skill name */
 	name: string;
 	/** Skill content (markdown) */
@@ -39,7 +38,7 @@ export interface SkillDef {
 // ─── Run Config (runtime, not part of scene) ────────────
 
 /** Runtime configuration — how to execute a scene */
-export interface RunConfig {
+export type RunConfig = {
 	/** Which scene to run */
 	scene: string;
 	/** Runner type (hermes, claude-code, codex, etc.) */
@@ -57,14 +56,14 @@ export interface RunConfig {
 // ─── Recording ───────────────────────────────────────────
 
 /** A recording captures everything that happened during a run */
-export interface Recording {
+export type Recording = {
 	/** Metadata */
 	meta: RecordingMeta;
 	/** Full sequence of turns */
 	turns: Turn[];
 }
 
-export interface RecordingMeta {
+export type RecordingMeta = {
 	/** Scene name */
 	scene: string;
 	/** Runner used */
@@ -82,10 +81,10 @@ export interface RecordingMeta {
 	/** Total turn count */
 	turnCount: number;
 	/** Token usage */
-	tokens?: TokenUsage;
+	tokens: TokenUsage | null;
 }
 
-export interface TokenUsage {
+export type TokenUsage = {
 	input: number;
 	output: number;
 }
@@ -93,7 +92,7 @@ export interface TokenUsage {
 // ─── Turn ────────────────────────────────────────────────
 
 /** A single turn in the conversation */
-export interface Turn {
+export type Turn = {
 	/** Turn sequence number (0-indexed) */
 	index: number;
 	/** Role */
@@ -105,17 +104,17 @@ export interface Turn {
 	/** Tool calls made in this turn (assistant only) */
 	toolCalls: ToolCall[] | null;
 	/** Token usage for this turn */
-	tokens?: TokenUsage;
+	tokens: TokenUsage | null;
 	/**
 	 * Ocas content-addressed hash of this turn. Adapters return `null`; the
 	 * server replaces it with the computed hash before emitting SSE / history
 	 * responses. The hash is NOT stored inside the recorded payload (would be
 	 * circular).
 	 */
-	hash?: string | null;
+	hash: string | null;
 }
 
-export interface ToolCall {
+export type ToolCall = {
 	/** Tool name (e.g. "terminal", "read_file") */
 	tool: string;
 	/** Input arguments */
