@@ -5,9 +5,11 @@ export {
 	gatewayEnvelope,
 	gatewayListEnvelope,
 	instanceEnvelope,
+	searchResultEnvelope,
 	sessionEnvelope,
 	sessionListEnvelope,
 } from "./envelope.js";
+export { buildSessionExport } from "./export/index.js";
 export { createHandler } from "./handler.js";
 export {
 	getRegisteredSchema,
@@ -18,6 +20,16 @@ export {
 	type SumeruOcas,
 	validatePayload,
 } from "./ocas/index.js";
+export {
+	createSearchIndex,
+	quoteFtsPhrase,
+	rebuildSearchIndex,
+	type SearchHit,
+	type SearchIndex,
+	type SearchOptions,
+	type SearchResult,
+	searchSessions,
+} from "./search/index.js";
 export type { SessionStore, TransitionResult } from "./session/index.js";
 export {
 	createSessionStore,
@@ -35,6 +47,8 @@ export type {
 	InstanceConfig,
 	MessageHistoryValue,
 	OcasConfig,
+	SearchResultHit,
+	SearchResultValue,
 	ServerConfig,
 	Session,
 	SessionConfig,

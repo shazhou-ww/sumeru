@@ -150,6 +150,19 @@ export function createSessionStore(ocas: OcasConfig): SessionStore {
 			createdAt,
 			config,
 		});
+		// Phase 5: seed the search index. Failures here do NOT roll back the
+		// ocas write — the index can always be rebuilt from the meta node.
+		try {
+			ocas.searchIndex.indexSessionMeta({
+				sessionId: id,
+				gateway,
+				adapter,
+				createdAt,
+			});
+		} catch (err) {
+			const cause = err instanceof Error ? err.message : String(err);
+			console.warn(`[sumeru] search index seed failed: ${cause}`);
+		}
 		const session: Session = {
 			id,
 			gateway,
@@ -196,6 +209,10 @@ export function createSessionStore(ocas: OcasConfig): SessionStore {
 		if (session === null) return "not_found";
 		if (session.status === "closed") return "already_closed";
 		session.status = "closed";
+		// Best-effort: mark the search-index row closed too. Failures are
+		// logged inside markSessionClosed; the in-memory flip is the source
+		// of truth on the wire.
+		ocas.searchIndex.markSessionClosed(id);
 		return "closed";
 	}
 

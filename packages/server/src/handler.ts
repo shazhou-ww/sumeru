@@ -9,6 +9,12 @@ import {
 	sessionEnvelope,
 	sessionListEnvelope,
 } from "./envelope.js";
+import { handleSessionExport, matchSessionExport } from "./export/index.js";
+import {
+	handleSearchPerGateway,
+	handleSearchTopLevel,
+	isSearchRequest,
+} from "./search/index.js";
 import { createSessionStore, type SessionStore } from "./session/index.js";
 import { toWire } from "./session/store.js";
 import {
@@ -114,6 +120,32 @@ export function createHandler(
 			return;
 		}
 
+		// /sessions or /sessions/  (Phase 5 — top-level cross-gateway search)
+		if (path === "/sessions" || path === "/sessions/") {
+			if (method !== "GET" && method !== "HEAD") {
+				methodNotAllowed(res, method, path, "GET");
+				return;
+			}
+			handleSearchTopLevel(res, queryString, config.ocas.searchIndex);
+			return;
+		}
+
+		// /gateways/<name>/sessions/<id>/export  (Phase 5)
+		const exportMatch = matchSessionExport(path);
+		if (exportMatch !== null) {
+			void handleSessionExport(
+				req,
+				res,
+				method,
+				path,
+				exportMatch,
+				config.gateways,
+				sessions,
+				config.ocas,
+			);
+			return;
+		}
+
 		// /gateways/<name>/sessions/<id>/messages
 		const messagesMatch = matchSessionMessages(path);
 		if (messagesMatch !== null) {
@@ -156,8 +188,8 @@ export function createHandler(
 				method,
 				path,
 				sessionsCollection,
-				config.gateways,
-				config.adapters,
+				queryString,
+				config,
 				sessions,
 			);
 			return;
@@ -313,10 +345,12 @@ async function handleSessionsCollection(
 	method: string,
 	path: string,
 	gatewayRaw: string,
-	gateways: Record<string, GatewayConfig>,
-	adapters: Record<string, Adapter>,
+	queryString: string,
+	config: ServerConfig,
 	sessions: SessionStore,
 ): Promise<void> {
+	const gateways = config.gateways;
+	const adapters = config.adapters;
 	const gatewayName = decodePathSegment(gatewayRaw);
 	if (gatewayName === null) {
 		writeJson(
@@ -338,7 +372,19 @@ async function handleSessionsCollection(
 		return;
 	}
 
-	if (method === "GET") {
+	if (method === "GET" || method === "HEAD") {
+		// Phase 5: when ?q= is present and non-empty after trimming, switch
+		// to the search-result envelope. Otherwise fall through to Phase-2
+		// listing.
+		if (isSearchRequest(queryString)) {
+			handleSearchPerGateway(
+				res,
+				queryString,
+				config.ocas.searchIndex,
+				gatewayName,
+			);
+			return;
+		}
 		const list: SessionListEntry[] = sessions.list(gatewayName).map(toEntry);
 		writeJson(res, 200, sessionListEnvelope(list));
 		return;

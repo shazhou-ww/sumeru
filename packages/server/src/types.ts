@@ -9,6 +9,7 @@
 
 import type { Hash, Store } from "@ocas/core";
 import type { Adapter, NativeSessionRef, Turn } from "@sumeru/core";
+import type { SearchIndex } from "./search/index.js";
 
 // ─── Envelope ────────────────────────────────────────────
 
@@ -164,12 +165,38 @@ export type ErrorValue = {
 	message: string;
 };
 
+// ─── Search (Phase 5) ────────────────────────────────────
+
+/** Single hit in a `@sumeru/search-result` envelope. */
+export type SearchResultHit = {
+	id: string;
+	gateway: string;
+	status: SessionStatus;
+	relevance: number;
+	matchContext: string;
+	turns: number;
+	lastActiveAt: string;
+};
+
+/** Body of the `@sumeru/search-result` envelope. */
+export type SearchResultValue = {
+	query: string;
+	gateway: string | null;
+	total: number;
+	offset: number;
+	limit: number;
+	results: SearchResultHit[];
+};
+
 // ─── Server ──────────────────────────────────────────────
 
 /**
  * ocas slice on `ServerConfig`. Carries the live store handle plus the two
  * registered Sumeru schema hashes and the schema-of-schemas hash. Used by
  * the session, turn-recording, and `/ocas/:hash` paths.
+ *
+ * Phase 5: also carries the FTS5-backed `searchIndex` — a sibling slice that
+ * lives in the same SQLite database as `@ocas/fs`'s var/tag store.
  */
 export type OcasConfig = {
 	store: Store;
@@ -177,6 +204,7 @@ export type OcasConfig = {
 	sessionMetaSchemaHash: Hash;
 	metaSchemaHash: Hash;
 	schemaAliases: Record<Hash, string>;
+	searchIndex: SearchIndex;
 };
 
 /** Configuration for `createHandler`. */

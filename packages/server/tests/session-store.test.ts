@@ -18,6 +18,7 @@ function makeOcas(): { ocas: OcasConfig; raw: SumeruOcas } {
 		sessionMetaSchemaHash: raw.sessionMetaSchemaHash,
 		metaSchemaHash: raw.metaSchemaHash,
 		schemaAliases: raw.schemaAliases,
+		searchIndex: raw.searchIndex,
 	};
 	return { ocas, raw };
 }

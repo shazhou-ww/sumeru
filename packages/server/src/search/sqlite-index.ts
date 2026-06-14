@@ -1,0 +1,442 @@
+/**
+ * Phase 5 — FTS5 search index.
+ *
+ * This module owns the SQLite FTS5 schema that backs Sumeru's session search.
+ * The index lives in `<ocasDir>/_store.db` — the same file `@ocas/fs` opens
+ * for variables and tags. We open a second `DatabaseSync` handle on the same
+ * file (safe because `@ocas/fs` enables WAL).
+ *
+ * The schema:
+ *   - `sumeru_turn_index`     — one row per turn (PK = turn ocas hash)
+ *   - `sumeru_turn_fts`       — contentless FTS5 virtual table (mirrors content)
+ *   - `sumeru_session_index`  — one row per session (PK = session id)
+ *
+ * Triggers keep `sumeru_turn_fts` in lockstep with `sumeru_turn_index`.
+ *
+ * All write paths are idempotent on the turn hash / session id, so re-indexing
+ * the same node is a no-op.
+ */
+
+import { DatabaseSync } from "node:sqlite";
+import type { CasNode, Hash } from "@ocas/core";
+import type { SessionStatus } from "../types.js";
+import type {
+	IndexTurnInput,
+	SearchHit,
+	SearchIndex,
+	SearchOptions,
+	SearchRebuildOcas,
+	SearchResult,
+	SessionMetaInput,
+} from "./types.js";
+
+const SCHEMA_DDL = `
+CREATE TABLE IF NOT EXISTS sumeru_turn_index (
+  turn_hash      TEXT PRIMARY KEY,
+  session_id     TEXT NOT NULL,
+  gateway        TEXT NOT NULL,
+  turn_index     INTEGER NOT NULL,
+  role           TEXT NOT NULL,
+  content        TEXT NOT NULL,
+  created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sumeru_turn_index_session
+  ON sumeru_turn_index(session_id);
+CREATE INDEX IF NOT EXISTS idx_sumeru_turn_index_gateway
+  ON sumeru_turn_index(gateway);
+
+CREATE TABLE IF NOT EXISTS sumeru_session_index (
+  session_id      TEXT PRIMARY KEY,
+  gateway         TEXT NOT NULL,
+  adapter         TEXT NOT NULL,
+  status          TEXT NOT NULL,
+  created_at      TEXT NOT NULL,
+  last_active_at  TEXT NOT NULL,
+  turn_count      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_sumeru_session_index_gateway
+  ON sumeru_session_index(gateway);
+CREATE INDEX IF NOT EXISTS idx_sumeru_session_index_last_active
+  ON sumeru_session_index(last_active_at DESC);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS sumeru_turn_fts USING fts5(
+  content,
+  content='sumeru_turn_index',
+  content_rowid='rowid',
+  tokenize='unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER IF NOT EXISTS sumeru_turn_fts_ai AFTER INSERT ON sumeru_turn_index BEGIN
+  INSERT INTO sumeru_turn_fts(rowid, content) VALUES (new.rowid, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS sumeru_turn_fts_ad AFTER DELETE ON sumeru_turn_index BEGIN
+  INSERT INTO sumeru_turn_fts(sumeru_turn_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+END;
+`;
+
+/**
+ * Open a second SQLite handle on the same `_store.db` file `@ocas/fs` writes
+ * vars/tags into. Creates the FTS5 schema if not present. Retries up to 3×
+ * on `SQLITE_BUSY` with a 50 ms backoff.
+ *
+ * Throws `failed to create FTS5 index: <cause>` on persistent failure — the
+ * caller (`openSumeruOcas`) prepends `failed to open ocas store at <dir>: `
+ * so all boot failures share the same prefix.
+ */
+export function createSearchIndex(dbPath: string): SearchIndex {
+	const db = openWithRetry(dbPath);
+	try {
+		db.exec("BEGIN");
+		db.exec(SCHEMA_DDL);
+		db.exec("COMMIT");
+	} catch (err) {
+		try {
+			db.exec("ROLLBACK");
+		} catch {
+			// best-effort
+		}
+		const cause = err instanceof Error ? err.message : String(err);
+		throw new Error(`failed to create FTS5 index: ${cause}`);
+	}
+
+	const insertSession = db.prepare(`
+		INSERT INTO sumeru_session_index
+			(session_id, gateway, adapter, status, created_at, last_active_at, turn_count)
+		VALUES (?, ?, ?, 'idle', ?, ?, 0)
+		ON CONFLICT(session_id) DO NOTHING
+	`);
+	const insertTurn = db.prepare(`
+		INSERT INTO sumeru_turn_index
+			(turn_hash, session_id, gateway, turn_index, role, content, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(turn_hash) DO NOTHING
+	`);
+	const bumpSession = db.prepare(`
+		UPDATE sumeru_session_index
+		   SET last_active_at = ?,
+		       turn_count     = turn_count + 1
+		 WHERE session_id = ?
+	`);
+	const closeSession = db.prepare(`
+		UPDATE sumeru_session_index
+		   SET status = 'closed'
+		 WHERE session_id = ?
+	`);
+	const countTurns = db.prepare(`SELECT COUNT(*) AS c FROM sumeru_turn_index`);
+
+	function indexSessionMeta(meta: SessionMetaInput): void {
+		insertSession.run(
+			meta.sessionId,
+			meta.gateway,
+			meta.adapter,
+			meta.createdAt,
+			meta.createdAt,
+		);
+	}
+
+	function indexTurn(input: IndexTurnInput): void {
+		db.exec("BEGIN");
+		try {
+			const result = insertTurn.run(
+				input.turnHash,
+				input.sessionId,
+				input.gateway,
+				input.turnIndex,
+				input.role,
+				input.content,
+				input.createdAt,
+			);
+			// On INSERT-vs-conflict: only bump turn_count when a new row was
+			// actually inserted. node:sqlite's run() returns { changes } where
+			// changes === 0 means the conflict path took DO NOTHING.
+			if (Number(result.changes ?? 0) > 0) {
+				bumpSession.run(input.createdAt, input.sessionId);
+			}
+			db.exec("COMMIT");
+		} catch (err) {
+			try {
+				db.exec("ROLLBACK");
+			} catch {
+				// best-effort
+			}
+			throw err;
+		}
+	}
+
+	function markSessionClosed(sessionId: string): void {
+		try {
+			closeSession.run(sessionId);
+		} catch (err) {
+			const cause = err instanceof Error ? err.message : String(err);
+			console.warn(`[sumeru] search index update failed: ${cause}`);
+		}
+	}
+
+	function search(opts: SearchOptions): SearchResult {
+		const trimmed = opts.query.trim();
+		if (trimmed.length === 0) {
+			return { query: "", results: [], total: 0 };
+		}
+		const matchExpr = quoteFtsPhrase(trimmed);
+		const limit = clamp(opts.limit, 1, 100);
+		const offset = Math.max(0, opts.offset);
+
+		// FTS5 auxiliary functions (bm25, snippet) only work in queries that
+		// reference the FTS5 virtual table at the top level; they don't work
+		// through CTEs. So we collect raw matches first, then aggregate in JS.
+		const matchStmt = db.prepare(`
+			SELECT t.session_id AS session_id,
+			       snippet(sumeru_turn_fts, 0, '<<', '>>', '…', 24) AS snip,
+			       bm25(sumeru_turn_fts) AS score
+			  FROM sumeru_turn_fts
+			  JOIN sumeru_turn_index t ON t.rowid = sumeru_turn_fts.rowid
+			 WHERE sumeru_turn_fts MATCH ?
+			   AND ( ?2 IS NULL OR t.gateway = ?2 )
+			 ORDER BY score ASC
+		`);
+		let matchRows: Array<{
+			session_id: string;
+			snip: string;
+			score: number;
+		}>;
+		try {
+			matchRows = matchStmt.all(matchExpr, opts.gateway) as Array<{
+				session_id: string;
+				snip: string;
+				score: number;
+			}>;
+		} catch (err) {
+			const cause = err instanceof Error ? err.message : String(err);
+			console.warn(`[sumeru] search index query failed: ${cause}`);
+			return { query: trimmed, results: [], total: 0 };
+		}
+		// Aggregate to session granularity — keep best (lowest BM25) per session.
+		// `matchRows` is already sorted ASC by score, so the first occurrence per
+		// session is its best.
+		const bestBySession = new Map<string, { score: number; snip: string }>();
+		for (const row of matchRows) {
+			if (!bestBySession.has(row.session_id)) {
+				bestBySession.set(row.session_id, {
+					score: Number(row.score),
+					snip: String(row.snip),
+				});
+			}
+		}
+		const total = bestBySession.size;
+		if (total === 0) {
+			return { query: trimmed, results: [], total: 0 };
+		}
+
+		// Read session rows in one IN-clause query, then re-order in JS by best
+		// score ASC, last_active_at DESC for stable tie-break.
+		const ids = Array.from(bestBySession.keys());
+		const placeholders = ids.map(() => "?").join(", ");
+		const sessionStmt = db.prepare(`
+			SELECT session_id, gateway, status, last_active_at, turn_count
+			  FROM sumeru_session_index
+			 WHERE session_id IN (${placeholders})
+		`);
+		const sessionRows = sessionStmt.all(...ids) as Array<{
+			session_id: string;
+			gateway: string;
+			status: string;
+			last_active_at: string;
+			turn_count: number;
+		}>;
+
+		type Row = {
+			best: { score: number; snip: string };
+			session: (typeof sessionRows)[number];
+		};
+		const merged: Row[] = [];
+		for (const sess of sessionRows) {
+			const best = bestBySession.get(sess.session_id);
+			if (best === undefined) continue;
+			merged.push({ best, session: sess });
+		}
+		merged.sort((a, b) => {
+			if (a.best.score !== b.best.score) return a.best.score - b.best.score;
+			// Tie-break by last_active_at DESC (newer first).
+			return a.session.last_active_at > b.session.last_active_at
+				? -1
+				: a.session.last_active_at < b.session.last_active_at
+					? 1
+					: 0;
+		});
+
+		const paged = merged.slice(offset, offset + limit);
+		const results: SearchHit[] = [];
+		for (const r of paged) {
+			const score = r.best.score;
+			// FTS5 BM25 is negative-weighted by default in SQLite (lower = better,
+			// negative numbers are common). Use abs for normalization so the
+			// 1/(1+|s|) formula keeps the (0, 1] mapping regardless of sign.
+			const relevance = 1 / (1 + Math.abs(score));
+			const rawSnip = r.best.snip;
+			const matchContext = opts.stripHighlights
+				? rawSnip.replace(/<<|>>/g, "")
+				: rawSnip;
+			results.push({
+				id: r.session.session_id,
+				gateway: r.session.gateway,
+				status: r.session.status as SessionStatus,
+				relevance,
+				matchContext,
+				turns: Number(r.session.turn_count ?? 0),
+				lastActiveAt: r.session.last_active_at,
+			});
+		}
+		return { query: trimmed, results, total };
+	}
+
+	function rebuild(ocas: SearchRebuildOcas): void {
+		db.exec("BEGIN");
+		try {
+			db.exec("DELETE FROM sumeru_turn_index");
+			db.exec("DELETE FROM sumeru_session_index");
+			db.exec("COMMIT");
+		} catch (err) {
+			try {
+				db.exec("ROLLBACK");
+			} catch {
+				// best-effort
+			}
+			throw err;
+		}
+
+		// The store does NOT expose a "list by type" API in @ocas/core.Store, so
+		// this rebuild path is exercised by tests that inject the hashes they
+		// know about. For server-internal use, the hashes are tracked in memory
+		// (Session.metaHash / Session.turnHashes) — the caller iterates those.
+		// We accept a Store + schema hashes here for forward-compat.
+		void ocas;
+	}
+
+	function turnCount(): number {
+		const row = countTurns.get() as { c?: number } | undefined;
+		return Number(row?.c ?? 0);
+	}
+
+	function close(): void {
+		db.close();
+	}
+
+	return {
+		indexSessionMeta,
+		indexTurn,
+		markSessionClosed,
+		search,
+		rebuild,
+		turnCount,
+		close,
+	};
+}
+
+/**
+ * Re-index a session-meta + every turn associated with the session list. The
+ * caller owns "what to re-index" — typically `Session.metaHash` plus
+ * `Session.turnHashes` for every session known in memory. Used by tests.
+ */
+export function rebuildSearchIndex(
+	index: SearchIndex,
+	ocas: SearchRebuildOcas,
+	roots: Array<{
+		metaHash: Hash;
+		turnHashes: Hash[];
+	}>,
+): void {
+	index.rebuild(ocas);
+	for (const root of roots) {
+		const metaNode = ocas.store.cas.get(root.metaHash);
+		if (metaNode === null) continue;
+		const meta = metaNode.payload as {
+			id: string;
+			gateway: string;
+			adapter: string;
+			createdAt: string;
+		};
+		index.indexSessionMeta({
+			sessionId: meta.id,
+			gateway: meta.gateway,
+			adapter: meta.adapter,
+			createdAt: meta.createdAt,
+		});
+		for (let i = 0; i < root.turnHashes.length; i += 1) {
+			const turnHash = root.turnHashes[i];
+			if (turnHash === undefined) continue;
+			const turnNode = ocas.store.cas.get(turnHash);
+			if (turnNode === null) continue;
+			const turn = (turnNode as CasNode).payload as {
+				index: number;
+				role: "user" | "assistant" | "system";
+				content: string;
+				timestamp: string;
+			};
+			index.indexTurn({
+				turnHash,
+				sessionId: meta.id,
+				gateway: meta.gateway,
+				turnIndex: turn.index,
+				role: turn.role,
+				content: turn.content,
+				createdAt: turn.timestamp,
+			});
+		}
+	}
+}
+
+/** Wrap a query in `"..."` and double internal `"` to force FTS5 phrase mode. */
+export function quoteFtsPhrase(raw: string): string {
+	return `"${raw.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Public wrapper that exposes the same `searchSessions` signature the spec
+ * documents. Equivalent to calling `index.search(opts)` with `stripHighlights`
+ * defaulted to `false`.
+ */
+export function searchSessions(
+	index: SearchIndex,
+	opts: Omit<SearchOptions, "stripHighlights"> & {
+		stripHighlights?: boolean;
+	},
+): SearchResult {
+	return index.search({
+		query: opts.query,
+		gateway: opts.gateway,
+		limit: opts.limit,
+		offset: opts.offset,
+		stripHighlights: opts.stripHighlights ?? false,
+	});
+}
+
+function clamp(n: number, min: number, max: number): number {
+	if (Number.isNaN(n)) return min;
+	if (n < min) return min;
+	if (n > max) return max;
+	return n;
+}
+
+/** Open a SQLite handle, retrying on SQLITE_BUSY up to 3× with 50 ms backoff. */
+function openWithRetry(dbPath: string): DatabaseSync {
+	let lastErr: unknown = null;
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		try {
+			const db = new DatabaseSync(dbPath);
+			db.exec("PRAGMA journal_mode = WAL");
+			db.exec("PRAGMA foreign_keys = ON");
+			return db;
+		} catch (err) {
+			lastErr = err;
+			const msg = err instanceof Error ? err.message : String(err);
+			if (!/busy/i.test(msg) && !/locked/i.test(msg)) throw err;
+			// 50 ms busy-wait
+			const start = Date.now();
+			while (Date.now() - start < 50) {
+				/* spin */
+			}
+		}
+	}
+	const cause = lastErr instanceof Error ? lastErr.message : String(lastErr);
+	throw new Error(`failed to create FTS5 index: ${cause}`);
+}
