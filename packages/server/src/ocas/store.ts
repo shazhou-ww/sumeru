@@ -10,6 +10,7 @@
  */
 
 import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import {
 	bootstrap,
 	type Hash,
@@ -20,6 +21,7 @@ import {
 } from "@ocas/core";
 import { createFsStore, createSqliteVarStore } from "@ocas/fs";
 import * as AjvModule from "ajv";
+import { createSearchIndex, type SearchIndex } from "../search/index.js";
 import { SUMERU_SESSION_META_SCHEMA, SUMERU_TURN_SCHEMA } from "./schemas.js";
 
 // ajv CJS interop: the constructor lives on `.default` at runtime, but the
@@ -53,6 +55,8 @@ export type SumeruOcas = {
 	metaSchemaHash: Hash;
 	/** Map: schema hash → human alias for the `/ocas/:hash` endpoint. */
 	schemaAliases: Record<Hash, string>;
+	/** Phase 5: FTS5-backed session search index. */
+	searchIndex: SearchIndex;
 };
 
 /**
@@ -99,12 +103,23 @@ export function openSumeruOcas(dir: string): SumeruOcas {
 		[sessionMetaSchemaHash]: "@sumeru/session-meta",
 	};
 
+	let searchIndex: SearchIndex;
+	try {
+		searchIndex = createSearchIndex(join(dir, "_store.db"));
+	} catch (err) {
+		const cause = err instanceof Error ? err.message : String(err);
+		throw new Error(`failed to open ocas store at ${dir}: ${cause}`);
+	}
+	const indexedTurns = searchIndex.turnCount();
+	console.log(`[sumeru] search index ready: ${indexedTurns} turns indexed`);
+
 	return {
 		store,
 		turnSchemaHash,
 		sessionMetaSchemaHash,
 		metaSchemaHash,
 		schemaAliases,
+		searchIndex,
 	};
 }
 

@@ -49,12 +49,14 @@ shape `{ type, value }`. With a `sumeru.yaml` config, the service exposes:
 | GET    | `/`                                              | `@sumeru/instance`          |
 | GET    | `/gateways`                                      | `@sumeru/gateway-list`      |
 | GET    | `/gateways/:name`                                | `@sumeru/gateway`           |
+| GET    | `/sessions?q=<query>`                            | `@sumeru/search-result`     |
 | POST   | `/gateways/:name/sessions`                       | `@sumeru/session` (201)     |
-| GET    | `/gateways/:name/sessions`                       | `@sumeru/session-list`      |
+| GET    | `/gateways/:name/sessions`                       | `@sumeru/session-list` (or `@sumeru/search-result` when `?q=` is set) |
 | GET    | `/gateways/:name/sessions/:id`                   | `@sumeru/session`           |
 | DELETE | `/gateways/:name/sessions/:id`                   | (204 No Content)            |
 | POST   | `/gateways/:name/sessions/:id/messages`          | SSE (turn / heartbeat / done / error) |
 | GET    | `/gateways/:name/sessions/:id/messages`          | `@sumeru/message-history`   |
+| POST   | `/gateways/:name/sessions/:id/export`            | `tar.gz` (`application/gzip`) |
 | GET    | `/ocas/:hash`                                    | `@<schema-alias>` (any node)|
 
 Unknown paths return a 404 `@sumeru/error` envelope; an unknown gateway name
@@ -86,6 +88,27 @@ max-age=31536000, immutable` and `ETag: "<hash>"`; `If-None-Match`
 returns `304 Not Modified`. Hashes are 13-character Crockford Base32
 strings (`^[0-9A-HJKMNP-TV-Z]{13}$`). Malformed input returns
 `400 invalid_hash`; valid format with no node returns `404 ocas_not_found`.
+
+Sessions can be exported as self-contained ocas bundles via
+`POST /gateways/:name/sessions/:id/export` (`tar.gz`); use `ocas import
+<file>` to load the recording into another store.
+
+### Search
+
+The session store is also indexed for full-text search via SQLite FTS5
+(stored in the same `_store.db` as the ocas vars/tags). Two endpoints:
+
+- `GET /sessions?q=<query>` — cross-gateway search.
+- `GET /gateways/:name/sessions?q=<query>` — per-gateway search; the
+  same path without `?q=` returns the Phase-2 `@sumeru/session-list`.
+
+Both return a `@sumeru/search-result` envelope ordered by BM25
+relevance. Supports `?gateway=<name>` (cross-gateway only),
+`?limit` (default 50, cap 100), `?offset` (default 0). Each hit
+carries a `relevance` score in `(0, 1]` and a `matchContext` snippet
+with `<<...>>` markers around the matching terms. The tokenizer is
+`unicode61 remove_diacritics 2`, so CJK and accented Latin queries
+work without configuration.
 
 ### Sessions
 

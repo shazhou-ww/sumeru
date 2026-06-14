@@ -3,6 +3,7 @@ import type {
 	ErrorValue,
 	Gateway,
 	Instance,
+	SearchResultValue,
 	SessionListEntry,
 	SessionWire,
 } from "./types.js";
@@ -52,4 +53,14 @@ export function errorEnvelope(
 	message: string,
 ): Envelope<ErrorValue> {
 	return envelope("@sumeru/error", { error, message });
+}
+
+/**
+ * Build the `@sumeru/search-result` envelope for `GET /sessions?q=...` and
+ * `GET /gateways/:name/sessions?q=...`.
+ */
+export function searchResultEnvelope(
+	value: SearchResultValue,
+): Envelope<SearchResultValue> {
+	return envelope("@sumeru/search-result", value);
 }

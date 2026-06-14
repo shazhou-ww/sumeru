@@ -290,6 +290,32 @@ export async function handleMessageEndpoint(
 		);
 		return;
 	}
+	// Phase 5: index the user turn for FTS5 search BEFORE appending the hash
+	// or starting the SSE stream. If indexing fails the ocas write stays —
+	// the index can be rebuilt — but the request fails fast.
+	try {
+		config.ocas.searchIndex.indexTurn({
+			turnHash: userHash,
+			sessionId,
+			gateway: gatewayName,
+			turnIndex: userTurn.index,
+			role: "user",
+			content: userTurn.content,
+			createdAt: userTurn.timestamp,
+		});
+	} catch (err) {
+		sessions.markIdle(gatewayName, sessionId);
+		const cause = err instanceof Error ? err.message : String(err);
+		writeJson(
+			res,
+			500,
+			errorEnvelope(
+				"search_index_failed",
+				`Failed to update search index: ${truncate(cause, 500)}`,
+			),
+		);
+		return;
+	}
 	sessions.appendTurnHash(gatewayName, sessionId, userHash);
 
 	const buf = bufferStore.create(gatewayName, sessionId);
@@ -346,6 +372,26 @@ export async function handleMessageEndpoint(
 							? "adapter_returned_invalid_turn"
 							: "ocas_write_failed",
 					message: truncate(cause, 500),
+				};
+				break;
+			}
+			// Phase 5: index the assistant turn. Failure here aborts the rest
+			// of the response (the durable ocas write has already happened).
+			try {
+				config.ocas.searchIndex.indexTurn({
+					turnHash: hash,
+					sessionId,
+					gateway: gatewayName,
+					turnIndex: turn.index,
+					role: turn.role,
+					content: turn.content,
+					createdAt: turn.timestamp,
+				});
+			} catch (err) {
+				const cause = err instanceof Error ? err.message : String(err);
+				validationFailure = {
+					reason: "search_index_failed",
+					message: `Failed to update search index: ${truncate(cause, 500)}`,
 				};
 				break;
 			}

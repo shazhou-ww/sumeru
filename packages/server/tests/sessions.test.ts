@@ -324,7 +324,7 @@ describe("@sumeru/server — GET /gateways/:name/sessions (list)", () => {
 	it("ignores unknown query parameters", async () => {
 		await postSession("hermes", {});
 		const res = await fetch(
-			`${baseUrl}/gateways/hermes/sessions?status=idle&q=foo`,
+			`${baseUrl}/gateways/hermes/sessions?status=idle&unknown=foo`,
 		);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
