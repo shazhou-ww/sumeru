@@ -14,7 +14,7 @@
  *   - close is a logical close — adds the nativeId to a per-instance Set;
  *     no DB mutation, no process spawn.
  *   - getTurns reads `<sessionsDir>/<nativeId>.jsonl` first; on absence falls
- *     back to `~/.hermes/sessions.db` via `node:sqlite`.
+ *     back to `~/.hermes/state.db` via `node:sqlite`.
  */
 
 import { homedir } from "node:os";
@@ -62,7 +62,7 @@ export function createHermesAdapter(
 ): Adapter {
 	const hermesBin = options.hermesBin ?? DEFAULT_HERMES_BIN;
 	const sourceTag = options.sourceTag ?? DEFAULT_SOURCE_TAG;
-	const dbPath = options.dbPath ?? join(homedir(), ".hermes", "sessions.db");
+	const dbPath = options.dbPath ?? join(homedir(), ".hermes", "state.db");
 	const sessionsDir =
 		options.sessionsDir ?? join(homedir(), ".hermes", "sessions");
 	const createSessionTimeoutMs =
