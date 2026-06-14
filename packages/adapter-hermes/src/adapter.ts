@@ -1,16 +1,20 @@
 /**
  * Hermes adapter — implements the `Adapter` contract from `@sumeru/core`
- * by shelling out to `hermes chat -q` for create/send and reading the
- * Hermes session SQLite for `getTurns`.
+ * by shelling out to `hermes chat -q` for create/send and reading turn
+ * history from per-session JSONL files (hermes v0.15.1+) with a SQLite
+ * fallback for older or alternate hermes builds.
  *
  * Design notes:
- *   - createSession spawns `hermes chat -q "<initialQuery>" --pass-session-id`
- *     and parses the printed `Session: <id>` line.
+ *   - createSession spawns `hermes chat -q "<initialQuery>" --pass-session-id --quiet`
+ *     and parses the printed session id line. Hermes v0.15.1 prints the line to
+ *     **stderr**, older versions to stdout; the adapter merges both streams and
+ *     accepts either `session_id: <id>` (new) or `Session: <id>` (legacy).
  *   - send uses `hermes chat -q "<content>" --resume <id>` and returns the
  *     **delta** turns recorded since the call started (per-nativeId mutex).
  *   - close is a logical close — adds the nativeId to a per-instance Set;
  *     no DB mutation, no process spawn.
- *   - getTurns reads `~/.hermes/sessions.db` read-only via `node:sqlite`.
+ *   - getTurns reads `<sessionsDir>/<nativeId>.jsonl` first; on absence falls
+ *     back to `~/.hermes/sessions.db` via `node:sqlite`.
  */
 
 import { homedir } from "node:os";
@@ -23,8 +27,14 @@ import type {
 	Turn,
 } from "@sumeru/core";
 import { readTurnsFromDb } from "./db.js";
+import { readTurnsFromJsonl } from "./jsonl.js";
 import { defaultSpawn } from "./spawn.js";
-import type { HermesAdapterOptions, SpawnFn, TurnsReader } from "./types.js";
+import type {
+	HermesAdapterOptions,
+	JsonlReader,
+	SpawnFn,
+	TurnsReader,
+} from "./types.js";
 
 const DEFAULT_HERMES_BIN = "hermes";
 const DEFAULT_SOURCE_TAG = "sumeru";
@@ -32,7 +42,7 @@ const DEFAULT_CREATE_TIMEOUT_MS = 60_000;
 const DEFAULT_SEND_TIMEOUT_MS = 5 * 60_000;
 
 const SESSION_ID_RE = /^[0-9]{8}_[0-9]{6}_[0-9a-f]+$/;
-const SESSION_LINE_RE = /^Session:\s+(\S+)\s*$/m;
+const SESSION_LINE_RE = /^(?:Session:|session_id:)\s+(\S+)\s*$/m;
 
 const ALLOWED_CONFIG_KEYS = [
 	"model",
@@ -53,6 +63,8 @@ export function createHermesAdapter(
 	const hermesBin = options.hermesBin ?? DEFAULT_HERMES_BIN;
 	const sourceTag = options.sourceTag ?? DEFAULT_SOURCE_TAG;
 	const dbPath = options.dbPath ?? join(homedir(), ".hermes", "sessions.db");
+	const sessionsDir =
+		options.sessionsDir ?? join(homedir(), ".hermes", "sessions");
 	const createSessionTimeoutMs =
 		options.createSessionTimeoutMs ?? DEFAULT_CREATE_TIMEOUT_MS;
 	const sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
@@ -60,6 +72,8 @@ export function createHermesAdapter(
 	const spawnFn: SpawnFn = options.spawnFn ?? defaultSpawn;
 	const turnsReader: TurnsReader =
 		options.turnsReader ?? ((p, n) => readTurnsFromDb(p, n));
+	const jsonlReader: JsonlReader =
+		options.jsonlReader ?? ((d, n) => readTurnsFromJsonl(d, n));
 
 	const closedRefs = new Set<string>();
 	const sendLocks = new Map<string, Promise<unknown>>();
@@ -85,6 +99,26 @@ export function createHermesAdapter(
 			if (sendLocks.get(nativeId) === prev.then(() => next)) {
 				sendLocks.delete(nativeId);
 			}
+		}
+	}
+
+	/**
+	 * JSONL-first read of session turns. JSONL files are the source of truth
+	 * for hermes v0.15.1+; the SQLite DB is a fallback for older/alternate
+	 * builds. Returns `[]` for an unknown session — never throws "session not
+	 * found".
+	 */
+	async function readAllTurns(nativeId: string): Promise<Turn[]> {
+		const fromJsonl = await jsonlReader(sessionsDir, nativeId).catch(
+			() => null,
+		);
+		if (fromJsonl !== null) return fromJsonl;
+		try {
+			return await turnsReader(dbPath, nativeId);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			if (/not found/i.test(message)) return [];
+			throw err;
 		}
 	}
 
@@ -126,11 +160,15 @@ export function createHermesAdapter(
 			);
 		}
 
-		const match = result.stdout.match(SESSION_LINE_RE);
+		// hermes v0.15.1 writes `session_id: <id>` to stderr (NOT stdout).
+		// Older versions write `Session: <id>` to stdout. Merge stderr first so
+		// new format wins when both are present, and accept either label.
+		const merged = `${result.stderr}\n${result.stdout}`;
+		const match = merged.match(SESSION_LINE_RE);
 		if (match === null || match[1] === undefined) {
-			const head = result.stdout.slice(0, 500);
+			const head = merged.slice(0, 500);
 			throw new Error(
-				`failed to parse Hermes session id from stdout (first 500 chars): ${head}`,
+				`failed to parse Hermes session id from stderr+stdout (first 500 chars): ${head}`,
 			);
 		}
 		const nativeId = match[1];
@@ -165,7 +203,7 @@ export function createHermesAdapter(
 			if (closedRefs.has(ref.nativeId)) {
 				throw new Error(`hermes session ${ref.nativeId} is closed`);
 			}
-			const before = await turnsReader(dbPath, ref.nativeId).catch(() => []);
+			const before = await readAllTurns(ref.nativeId).catch(() => []);
 			const highWater =
 				before.length === 0
 					? -1
@@ -207,7 +245,7 @@ export function createHermesAdapter(
 				);
 			}
 
-			const after = await turnsReader(dbPath, ref.nativeId);
+			const after = await readAllTurns(ref.nativeId);
 			const delta = after.filter((t) => t.index > highWater);
 			const filtered = includeSystemTurns
 				? delta
@@ -228,7 +266,7 @@ export function createHermesAdapter(
 
 	async function getTurns(ref: NativeSessionRef): Promise<Turn[]> {
 		assertRef(ref);
-		const turns = await turnsReader(dbPath, ref.nativeId);
+		const turns = await readAllTurns(ref.nativeId);
 		return includeSystemTurns
 			? turns
 			: turns.filter((t) => t.role !== "system");

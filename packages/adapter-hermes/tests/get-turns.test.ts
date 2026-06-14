@@ -7,7 +7,11 @@ import { createHermesAdapter } from "../src/index.js";
 const NATIVE = "20260613_120000_cccccc";
 const NATIVE_OTHER = "20260613_130000_dddddd";
 
-function setupDb(): string {
+function emptySessionsDir(): string {
+	return mkdtempSync(join(tmpdir(), "sumeru-hermes-sessions-empty-"));
+}
+
+function setupV1Db(): string {
 	// Use Node 22's native sqlite to build a fixture DB on the fly so the
 	// adapter has a real schema-v1 store to read.
 	const sqlite = require("node:sqlite") as typeof import("node:sqlite");
@@ -83,10 +87,47 @@ function setupDb(): string {
 	return dbPath;
 }
 
+function setupV2Db(sessionId: string): string {
+	// uwf-shaped DB: sessions + messages, ordered by id ASC.
+	const sqlite = require("node:sqlite") as typeof import("node:sqlite");
+	const dir = mkdtempSync(join(tmpdir(), "sumeru-hermes-v2-"));
+	const dbPath = join(dir, "state.db");
+	const db = new sqlite.DatabaseSync(dbPath);
+	db.exec(
+		"CREATE TABLE sessions (id TEXT PRIMARY KEY, model TEXT, started_at INTEGER, input_tokens INTEGER, output_tokens INTEGER)",
+	);
+	db.exec(
+		"CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT, content TEXT, reasoning TEXT, tool_calls TEXT)",
+	);
+	db.prepare(
+		"INSERT INTO sessions (id, model, started_at, input_tokens, output_tokens) VALUES (?, ?, ?, ?, ?)",
+	).run(sessionId, "anthropic/claude-haiku-4", 1717200000, 0, 0);
+	const msg = db.prepare(
+		"INSERT INTO messages (session_id, role, content, reasoning, tool_calls) VALUES (?, ?, ?, ?, ?)",
+	);
+	msg.run(sessionId, "user", "from db", null, null);
+	msg.run(sessionId, "assistant", "db answer", null, null);
+	msg.run(
+		sessionId,
+		"assistant",
+		"",
+		null,
+		JSON.stringify([
+			{ function: { name: "terminal", arguments: '{"command":"ls"}' } },
+		]),
+	);
+	msg.run(sessionId, "tool", "{}", null, null);
+	db.close();
+	return dbPath;
+}
+
 describe("@sumeru/adapter-hermes — getTurns (fixture DB)", () => {
-	it("returns turns ordered by index, mapping toolCalls and tokens", async () => {
-		const dbPath = setupDb();
-		const adapter = createHermesAdapter({ dbPath });
+	it("returns turns ordered by index, mapping toolCalls and tokens (schema v1)", async () => {
+		const dbPath = setupV1Db();
+		const adapter = createHermesAdapter({
+			dbPath,
+			sessionsDir: emptySessionsDir(),
+		});
 		const turns = await adapter.getTurns({ nativeId: NATIVE, meta: {} });
 		// system row filtered by default
 		expect(turns.map((t) => t.index)).toEqual([0, 1, 2]);
@@ -106,8 +147,11 @@ describe("@sumeru/adapter-hermes — getTurns (fixture DB)", () => {
 	});
 
 	it("returns [] for an unknown nativeId (not an error)", async () => {
-		const dbPath = setupDb();
-		const adapter = createHermesAdapter({ dbPath });
+		const dbPath = setupV1Db();
+		const adapter = createHermesAdapter({
+			dbPath,
+			sessionsDir: emptySessionsDir(),
+		});
 		const turns = await adapter.getTurns({
 			nativeId: "20260101_000000_ffffff",
 			meta: {},
@@ -115,16 +159,16 @@ describe("@sumeru/adapter-hermes — getTurns (fixture DB)", () => {
 		expect(turns).toEqual([]);
 	});
 
-	it("rejects when DB file is missing", async () => {
+	it("returns [] when both JSONL and DB are missing (no error)", async () => {
 		const adapter = createHermesAdapter({
 			dbPath: "/tmp/__definitely_missing__.db",
+			sessionsDir: emptySessionsDir(),
 		});
-		await expect(
-			adapter.getTurns({ nativeId: NATIVE, meta: {} }),
-		).rejects.toThrow(/hermes session DB not found/);
+		const turns = await adapter.getTurns({ nativeId: NATIVE, meta: {} });
+		expect(turns).toEqual([]);
 	});
 
-	it("rejects with schema-mismatch error when required column is absent", async () => {
+	it("rejects with schema-mismatch error when required column is absent (v1)", async () => {
 		const sqlite = require("node:sqlite") as typeof import("node:sqlite");
 		const dir = mkdtempSync(join(tmpdir(), "sumeru-hermes-bad-"));
 		const dbPath = join(dir, "sessions.db");
@@ -134,7 +178,10 @@ describe("@sumeru/adapter-hermes — getTurns (fixture DB)", () => {
 			"CREATE TABLE messages (session_id TEXT, role TEXT, content TEXT, timestamp TEXT)",
 		);
 		db.close();
-		const adapter = createHermesAdapter({ dbPath });
+		const adapter = createHermesAdapter({
+			dbPath,
+			sessionsDir: emptySessionsDir(),
+		});
 		await expect(
 			adapter.getTurns({ nativeId: NATIVE, meta: {} }),
 		).rejects.toThrow(/schema mismatch.*idx.*v1/);
@@ -144,10 +191,88 @@ describe("@sumeru/adapter-hermes — getTurns (fixture DB)", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sumeru-hermes-corrupt-"));
 		const dbPath = join(dir, "sessions.db");
 		writeFileSync(dbPath, "this is not sqlite content");
-		const adapter = createHermesAdapter({ dbPath });
+		const adapter = createHermesAdapter({
+			dbPath,
+			sessionsDir: emptySessionsDir(),
+		});
 		await expect(
 			adapter.getTurns({ nativeId: NATIVE, meta: {} }),
 		).rejects.toThrow(/unreadable|schema mismatch/);
+	});
+
+	// New: JSONL-first precedence
+
+	it("reads from JSONL when present (DB is ignored)", async () => {
+		const sessionsDir = join(__dirname, "fixtures", "sessions");
+		// dbPath intentionally invalid: if it were consulted, the test would
+		// fail with an error rather than a clean turn list.
+		const adapter = createHermesAdapter({
+			dbPath: "/tmp/__never_read__.db",
+			sessionsDir,
+		});
+		const turns = await adapter.getTurns({
+			nativeId: "20260614_jsonl_only",
+			meta: {},
+		});
+		expect(turns.length).toBeGreaterThanOrEqual(2);
+		expect(turns.some((t) => t.role === "user")).toBe(true);
+		expect(turns.some((t) => t.role === "assistant")).toBe(true);
+	});
+
+	it("prefers JSONL over DB when both exist (DB driver never called)", async () => {
+		const sessionsDir = join(__dirname, "fixtures", "sessions");
+		const dbCalls: number[] = [];
+		const adapter = createHermesAdapter({
+			dbPath: "/tmp/__should_not_read__.db",
+			sessionsDir,
+			turnsReader: async () => {
+				dbCalls.push(1);
+				return [];
+			},
+		});
+		const turns = await adapter.getTurns({
+			nativeId: "20260614_jsonl_and_db",
+			meta: {},
+		});
+		expect(dbCalls.length).toBe(0);
+		expect(turns.length).toBeGreaterThan(0);
+		expect(turns[0].role).toBe("user");
+		expect(turns[0].content).toBe("from jsonl");
+	});
+
+	it("falls back to uwf-shaped (v2) DB when JSONL is absent", async () => {
+		const sessionId = "20260614_db_only";
+		const dbPath = setupV2Db(sessionId);
+		const adapter = createHermesAdapter({
+			dbPath,
+			sessionsDir: emptySessionsDir(),
+		});
+		const turns = await adapter.getTurns({ nativeId: sessionId, meta: {} });
+		expect(turns.length).toBe(4);
+		expect(turns[0].role).toBe("user");
+		expect(turns[0].content).toBe("from db");
+		expect(turns[0].index).toBe(0);
+		expect(turns[1].role).toBe("assistant");
+		expect(turns[2].toolCalls).not.toBeNull();
+		if (turns[2].toolCalls !== null) {
+			expect(turns[2].toolCalls[0].tool).toBe("terminal");
+			expect(turns[2].toolCalls[0].input).toEqual({ command: "ls" });
+		}
+		// `tool` row was normalized to assistant
+		expect(turns[3].role).toBe("assistant");
+	});
+
+	it("uwf-shaped DB with unknown session id resolves to [] (not error)", async () => {
+		const dbPath = setupV2Db("20260614_db_only");
+		const adapter = createHermesAdapter({
+			dbPath,
+			sessionsDir: emptySessionsDir(),
+		});
+		const turns = await adapter.getTurns({
+			nativeId: "20260101_000000_aaaaaa",
+			meta: {},
+		});
+		expect(turns).toEqual([]);
 	});
 
 	// Opt-in integration: read turns from a real Hermes session DB.

@@ -19,21 +19,21 @@ export type Scene = {
 	knowledge: Knowledge | null;
 	/** The task prompt — natural language, agent-agnostic */
 	task: string;
-}
+};
 
 export type Knowledge = {
 	/** Skill definitions to pre-install */
 	skills: SkillDef[] | null;
 	/** Memory entries to pre-load */
 	memory: string[] | null;
-}
+};
 
 export type SkillDef = {
 	/** Skill name */
 	name: string;
 	/** Skill content (markdown) */
 	content: string;
-}
+};
 
 // ─── Run Config (runtime, not part of scene) ────────────
 
@@ -51,7 +51,7 @@ export type RunConfig = {
 	network: boolean;
 	/** Docker image to use */
 	image: string;
-}
+};
 
 // ─── Recording ───────────────────────────────────────────
 
@@ -61,7 +61,7 @@ export type Recording = {
 	meta: RecordingMeta;
 	/** Full sequence of turns */
 	turns: Turn[];
-}
+};
 
 export type RecordingMeta = {
 	/** Scene name */
@@ -82,12 +82,12 @@ export type RecordingMeta = {
 	turnCount: number;
 	/** Token usage */
 	tokens: TokenUsage | null;
-}
+};
 
 export type TokenUsage = {
 	input: number;
 	output: number;
-}
+};
 
 // ─── Turn ────────────────────────────────────────────────
 
@@ -112,7 +112,7 @@ export type Turn = {
 	 * circular).
 	 */
 	hash: string | null;
-}
+};
 
 export type ToolCall = {
 	/** Tool name (e.g. "terminal", "read_file") */
@@ -125,4 +125,4 @@ export type ToolCall = {
 	durationMs: number;
 	/** Exit code (for terminal calls) */
 	exitCode: number | null;
-}
+};

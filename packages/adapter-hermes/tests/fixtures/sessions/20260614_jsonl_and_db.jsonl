@@ -1,0 +1,3 @@
+{"role": "session_meta", "tools": [], "model": "anthropic/claude-haiku-4", "platform": "sumeru", "timestamp": "2026-06-14T06:00:00.000000"}
+{"role": "user", "content": "from jsonl", "timestamp": "2026-06-14T06:00:01.000000"}
+{"role": "assistant", "content": "jsonl wins", "timestamp": "2026-06-14T06:00:02.000000"}
