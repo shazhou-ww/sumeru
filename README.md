@@ -44,20 +44,48 @@ sumeru start --port 7900 --config sumeru.yaml
 `sumeru start` runs an HTTP service whose responses use the ocas envelope
 shape `{ type, value }`. With a `sumeru.yaml` config, the service exposes:
 
-| Method | Path                                    | Envelope                  |
-|--------|-----------------------------------------|---------------------------|
-| GET    | `/`                                     | `@sumeru/instance`        |
-| GET    | `/gateways`                             | `@sumeru/gateway-list`    |
-| GET    | `/gateways/:name`                       | `@sumeru/gateway`         |
-| POST   | `/gateways/:name/sessions`              | `@sumeru/session` (201)   |
-| GET    | `/gateways/:name/sessions`              | `@sumeru/session-list`    |
-| GET    | `/gateways/:name/sessions/:id`          | `@sumeru/session`         |
-| DELETE | `/gateways/:name/sessions/:id`          | (204 No Content)          |
+| Method | Path                                             | Envelope                    |
+|--------|--------------------------------------------------|-----------------------------|
+| GET    | `/`                                              | `@sumeru/instance`          |
+| GET    | `/gateways`                                      | `@sumeru/gateway-list`      |
+| GET    | `/gateways/:name`                                | `@sumeru/gateway`           |
+| POST   | `/gateways/:name/sessions`                       | `@sumeru/session` (201)     |
+| GET    | `/gateways/:name/sessions`                       | `@sumeru/session-list`      |
+| GET    | `/gateways/:name/sessions/:id`                   | `@sumeru/session`           |
+| DELETE | `/gateways/:name/sessions/:id`                   | (204 No Content)            |
+| POST   | `/gateways/:name/sessions/:id/messages`          | SSE (turn / heartbeat / done / error) |
+| GET    | `/gateways/:name/sessions/:id/messages`          | `@sumeru/message-history`   |
+| GET    | `/ocas/:hash`                                    | `@<schema-alias>` (any node)|
 
 Unknown paths return a 404 `@sumeru/error` envelope; an unknown gateway name
 returns a 404 with `error: "gateway_not_found"`; an unknown session returns
 404 `error: "session_not_found"`. Disallowed methods return 405 with a
 populated `Allow` header.
+
+### Recording (ocas)
+
+Every session and every turn is recorded into a content-addressed store
+(`@ocas/fs`-backed). On startup, the server bootstraps the store directory
+(`--ocas-dir`, falling back to `$SUMERU_OCAS_DIR`, then `~/.sumeru/ocas`)
+and registers two JSON Schemas:
+
+- `@sumeru/session-meta` — written once when a session is created.
+- `@sumeru/turn` — written for every user request and every assistant
+  turn streamed back from the adapter.
+
+Each turn's hash is stamped onto its SSE `event: turn` payload as
+`value.hash`, so clients can fetch the canonical record via
+`GET /ocas/:hash`. Messages history is reconstructed by walking the
+session's recorded turn hashes and reading each node from ocas — closed
+sessions remain readable.
+
+`GET /ocas/:hash` returns `{ type, value }` where `type` is rendered as a
+human-readable schema alias (`@sumeru/turn`, `@sumeru/session-meta`,
+`@ocas/schema`) when known. Responses carry `Cache-Control: public,
+max-age=31536000, immutable` and `ETag: "<hash>"`; `If-None-Match`
+returns `304 Not Modified`. Hashes are 13-character Crockford Base32
+strings (`^[0-9A-HJKMNP-TV-Z]{13}$`). Malformed input returns
+`400 invalid_hash`; valid format with no node returns `404 ocas_not_found`.
 
 ### Sessions
 

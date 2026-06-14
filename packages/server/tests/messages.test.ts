@@ -6,6 +6,9 @@
  * a real Hermes binary. Each test boots a fresh server on an ephemeral port.
  */
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { GatewayConfig, StartedServer } from "../src/index.js";
 import { startServer } from "../src/index.js";
@@ -13,6 +16,10 @@ import {
 	makeStubAdapter,
 	type StubAdapterControl,
 } from "./fixtures/stub-adapter.js";
+
+function tmpOcasDir(): string {
+	return mkdtempSync(join(tmpdir(), "sumeru-ocas-"));
+}
 
 const HERMES_GATEWAY: Record<string, GatewayConfig> = {
 	hermes: {
@@ -50,6 +57,7 @@ async function startTest(
 		sseHeartbeatMs: overrides?.sseHeartbeatMs ?? null,
 		sseBufferSize: overrides?.sseBufferSize ?? null,
 		sseRetentionMs: overrides?.sseRetentionMs ?? null,
+		ocasDir: tmpOcasDir(),
 	});
 	return {
 		server,
@@ -418,13 +426,6 @@ describe("@sumeru/server — POST /gateways/:name/sessions/:id/messages (SSE)", 
 			respond: async (content) => ({
 				turns: [
 					{
-						index: 0,
-						role: "user",
-						content,
-						timestamp: new Date().toISOString(),
-						toolCalls: null,
-					},
-					{
 						index: 1,
 						role: "assistant",
 						content: `r:${content}`,
@@ -435,6 +436,13 @@ describe("@sumeru/server — POST /gateways/:name/sessions/:id/messages (SSE)", 
 						index: 2,
 						role: "assistant",
 						content: "another",
+						timestamp: new Date().toISOString(),
+						toolCalls: null,
+					},
+					{
+						index: 3,
+						role: "assistant",
+						content: "third",
 						timestamp: new Date().toISOString(),
 						toolCalls: null,
 					},

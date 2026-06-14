@@ -15,7 +15,10 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@ocas/core": "^0.5.0",
+    "@ocas/fs": "^0.4.1",
     "@sumeru/core": "workspace:*",
+    "ajv": "^8.20.0",
     "yaml": "^2.7.0"
   },
   "devDependencies": {

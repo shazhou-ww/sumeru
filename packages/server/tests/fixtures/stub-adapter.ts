@@ -92,14 +92,6 @@ export function makeStubAdapter(
 			}
 			const turns: Turn[] = [
 				{
-					index: 0,
-					role: "user",
-					content,
-					toolCalls: null,
-					tokens: null,
-					timestamp: new Date().toISOString(),
-				},
-				{
 					index: 1,
 					role: "assistant",
 					content: `echo: ${content}`,

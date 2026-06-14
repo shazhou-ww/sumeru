@@ -1,7 +1,14 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { GatewayConfig, StartedServer } from "../src/index.js";
 import { startServer } from "../src/index.js";
 import { makeStubAdapter } from "./fixtures/stub-adapter.js";
+
+function tmpOcasDir(): string {
+	return mkdtempSync(join(tmpdir(), "sumeru-ocas-"));
+}
 
 const TWO_GATEWAYS: Record<string, GatewayConfig> = {
 	hermes: {
@@ -55,6 +62,7 @@ async function startTestServer(): Promise<{
 		sseHeartbeatMs: null,
 		sseBufferSize: null,
 		sseRetentionMs: null,
+		ocasDir: tmpOcasDir(),
 	});
 	return {
 		server,
