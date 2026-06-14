@@ -7,6 +7,7 @@
  * All responses follow the ocas envelope: { type, value }.
  */
 
+import type { Hash, Store } from "@ocas/core";
 import type { Adapter, NativeSessionRef, Turn } from "@sumeru/core";
 
 // ─── Envelope ────────────────────────────────────────────
@@ -42,6 +43,29 @@ export type Session = {
 	status: SessionStatus;
 	createdAt: string;
 	config: SessionConfig;
+	/**
+	 * Hash of the @sumeru/session-meta node written at create time. Internal
+	 * — never serialized into HTTP envelopes.
+	 */
+	metaHash: string;
+	/**
+	 * Latest turn hashes appended to this session, in chronological order.
+	 * Internal — never serialized into HTTP envelopes.
+	 */
+	turnHashes: string[];
+};
+
+/**
+ * Wire-shape of `Session` (no internal fields). Returned by HTTP handlers.
+ * Phase 2/3 envelope contracts are byte-identical to this type — Phase 4
+ * leaves the wire shape untouched and only adds new endpoints.
+ */
+export type SessionWire = {
+	id: string;
+	gateway: string;
+	status: SessionStatus;
+	createdAt: string;
+	config: SessionConfig;
 };
 
 /** Compact list entry — `config` is omitted to keep listings small. */
@@ -71,8 +95,22 @@ export type HeartbeatValue = {
 	elapsed: number;
 };
 
-/** SSE turn-event payload re-uses Turn from @sumeru/core. */
-export type TurnValue = Turn;
+/** SSE turn-event payload re-uses Turn from @sumeru/core, plus an ocas hash. */
+export type TurnValue = Turn & { hash: string };
+
+/**
+ * History endpoint payload — `GET /gateways/:name/sessions/:id/messages`.
+ * Each turn is the canonical `@sumeru/turn` body plus the server-injected
+ * `hash` field so callers can fetch the immutable record via `/ocas/:hash`.
+ */
+export type MessageHistoryValue = {
+	sessionId: string;
+	gateway: string;
+	total: number;
+	offset: number;
+	limit: number;
+	turns: TurnValue[];
+};
 
 // ─── Config (Phase 1) ────────────────────────────────────
 
@@ -128,6 +166,19 @@ export type ErrorValue = {
 
 // ─── Server ──────────────────────────────────────────────
 
+/**
+ * ocas slice on `ServerConfig`. Carries the live store handle plus the two
+ * registered Sumeru schema hashes and the schema-of-schemas hash. Used by
+ * the session, turn-recording, and `/ocas/:hash` paths.
+ */
+export type OcasConfig = {
+	store: Store;
+	turnSchemaHash: Hash;
+	sessionMetaSchemaHash: Hash;
+	metaSchemaHash: Hash;
+	schemaAliases: Record<Hash, string>;
+};
+
 /** Configuration for `createHandler`. */
 export type ServerConfig = {
 	name: string;
@@ -144,6 +195,8 @@ export type ServerConfig = {
 	sseBufferSize: number;
 	/** Retention after `event: done` for resume (ms). Default 30_000. */
 	sseRetentionMs: number;
+	/** Phase 4: ocas store + registered schema hashes. */
+	ocas: OcasConfig;
 };
 
 /** Configuration for `startServer`. */
@@ -161,6 +214,11 @@ export type StartConfig = {
 	sseBufferSize: number | null;
 	/** Optional retention after done (ms). */
 	sseRetentionMs: number | null;
+	/**
+	 * Optional ocas store directory. When `null`, falls back to
+	 * `SUMERU_OCAS_DIR` env var, then to `~/.sumeru/ocas`.
+	 */
+	ocasDir: string | null;
 };
 
 /** Result of `startServer`: the bound address and a stop function. */

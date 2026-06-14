@@ -106,6 +106,13 @@ export interface Turn {
 	toolCalls: ToolCall[] | null;
 	/** Token usage for this turn */
 	tokens?: TokenUsage;
+	/**
+	 * Ocas content-addressed hash of this turn. Adapters return `null`; the
+	 * server replaces it with the computed hash before emitting SSE / history
+	 * responses. The hash is NOT stored inside the recorded payload (would be
+	 * circular).
+	 */
+	hash?: string | null;
 }
 
 export interface ToolCall {

@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Adapter } from "@sumeru/core";
+import type { Adapter, Turn } from "@sumeru/core";
 import {
+	envelope,
 	errorEnvelope,
 	gatewayEnvelope,
 	gatewayListEnvelope,
@@ -9,6 +10,7 @@ import {
 	sessionListEnvelope,
 } from "./envelope.js";
 import { createSessionStore, type SessionStore } from "./session/index.js";
+import { toWire } from "./session/store.js";
 import {
 	handleMessageEndpoint,
 	makeMessageBufferStore,
@@ -17,11 +19,17 @@ import {
 import type {
 	Gateway,
 	GatewayConfig,
+	MessageHistoryValue,
+	OcasConfig,
 	ServerConfig,
 	Session,
 	SessionConfig,
 	SessionListEntry,
+	TurnValue,
 } from "./types.js";
+
+const HASH_RE = /^[0-9A-HJKMNP-TV-Z]{13}$/;
+const DEFAULT_HISTORY_LIMIT_CAP = 1000;
 
 /**
  * Build the request handler for a server with the given config.
@@ -46,13 +54,15 @@ import type {
 export function createHandler(
 	config: ServerConfig,
 ): (req: IncomingMessage, res: ServerResponse) => void {
-	const sessions = createSessionStore();
+	const sessions = createSessionStore(config.ocas);
 	const bufferStore = makeMessageBufferStore(config);
 
 	return (req, res) => {
 		const method = req.method ?? "GET";
 		const url = req.url ?? "/";
 		const path = stripQueryString(url);
+		const queryString =
+			url.indexOf("?") === -1 ? "" : url.slice(url.indexOf("?") + 1);
 
 		// GET /  (root)
 		if (path === "/") {
@@ -88,6 +98,22 @@ export function createHandler(
 			return;
 		}
 
+		// /ocas/<hash>  (Phase 4 — single ocas object endpoint)
+		const ocasMatch = matchOcasObject(path);
+		if (ocasMatch !== null) {
+			handleOcasObject(req, res, method, path, ocasMatch, config.ocas);
+			return;
+		}
+		// /ocas or /ocas/  (no listing endpoint defined)
+		if (path === "/ocas" || path === "/ocas/") {
+			writeJson(
+				res,
+				404,
+				errorEnvelope("route_not_found", `No route for ${method} ${path}`),
+			);
+			return;
+		}
+
 		// /gateways/<name>/sessions/<id>/messages
 		const messagesMatch = matchSessionMessages(path);
 		if (messagesMatch !== null) {
@@ -97,6 +123,7 @@ export function createHandler(
 				method,
 				path,
 				messagesMatch,
+				queryString,
 				config,
 				sessions,
 				bufferStore,
@@ -255,6 +282,21 @@ function matchSessionMessages(
 	return { gatewayRaw, idRaw };
 }
 
+/**
+ * Match `/ocas/<hash>` (with optional trailing slash). Returns the raw segment
+ * (still URL-encoded form, but the hash regex rejects any encoded characters
+ * downstream). Returns null for `/ocas`, `/ocas/`, or `/ocas/<hash>/extra`.
+ */
+function matchOcasObject(path: string): string | null {
+	const prefix = "/ocas/";
+	if (!path.startsWith(prefix)) return null;
+	const rest = path.slice(prefix.length);
+	const stripped = rest.endsWith("/") ? rest.slice(0, -1) : rest;
+	if (stripped.length === 0) return null;
+	if (stripped.includes("/")) return null;
+	return stripped;
+}
+
 function decodePathSegment(segment: string): string | null {
 	try {
 		return decodeURIComponent(segment);
@@ -345,8 +387,27 @@ async function handleSessionsCollection(
 			);
 			return;
 		}
-		const session = sessions.create(gatewayName, configResult.value, nativeRef);
-		writeJson(res, 201, sessionEnvelope(session));
+		let session: Session;
+		try {
+			session = sessions.create(
+				gatewayName,
+				gatewayCfg.adapter,
+				configResult.value,
+				nativeRef,
+			);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			writeJson(
+				res,
+				500,
+				errorEnvelope(
+					"ocas_write_failed",
+					`Failed to record session meta: ${truncate(msg, 500)}`,
+				),
+			);
+			return;
+		}
+		writeJson(res, 201, sessionEnvelope(toWire(session)));
 		return;
 	}
 	methodNotAllowed(res, method, path, "GET, POST");
@@ -408,7 +469,7 @@ async function handleSessionDetail(
 			);
 			return;
 		}
-		writeJson(res, 200, sessionEnvelope(session));
+		writeJson(res, 200, sessionEnvelope(toWire(session)));
 		return;
 	}
 	if (method === "DELETE") {
@@ -454,6 +515,7 @@ async function handleMessages(
 	method: string,
 	path: string,
 	parts: { gatewayRaw: string; idRaw: string },
+	queryString: string,
 	config: ServerConfig,
 	sessions: SessionStore,
 	bufferStore: SseBufferStore,
@@ -490,6 +552,10 @@ async function handleMessages(
 		);
 		return;
 	}
+	if (method === "GET") {
+		handleMessagesHistory(res, gatewayName, id, queryString, config, sessions);
+		return;
+	}
 	if (method !== "POST") {
 		methodNotAllowed(res, method, path, "GET, POST");
 		return;
@@ -500,6 +566,147 @@ async function handleMessages(
 		config,
 		bufferStore,
 	});
+}
+
+/**
+ * GET /gateways/:name/sessions/:id/messages — return the full ordered turn
+ * sequence sourced from ocas via the per-session `turnHashes` pointer.
+ */
+function handleMessagesHistory(
+	res: ServerResponse,
+	gatewayName: string,
+	id: string,
+	queryString: string,
+	config: ServerConfig,
+	sessions: SessionStore,
+): void {
+	const session = sessions.get(gatewayName, id);
+	if (session === null) {
+		writeJson(
+			res,
+			404,
+			errorEnvelope(
+				"session_not_found",
+				`Session ${id} not found on gateway ${gatewayName}`,
+			),
+		);
+		return;
+	}
+	const params = new URLSearchParams(queryString);
+	const offsetRes = parseNonNegInt(params.get("offset"), "offset");
+	if (!offsetRes.ok) {
+		writeJson(res, 400, errorEnvelope("invalid_request", offsetRes.message));
+		return;
+	}
+	const limitRes = parseNonNegInt(params.get("limit"), "limit");
+	if (!limitRes.ok) {
+		writeJson(res, 400, errorEnvelope("invalid_request", limitRes.message));
+		return;
+	}
+	const total = session.turnHashes.length;
+	const offset = offsetRes.value ?? 0;
+	const requestedLimit = limitRes.value ?? Math.max(0, total - offset);
+	const limit = Math.min(requestedLimit, DEFAULT_HISTORY_LIMIT_CAP);
+	const slice = session.turnHashes.slice(offset, offset + limit);
+	const turns: TurnValue[] = [];
+	for (const h of slice) {
+		const node = config.ocas.store.cas.get(h);
+		if (node === null) continue;
+		const payload = node.payload as Turn;
+		turns.push({ ...payload, hash: h });
+	}
+	const value: MessageHistoryValue = {
+		sessionId: session.id,
+		gateway: session.gateway,
+		total,
+		offset,
+		limit,
+		turns,
+	};
+	res.statusCode = 200;
+	res.setHeader("Content-Type", "application/json; charset=utf-8");
+	res.setHeader("Cache-Control", "no-store");
+	const payload = JSON.stringify(envelope("@sumeru/message-history", value));
+	res.setHeader("Content-Length", Buffer.byteLength(payload).toString());
+	res.end(payload);
+}
+
+type ParsedNonNegInt =
+	| { ok: true; value: number | null }
+	| { ok: false; message: string };
+
+function parseNonNegInt(raw: string | null, name: string): ParsedNonNegInt {
+	if (raw === null) return { ok: true, value: null };
+	const trimmed = raw.trim();
+	if (trimmed.length === 0 || !/^[0-9]+$/.test(trimmed)) {
+		return {
+			ok: false,
+			message: `Query parameter '${name}' must be a non-negative integer (got '${raw}')`,
+		};
+	}
+	const n = Number.parseInt(trimmed, 10);
+	if (!Number.isFinite(n) || n < 0) {
+		return {
+			ok: false,
+			message: `Query parameter '${name}' must be a non-negative integer (got '${raw}')`,
+		};
+	}
+	return { ok: true, value: n };
+}
+
+// ─── /ocas/:hash endpoint ────────────────────────────────
+
+function handleOcasObject(
+	req: IncomingMessage,
+	res: ServerResponse,
+	method: string,
+	path: string,
+	hash: string,
+	ocas: OcasConfig,
+): void {
+	if (method !== "GET" && method !== "HEAD") {
+		methodNotAllowed(res, method, path, "GET");
+		return;
+	}
+	if (!HASH_RE.test(hash)) {
+		writeJson(
+			res,
+			400,
+			errorEnvelope(
+				"invalid_hash",
+				`Hash must be a 13-character Crockford Base32 string (got '${hash}')`,
+			),
+		);
+		return;
+	}
+	const node = ocas.store.cas.get(hash);
+	if (node === null) {
+		writeJson(
+			res,
+			404,
+			errorEnvelope("ocas_not_found", `No ocas node found for hash '${hash}'`),
+		);
+		return;
+	}
+	const ifNoneMatch = req.headers["if-none-match"];
+	if (
+		typeof ifNoneMatch === "string" &&
+		ifNoneMatch.replace(/"/g, "") === hash
+	) {
+		res.statusCode = 304;
+		res.setHeader("ETag", `"${hash}"`);
+		res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+		res.end();
+		return;
+	}
+	const typeName = ocas.schemaAliases[node.type] ?? node.type;
+	const body = JSON.stringify({ type: typeName, value: node.payload });
+	res.statusCode = 200;
+	res.setHeader("Content-Type", "application/json; charset=utf-8");
+	res.setHeader("ETag", `"${hash}"`);
+	res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+	res.setHeader("Content-Length", Buffer.byteLength(body).toString());
+	res.end(body);
 }
 
 // ─── Helpers ─────────────────────────────────────────────

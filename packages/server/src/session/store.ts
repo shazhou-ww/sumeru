@@ -1,5 +1,13 @@
+import type { Hash } from "@ocas/core";
 import type { NativeSessionRef } from "@sumeru/core";
-import type { Session, SessionConfig, SessionStatus } from "../types.js";
+import { recordPayload } from "../ocas/index.js";
+import type {
+	OcasConfig,
+	Session,
+	SessionConfig,
+	SessionStatus,
+	SessionWire,
+} from "../types.js";
 import { generateSessionId } from "./id.js";
 
 /**
@@ -13,6 +21,10 @@ import { generateSessionId } from "./id.js";
  * NEVER exposed in HTTP envelopes — only `getNativeRef` makes it visible
  * to internal callers (the message handler, the close path).
  *
+ * Phase 4: each session carries a `metaHash` (set on create) and a
+ * `turnHashes` array that grows as turns are recorded. Both are internal
+ * — they are NEVER serialized into HTTP envelopes; `toWire` strips them.
+ *
  * Sessions are scoped to their gateway: lookups always include the gateway
  * name, and a session created on `hermes` is invisible from `claude-code`.
  *
@@ -22,9 +34,14 @@ import { generateSessionId } from "./id.js";
  */
 
 export type SessionStore = {
-	/** Create a new session on `gateway`. The id is generated server-side. */
+	/**
+	 * Create a new session on `gateway`. The id is generated server-side.
+	 * Writes the corresponding `@sumeru/session-meta` node to ocas BEFORE
+	 * the in-memory session is registered. Throws if the meta-write fails.
+	 */
 	create: (
 		gateway: string,
+		adapter: string,
 		config: SessionConfig,
 		nativeRef: NativeSessionRef | null,
 	) => Session;
@@ -34,6 +51,11 @@ export type SessionStore = {
 	get: (gateway: string, id: string) => Session | null;
 	/** Internal-only: retrieve the NativeSessionRef recorded at create time. */
 	getNativeRef: (gateway: string, id: string) => NativeSessionRef | null;
+	/**
+	 * Append a turn hash to a session's turn list. Used by the message
+	 * endpoint as turns are recorded in ocas. No-op if the session is gone.
+	 */
+	appendTurnHash: (gateway: string, id: string, hash: Hash) => void;
 	/**
 	 * Mark a session closed. Returns:
 	 *   - `closed`         if the status flipped from idle/active to closed
@@ -68,8 +90,28 @@ export type TransitionResult<R extends string> =
 	| { ok: true; session: Session }
 	| { ok: false; reason: R };
 
-/** Build a fresh, empty session store. */
-export function createSessionStore(): SessionStore {
+/**
+ * Strip internal-only fields (`metaHash`, `turnHashes`) from a `Session` so
+ * the result matches the HTTP wire envelope.
+ */
+export function toWire(session: Session): SessionWire {
+	return {
+		id: session.id,
+		gateway: session.gateway,
+		status: session.status,
+		createdAt: session.createdAt,
+		config: session.config,
+	};
+}
+
+/**
+ * Build a fresh, empty session store.
+ *
+ * The store needs `ocas` so it can write `@sumeru/session-meta` nodes on
+ * `create`. The hash is recorded on the in-memory session for later
+ * cross-reference by the `/ocas/:hash` endpoint.
+ */
+export function createSessionStore(ocas: OcasConfig): SessionStore {
 	const byGateway = new Map<string, Map<string, Session>>();
 	const nativeRefs = new Map<string, NativeSessionRef>();
 
@@ -92,16 +134,30 @@ export function createSessionStore(): SessionStore {
 
 	function create(
 		gateway: string,
+		adapter: string,
 		config: SessionConfig,
 		nativeRef: NativeSessionRef | null,
 	): Session {
 		const inner = ensureGatewayMap(gateway);
+		const id = generateSessionId();
+		const createdAt = nowIso();
+		// Record session-meta to ocas FIRST. If validation/IO fails, the
+		// in-memory session is never created — the caller propagates a 500.
+		const metaHash = recordPayload(ocas.store, ocas.sessionMetaSchemaHash, {
+			id,
+			gateway,
+			adapter,
+			createdAt,
+			config,
+		});
 		const session: Session = {
-			id: generateSessionId(),
+			id,
 			gateway,
 			status: "idle",
-			createdAt: nowIso(),
+			createdAt,
 			config,
+			metaHash,
+			turnHashes: [],
 		};
 		inner.set(session.id, session);
 		if (nativeRef !== null) {
@@ -124,6 +180,12 @@ export function createSessionStore(): SessionStore {
 
 	function getNativeRef(gateway: string, id: string): NativeSessionRef | null {
 		return nativeRefs.get(refKey(gateway, id)) ?? null;
+	}
+
+	function appendTurnHash(gateway: string, id: string, hash: Hash): void {
+		const session = get(gateway, id);
+		if (session === null) return;
+		session.turnHashes.push(hash);
 	}
 
 	function close(
@@ -179,6 +241,7 @@ export function createSessionStore(): SessionStore {
 		list,
 		get,
 		getNativeRef,
+		appendTurnHash,
 		close,
 		activeCount,
 		tryActivate,

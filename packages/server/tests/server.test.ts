@@ -1,6 +1,13 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StartedServer } from "../src/index.js";
 import { startServer } from "../src/index.js";
+
+function tmpOcasDir(): string {
+	return mkdtempSync(join(tmpdir(), "sumeru-ocas-"));
+}
 
 describe("@sumeru/server — instance endpoint", () => {
 	let server: StartedServer;
@@ -13,6 +20,11 @@ describe("@sumeru/server — instance endpoint", () => {
 			name: "sumeru",
 			version: "0.1.0",
 			gateways: {},
+			adapters: null,
+			sseHeartbeatMs: null,
+			sseBufferSize: null,
+			sseRetentionMs: null,
+			ocasDir: tmpOcasDir(),
 		});
 		baseUrl = `http://${server.host}:${server.port}`;
 	});
@@ -85,6 +97,11 @@ describe("@sumeru/server — startServer", () => {
 			name: "sumeru",
 			version: "0.1.0",
 			gateways: {},
+			adapters: null,
+			sseHeartbeatMs: null,
+			sseBufferSize: null,
+			sseRetentionMs: null,
+			ocasDir: tmpOcasDir(),
 		});
 		try {
 			expect(s.port).toBeGreaterThan(0);
@@ -101,6 +118,11 @@ describe("@sumeru/server — startServer", () => {
 			name: "sumeru",
 			version: "0.1.0",
 			gateways: {},
+			adapters: null,
+			sseHeartbeatMs: null,
+			sseBufferSize: null,
+			sseRetentionMs: null,
+			ocasDir: tmpOcasDir(),
 		});
 		try {
 			await expect(
@@ -110,6 +132,11 @@ describe("@sumeru/server — startServer", () => {
 					name: "sumeru",
 					version: "0.1.0",
 					gateways: {},
+					adapters: null,
+					sseHeartbeatMs: null,
+					sseBufferSize: null,
+					sseRetentionMs: null,
+					ocasDir: tmpOcasDir(),
 				}),
 			).rejects.toThrow();
 		} finally {

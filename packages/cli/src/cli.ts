@@ -66,6 +66,10 @@ program
 	.option("-p, --port <number>", "TCP port to bind (0 = ephemeral)", "7900")
 	.option("-h, --host <host>", "Bind address", "127.0.0.1")
 	.option("-c, --config <path>", "Path to sumeru.yaml configuration file")
+	.option(
+		"--ocas-dir <path>",
+		"Directory for the ocas content-addressed store (default: $SUMERU_OCAS_DIR or ~/.sumeru/ocas)",
+	)
 	.action(async (opts) => {
 		const port = Number.parseInt(opts.port, 10);
 		if (Number.isNaN(port) || port < 0) {
@@ -73,6 +77,10 @@ program
 			process.exit(1);
 		}
 		const host = String(opts.host);
+		const ocasDir =
+			typeof opts.ocasDir === "string" && opts.ocasDir.length > 0
+				? opts.ocasDir
+				: null;
 
 		// Load config (if any) BEFORE binding a port — we want to fail loudly
 		// on bad config without leaving a half-started listener around.
@@ -102,6 +110,7 @@ program
 				sseHeartbeatMs: null,
 				sseBufferSize: null,
 				sseRetentionMs: null,
+				ocasDir,
 			});
 			console.log(`Listening on http://${server.host}:${server.port}`);
 

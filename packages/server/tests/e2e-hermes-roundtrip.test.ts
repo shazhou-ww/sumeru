@@ -9,10 +9,17 @@
  * equality, to absorb minor model variance.
  */
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createHermesAdapter } from "@sumeru/adapter-hermes";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { GatewayConfig, StartedServer } from "../src/index.js";
 import { startServer } from "../src/index.js";
+
+function tmpOcasDir(): string {
+	return mkdtempSync(join(tmpdir(), "sumeru-ocas-"));
+}
 
 const RUN = process.env.SUMERU_HERMES_INTEGRATION === "1";
 
@@ -92,6 +99,7 @@ describe("e2e: hermes roundtrip (real hermes binary)", () => {
 			sseHeartbeatMs: null,
 			sseBufferSize: null,
 			sseRetentionMs: null,
+			ocasDir: tmpOcasDir(),
 		});
 		baseUrl = `http://${server.host}:${server.port}`;
 	}, 30_000);

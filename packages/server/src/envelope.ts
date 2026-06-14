@@ -3,8 +3,8 @@ import type {
 	ErrorValue,
 	Gateway,
 	Instance,
-	Session,
 	SessionListEntry,
+	SessionWire,
 } from "./types.js";
 
 /** Wrap a value in the ocas envelope shape. */
@@ -32,7 +32,7 @@ export function gatewayEnvelope(gateway: Gateway): Envelope<Gateway> {
  * `POST /gateways/:name/sessions` (201) and
  * `GET  /gateways/:name/sessions/:id` (200).
  */
-export function sessionEnvelope(session: Session): Envelope<Session> {
+export function sessionEnvelope(session: SessionWire): Envelope<SessionWire> {
 	return envelope("@sumeru/session", session);
 }
 
