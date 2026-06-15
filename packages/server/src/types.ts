@@ -130,6 +130,13 @@ export type GatewayConfig = {
 /** Parsed `sumeru.yaml`. Order of `gateways` keys is preserved. */
 export type InstanceConfig = {
 	name: string;
+	/**
+	 * Optional workspace root for the instance. When set, per-session
+	 * `config.cwd` is resolved against this path and confined within it.
+	 * Empty string in YAML folds to `null`. See `resolveSessionCwd` for the
+	 * full resolution policy.
+	 */
+	workspaceRoot: string | null;
 	gateways: Record<string, GatewayConfig>;
 };
 
@@ -213,6 +220,13 @@ export type ServerConfig = {
 	version: string;
 	gateways: Record<string, GatewayConfig>;
 	/**
+	 * Optional instance workspace root. Per-session `config.cwd` is resolved
+	 * against this value before being forwarded to the adapter. `null` means
+	 * "no workspace configured" — clients must then send absolute `cwd`
+	 * values (or omit `cwd` entirely).
+	 */
+	workspaceRoot: string | null;
+	/**
 	 * Adapter registry, keyed by adapter name (e.g. "hermes"). Adapters not
 	 * present here render their gateway as `status: "unavailable"`.
 	 */
@@ -234,6 +248,11 @@ export type StartConfig = {
 	name: string;
 	version: string;
 	gateways: Record<string, GatewayConfig>;
+	/**
+	 * Optional instance workspace root. Forwarded to `ServerConfig`.
+	 * `null` disables workspace-relative cwd resolution.
+	 */
+	workspaceRoot: string | null;
 	/** Optional adapter registry. Default: `{}` (all gateways unavailable). */
 	adapters: Record<string, Adapter> | null;
 	/** Optional SSE heartbeat interval (ms). */

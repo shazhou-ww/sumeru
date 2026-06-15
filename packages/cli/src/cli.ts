@@ -84,6 +84,7 @@ program
 		// on bad config without leaving a half-started listener around.
 		let name = "sumeru";
 		let gateways: Record<string, GatewayConfig> = {};
+		let workspaceRoot: string | null = null;
 		if (typeof opts.config === "string" && opts.config.length > 0) {
 			let cfg: InstanceConfig;
 			try {
@@ -95,6 +96,7 @@ program
 			}
 			name = cfg.name;
 			gateways = cfg.gateways;
+			workspaceRoot = cfg.workspaceRoot;
 		}
 
 		try {
@@ -104,6 +106,7 @@ program
 				name,
 				version: findVersion(),
 				gateways,
+				workspaceRoot,
 				adapters: {
 					hermes: createHermesAdapter({}),
 					"claude-code": createClaudeCodeAdapter({}),

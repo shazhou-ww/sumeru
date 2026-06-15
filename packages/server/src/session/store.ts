@@ -38,12 +38,18 @@ export type SessionStore = {
 	 * Create a new session on `gateway`. The id is generated server-side.
 	 * Writes the corresponding `@sumeru/session-meta` node to ocas BEFORE
 	 * the in-memory session is registered. Throws if the meta-write fails.
+	 *
+	 * `resolvedCwd` is the absolute path produced by `resolveSessionCwd`
+	 * (issue #27) — the value the server already forwarded to the adapter
+	 * under `config.cwd`. `null` means no cwd hint was supplied. The opaque
+	 * `config` blob is preserved verbatim and is NOT mutated here.
 	 */
 	create: (
 		gateway: string,
 		adapter: string,
 		config: SessionConfig,
 		nativeRef: NativeSessionRef | null,
+		resolvedCwd: string | null,
 	) => Session;
 	/** List sessions on a gateway in insertion order (chronological). */
 	list: (gateway: string) => Session[];
@@ -137,6 +143,7 @@ export function createSessionStore(ocas: OcasConfig): SessionStore {
 		adapter: string,
 		config: SessionConfig,
 		nativeRef: NativeSessionRef | null,
+		resolvedCwd: string | null,
 	): Session {
 		const inner = ensureGatewayMap(gateway);
 		const id = generateSessionId();
@@ -149,6 +156,7 @@ export function createSessionStore(ocas: OcasConfig): SessionStore {
 			adapter,
 			createdAt,
 			config,
+			resolvedCwd,
 		});
 		// Phase 5: seed the search index. Failures here do NOT roll back the
 		// ocas write — the index can always be rebuilt from the meta node.

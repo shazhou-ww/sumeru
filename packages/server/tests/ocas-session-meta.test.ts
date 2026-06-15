@@ -44,6 +44,7 @@ async function startTest(): Promise<{
 		name: "test",
 		version: "0.0.0",
 		gateways: HERMES_GATEWAY,
+		workspaceRoot: null,
 		adapters: { hermes: stub.adapter },
 		sseHeartbeatMs: null,
 		sseBufferSize: null,
@@ -102,6 +103,7 @@ describe("Phase 4 — session-meta recording on create/close", () => {
 			adapter: "hermes",
 			createdAt: body.value.createdAt,
 			config: { model: "x" },
+			resolvedCwd: null,
 		};
 		// Putting the payload again under the same schema MUST be a no-op
 		// (deterministic hashing → already-stored).

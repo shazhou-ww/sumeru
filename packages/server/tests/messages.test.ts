@@ -53,6 +53,7 @@ async function startTest(
 		name: "sumeru@test",
 		version: "0.1.0",
 		gateways: HERMES_GATEWAY,
+		workspaceRoot: null,
 		adapters: { hermes: adapter.adapter },
 		sseHeartbeatMs: overrides?.sseHeartbeatMs ?? null,
 		sseBufferSize: overrides?.sseBufferSize ?? null,

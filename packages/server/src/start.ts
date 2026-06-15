@@ -44,6 +44,7 @@ export async function startServer(config: StartConfig): Promise<StartedServer> {
 		name: config.name,
 		version: config.version,
 		gateways: config.gateways,
+		workspaceRoot: config.workspaceRoot,
 		adapters: config.adapters ?? {},
 		sseHeartbeatMs: config.sseHeartbeatMs ?? 15_000,
 		sseBufferSize: config.sseBufferSize ?? 1024,

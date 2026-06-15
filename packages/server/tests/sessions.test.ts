@@ -55,6 +55,7 @@ async function startTestServer(): Promise<{
 		name: "sumeru@neko",
 		version: "0.1.0",
 		gateways: TWO_GATEWAYS,
+		workspaceRoot: null,
 		adapters: {
 			hermes: hermes.adapter,
 			"claude-code": claude.adapter,

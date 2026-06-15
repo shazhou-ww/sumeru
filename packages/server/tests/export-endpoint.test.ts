@@ -99,6 +99,7 @@ async function startTest(): Promise<{
 		name: "sumeru@test",
 		version: "0.1.0",
 		gateways: TWO_GATEWAYS,
+		workspaceRoot: null,
 		adapters: {
 			hermes: hermes.adapter,
 			"claude-code": claude.adapter,
@@ -660,6 +661,7 @@ describe("@sumeru/server — export endpoint (no-adapter scenarios)", () => {
 			name: "sumeru@test",
 			version: "0.1.0",
 			gateways: TWO_GATEWAYS,
+			workspaceRoot: null,
 			adapters: { hermes: wrapped, "claude-code": stub.adapter },
 			sseHeartbeatMs: 60_000,
 			sseBufferSize: null,
@@ -698,6 +700,7 @@ describe("@sumeru/server — export endpoint (cleanup-on-disconnect)", () => {
 			name: "sumeru@test",
 			version: "0.1.0",
 			gateways: TWO_GATEWAYS,
+			workspaceRoot: null,
 			adapters: {
 				hermes: hermes.adapter,
 				"claude-code": claude.adapter,
@@ -745,6 +748,7 @@ describe("@sumeru/server — export endpoint (file size sanity)", () => {
 			name: "sumeru@test",
 			version: "0.1.0",
 			gateways: TWO_GATEWAYS,
+			workspaceRoot: null,
 			adapters: {
 				hermes: hermes.adapter,
 				"claude-code": claude.adapter,

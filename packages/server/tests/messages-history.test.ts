@@ -47,6 +47,7 @@ async function startTest(): Promise<TestCtx> {
 		name: "test",
 		version: "0.0.0",
 		gateways: HERMES_GATEWAY,
+		workspaceRoot: null,
 		adapters: { hermes: stub.adapter },
 		sseHeartbeatMs: null,
 		sseBufferSize: null,

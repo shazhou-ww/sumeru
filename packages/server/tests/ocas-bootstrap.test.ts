@@ -128,6 +128,7 @@ describe("startServer — wiring the ocas store", () => {
 					capabilities: { resume: true, streaming: false },
 				},
 			},
+			workspaceRoot: null,
 			adapters: { hermes: stub.adapter },
 			sseHeartbeatMs: null,
 			sseBufferSize: null,

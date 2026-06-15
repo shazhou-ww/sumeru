@@ -12,19 +12,30 @@ import type { JSONSchema } from "@ocas/core";
  * `@sumeru/session-meta` — per-session metadata snapshot, written once at
  * session create. `additionalProperties: false` forces opaque adapter config
  * to live inside the `config` field rather than at the top level.
+ *
+ * `resolvedCwd` (issue #27) records the absolute path that Sumeru actually
+ * forwarded to the adapter under the well-known `config.cwd` key, AFTER
+ * `resolveSessionCwd` resolved it against the instance `workspaceRoot`. It is
+ * `null` when the client did not send `config.cwd` (no cwd hint), and a
+ * non-empty string otherwise. The original opaque `config` blob is preserved
+ * verbatim so `config.cwd` (if present) and `resolvedCwd` together describe
+ * the request → resolution mapping.
  */
 export const SUMERU_SESSION_META_SCHEMA: JSONSchema = {
 	title: "@sumeru/session-meta",
 	description: "Per-session metadata snapshot. Written once at session create.",
 	type: "object",
 	additionalProperties: false,
-	required: ["id", "gateway", "adapter", "createdAt", "config"],
+	required: ["id", "gateway", "adapter", "createdAt", "config", "resolvedCwd"],
 	properties: {
 		id: { type: "string", pattern: "^ses_[0-9A-HJKMNP-TV-Z]{26}$" },
 		gateway: { type: "string", minLength: 1 },
 		adapter: { type: "string", minLength: 1 },
 		createdAt: { type: "string", format: "date-time" },
 		config: { type: "object" },
+		resolvedCwd: {
+			anyOf: [{ type: "null" }, { type: "string", minLength: 1 }],
+		},
 	},
 };
 

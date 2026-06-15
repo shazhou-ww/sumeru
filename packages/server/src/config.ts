@@ -61,6 +61,8 @@ function validateConfig(doc: unknown, path: string): InstanceConfig {
 		);
 	}
 
+	const workspaceRoot = validateWorkspaceRoot(obj.workspaceRoot, path);
+
 	const gatewaysRaw = obj.gateways;
 	const gateways: Record<string, GatewayConfig> = {};
 	if (gatewaysRaw !== undefined && gatewaysRaw !== null) {
@@ -78,7 +80,28 @@ function validateConfig(doc: unknown, path: string): InstanceConfig {
 		}
 	}
 
-	return { name, gateways };
+	return { name, workspaceRoot, gateways };
+}
+
+/**
+ * Validate the optional top-level `workspaceRoot` field.
+ *
+ * Absent / undefined / null → `null`. Empty string → `null` (treated as
+ * "operator did not configure one"). Non-empty string → returned verbatim
+ * (no path resolution at this layer). Any other type → throws with the
+ * field name and source path.
+ */
+function validateWorkspaceRoot(raw: unknown, path: string): string | null {
+	if (raw === undefined || raw === null) return null;
+	if (typeof raw !== "string") {
+		throw new Error(
+			`Config ${path} field "workspaceRoot" must be a string (got ${describeShape(
+				raw,
+			)})`,
+		);
+	}
+	if (raw.length === 0) return null;
+	return raw;
 }
 
 function validateGatewayEntry(

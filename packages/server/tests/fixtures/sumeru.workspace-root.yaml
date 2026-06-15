@@ -1,0 +1,15 @@
+name: sumeru@test
+workspaceRoot: /tmp/sumeru-test-workspace
+
+gateways:
+  hermes:
+    adapter: hermes
+    capabilities:
+      resume: true
+      streaming: true
+
+  claude-code:
+    adapter: claude-code
+    capabilities:
+      resume: true
+      streaming: false

@@ -95,6 +95,7 @@ describe("e2e: hermes roundtrip (real hermes binary)", () => {
 			host: "127.0.0.1",
 			port: 0,
 			gateways,
+			workspaceRoot: null,
 			adapters: { hermes: createHermesAdapter({}) },
 			sseHeartbeatMs: null,
 			sseBufferSize: null,

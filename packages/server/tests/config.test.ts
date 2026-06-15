@@ -12,6 +12,7 @@ describe("loadConfig — valid input", () => {
 		const cfg = await loadConfig(fixturePath("sumeru.valid.yaml"));
 		expect(cfg).toEqual({
 			name: "sumeru@neko",
+			workspaceRoot: null,
 			gateways: {
 				hermes: {
 					adapter: "hermes",
@@ -47,6 +48,37 @@ describe("loadConfig — valid input", () => {
 		const cfg = await loadConfig(fixturePath("sumeru.no-gateways.yaml"));
 		expect(cfg.name).toBe("sumeru@empty");
 		expect(cfg.gateways).toEqual({});
+	});
+});
+
+describe("loadConfig — workspaceRoot (issue #27)", () => {
+	it("yields workspaceRoot=null when the field is absent", async () => {
+		const cfg = await loadConfig(fixturePath("sumeru.valid.yaml"));
+		expect(cfg.workspaceRoot).toBeNull();
+		// Original keys preserved.
+		expect(cfg.name).toBe("sumeru@neko");
+		expect(Object.keys(cfg.gateways)).toEqual(["hermes", "claude-code"]);
+	});
+
+	it("parses a non-empty workspaceRoot verbatim (no resolution)", async () => {
+		const cfg = await loadConfig(fixturePath("sumeru.workspace-root.yaml"));
+		expect(cfg.workspaceRoot).toBe("/tmp/sumeru-test-workspace");
+		expect(cfg.name).toBe("sumeru@test");
+		expect(Object.keys(cfg.gateways).sort()).toEqual(["claude-code", "hermes"]);
+	});
+
+	it("folds an empty-string workspaceRoot to null", async () => {
+		const cfg = await loadConfig(
+			fixturePath("sumeru.workspace-root-empty.yaml"),
+		);
+		expect(cfg.workspaceRoot).toBeNull();
+	});
+
+	it("rejects when workspaceRoot is the wrong type", async () => {
+		const path = fixturePath("sumeru.workspace-root-not-string.yaml");
+		await expect(loadConfig(path)).rejects.toThrow(/workspaceRoot/);
+		await expect(loadConfig(path)).rejects.toThrow(path);
+		await expect(loadConfig(path)).rejects.toThrow(/string/);
 	});
 });
 

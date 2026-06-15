@@ -34,6 +34,8 @@ export type { SessionStore, TransitionResult } from "./session/index.js";
 export {
 	createSessionStore,
 	generateSessionId,
+	type ResolveCwdResult,
+	resolveSessionCwd,
 } from "./session/index.js";
 export { toWire } from "./session/store.js";
 export { resolveOcasDir, startServer } from "./start.js";
