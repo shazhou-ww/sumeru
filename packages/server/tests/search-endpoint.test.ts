@@ -105,6 +105,7 @@ async function startTest(): Promise<{
 		name: "sumeru@test",
 		version: "0.1.0",
 		gateways: TWO_GATEWAYS,
+		workspaceRoot: null,
 		adapters: {
 			hermes: hermes.stub.adapter,
 			"claude-code": claude.stub.adapter,

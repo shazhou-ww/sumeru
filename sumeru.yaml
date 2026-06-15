@@ -1,5 +1,10 @@
 name: sumeru@neko
 
+# Optional: instance workspace root. When set, per-session `config.cwd`
+# values are resolved against this path (and confined within it). Omit
+# or set to "" to disable — clients must then send absolute `cwd`s.
+# workspaceRoot: /home/azureuser/repos
+
 gateways:
   hermes:
     adapter: hermes

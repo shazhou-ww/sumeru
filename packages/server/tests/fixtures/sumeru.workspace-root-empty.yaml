@@ -1,0 +1,9 @@
+name: sumeru@test
+workspaceRoot: ""
+
+gateways:
+  hermes:
+    adapter: hermes
+    capabilities:
+      resume: true
+      streaming: true

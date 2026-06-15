@@ -32,7 +32,7 @@ describe("createSessionStore — basic CRUD", () => {
 
 	it("creates a session with idle status and per-gateway scoping", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
 		expect(a.gateway).toBe("hermes");
 		expect(a.status).toBe("idle");
 		expect(a.id).toMatch(/^ses_[0-9A-HJKMNP-TV-Z]{26}$/);
@@ -52,7 +52,7 @@ describe("createSessionStore — basic CRUD", () => {
 			weirdAdapterField: 42,
 			nested: { foo: [1, 2, 3] },
 		};
-		const s = store.create("hermes", "hermes", cfg, null);
+		const s = store.create("hermes", "hermes", cfg, null, null);
 		expect(s.config).toEqual(cfg);
 		// Same reference → mutation safety is the caller's responsibility, but
 		// the stored object is the same one passed in (no normalization).
@@ -61,9 +61,9 @@ describe("createSessionStore — basic CRUD", () => {
 
 	it("lists sessions in insertion order, scoped per gateway", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
-		const b = store.create("hermes", "hermes", { model: "x" }, null);
-		const d = store.create("claude-code", "claude-code", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
+		const b = store.create("hermes", "hermes", { model: "x" }, null, null);
+		const d = store.create("claude-code", "claude-code", {}, null, null);
 
 		const hermes = store.list("hermes");
 		expect(hermes.map((s) => s.id)).toEqual([a.id, b.id]);
@@ -78,7 +78,7 @@ describe("createSessionStore — basic CRUD", () => {
 
 	it("close() flips the status to closed and is idempotent", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
 		expect(store.close("hermes", a.id)).toBe("closed");
 		const after = store.get("hermes", a.id);
 		expect(after?.status).toBe("closed");
@@ -93,7 +93,7 @@ describe("createSessionStore — basic CRUD", () => {
 
 	it("closed sessions stay queryable in list and get", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", { model: "x" }, null);
+		const a = store.create("hermes", "hermes", { model: "x" }, null, null);
 		store.close("hermes", a.id);
 		const list = store.list("hermes");
 		expect(list).toHaveLength(1);
@@ -105,8 +105,8 @@ describe("createSessionStore — basic CRUD", () => {
 	it("activeCount excludes closed sessions", () => {
 		const store = createSessionStore(ocas);
 		expect(store.activeCount("hermes")).toBe(0);
-		const a = store.create("hermes", "hermes", {}, null);
-		const b = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
+		const b = store.create("hermes", "hermes", {}, null, null);
 		expect(store.activeCount("hermes")).toBe(2);
 		store.close("hermes", a.id);
 		expect(store.activeCount("hermes")).toBe(1);
@@ -116,7 +116,13 @@ describe("createSessionStore — basic CRUD", () => {
 
 	it("create() writes a session-meta node to ocas with a non-empty hash", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", { model: "sonnet-4.5" }, null);
+		const a = store.create(
+			"hermes",
+			"hermes",
+			{ model: "sonnet-4.5" },
+			null,
+			null,
+		);
 		expect(typeof a.metaHash).toBe("string");
 		expect(a.metaHash).toMatch(/^[0-9A-HJKMNP-TV-Z]{13}$/);
 		// The node must be retrievable from ocas
@@ -126,7 +132,7 @@ describe("createSessionStore — basic CRUD", () => {
 
 	it("appendTurnHash grows the session's internal turnHashes array", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
 		expect(a.turnHashes).toEqual([]);
 		store.appendTurnHash("hermes", a.id, "ABC0123456789");
 		store.appendTurnHash("hermes", a.id, "DEF0123456789");
@@ -144,7 +150,7 @@ describe("createSessionStore — state-machine helpers", () => {
 
 	it("tryActivate(idle) → ok, marks active", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
 		const r = store.tryActivate("hermes", a.id);
 		expect(r.ok).toBe(true);
 		if (r.ok) expect(r.session.status).toBe("active");
@@ -152,7 +158,7 @@ describe("createSessionStore — state-machine helpers", () => {
 
 	it("tryActivate(active) → busy (the future 409 path)", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
 		store.tryActivate("hermes", a.id);
 		const r = store.tryActivate("hermes", a.id);
 		expect(r).toEqual({ ok: false, reason: "busy" });
@@ -160,7 +166,7 @@ describe("createSessionStore — state-machine helpers", () => {
 
 	it("tryActivate(closed) → closed", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
 		store.close("hermes", a.id);
 		const r = store.tryActivate("hermes", a.id);
 		expect(r).toEqual({ ok: false, reason: "closed" });
@@ -174,7 +180,7 @@ describe("createSessionStore — state-machine helpers", () => {
 
 	it("markIdle(active) → ok, flips to idle", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
 		store.tryActivate("hermes", a.id);
 		const r = store.markIdle("hermes", a.id);
 		expect(r.ok).toBe(true);
@@ -183,14 +189,14 @@ describe("createSessionStore — state-machine helpers", () => {
 
 	it("markIdle(idle) → not_active", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
 		const r = store.markIdle("hermes", a.id);
 		expect(r).toEqual({ ok: false, reason: "not_active" });
 	});
 
 	it("markIdle(closed) → not_active", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
 		store.close("hermes", a.id);
 		const r = store.markIdle("hermes", a.id);
 		expect(r).toEqual({ ok: false, reason: "not_active" });
@@ -198,7 +204,7 @@ describe("createSessionStore — state-machine helpers", () => {
 
 	it("close(active) is allowed (active → closed)", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
 		store.tryActivate("hermes", a.id);
 		expect(store.close("hermes", a.id)).toBe("closed");
 		expect(store.get("hermes", a.id)?.status).toBe("closed");
@@ -206,7 +212,7 @@ describe("createSessionStore — state-machine helpers", () => {
 
 	it("once closed, no transition reopens the session", () => {
 		const store = createSessionStore(ocas);
-		const a = store.create("hermes", "hermes", {}, null);
+		const a = store.create("hermes", "hermes", {}, null, null);
 		store.close("hermes", a.id);
 		expect(store.tryActivate("hermes", a.id)).toEqual({
 			ok: false,

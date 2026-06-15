@@ -43,6 +43,7 @@ async function startTest(): Promise<{
 		name: "test",
 		version: "0.0.0",
 		gateways: HERMES_GATEWAY,
+		workspaceRoot: null,
 		adapters: { hermes: stub.adapter },
 		sseHeartbeatMs: null,
 		sseBufferSize: null,
@@ -213,6 +214,7 @@ describe("GET /ocas/:hash — round-trip session meta", () => {
 			adapter: "hermes",
 			createdAt: body.value.createdAt,
 			config: { model: "x" },
+			resolvedCwd: null,
 		};
 		const hash = ocas.store.cas.put(ocas.sessionMetaSchemaHash, expected);
 		expect(hash).toMatch(HASH_RE);

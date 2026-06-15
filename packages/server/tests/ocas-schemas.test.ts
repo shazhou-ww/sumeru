@@ -33,6 +33,7 @@ describe("ocas schemas — byte stability + hash determinism", () => {
 			"adapter",
 			"createdAt",
 			"config",
+			"resolvedCwd",
 		]);
 		expect(SUMERU_SESSION_META_SCHEMA.additionalProperties).toBe(false);
 	});
@@ -150,6 +151,7 @@ describe("ocas session-meta schema — payload validation", () => {
 				adapter: "hermes",
 				createdAt: "2024-01-01T00:00:00.000Z",
 				config: {},
+				resolvedCwd: null,
 			}),
 		).not.toThrow();
 	});
@@ -163,6 +165,7 @@ describe("ocas session-meta schema — payload validation", () => {
 				adapter: "hermes",
 				createdAt: "2024-01-01T00:00:00.000Z",
 				config: {},
+				resolvedCwd: null,
 				status: "closed",
 			}),
 		).toThrow(SchemaValidationError);
@@ -176,8 +179,36 @@ describe("ocas session-meta schema — payload validation", () => {
 				gateway: "hermes",
 				createdAt: "2024-01-01T00:00:00.000Z",
 				config: {},
+				resolvedCwd: null,
 			}),
 		).toThrow(SchemaValidationError);
+	});
+
+	it("rejects a meta missing the resolvedCwd field", () => {
+		const ocas = openSumeruOcas(tmpOcasDir());
+		expect(() =>
+			validatePayload(ocas.store, ocas.sessionMetaSchemaHash, {
+				id: "ses_01HKQQRABCDEF0123456789ZZZ",
+				gateway: "hermes",
+				adapter: "hermes",
+				createdAt: "2024-01-01T00:00:00.000Z",
+				config: {},
+			}),
+		).toThrow(SchemaValidationError);
+	});
+
+	it("accepts a meta with a non-empty resolvedCwd string", () => {
+		const ocas = openSumeruOcas(tmpOcasDir());
+		expect(() =>
+			validatePayload(ocas.store, ocas.sessionMetaSchemaHash, {
+				id: "ses_01HKQQRABCDEF0123456789ZZZ",
+				gateway: "hermes",
+				adapter: "hermes",
+				createdAt: "2024-01-01T00:00:00.000Z",
+				config: { cwd: "project-a" },
+				resolvedCwd: "/tmp/sumeru-ws/project-a",
+			}),
+		).not.toThrow();
 	});
 
 	it("recordPayload writes a valid meta and returns a 13-char hash", () => {
@@ -188,6 +219,7 @@ describe("ocas session-meta schema — payload validation", () => {
 			adapter: "hermes",
 			createdAt: "2024-01-01T00:00:00.000Z",
 			config: { model: "x" },
+			resolvedCwd: null,
 		});
 		expect(hash).toMatch(HASH_RE);
 		expect(ocas.store.cas.has(hash)).toBe(true);

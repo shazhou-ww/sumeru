@@ -15,6 +15,7 @@ import {
 	handleSearchTopLevel,
 	isSearchRequest,
 } from "./search/index.js";
+import { resolveSessionCwd } from "./session/cwd.js";
 import { createSessionStore, type SessionStore } from "./session/index.js";
 import { toWire } from "./session/store.js";
 import {
@@ -405,6 +406,19 @@ async function handleSessionsCollection(
 			);
 			return;
 		}
+		// Resolve `config.cwd` against the instance workspaceRoot BEFORE
+		// invoking the adapter. The adapter sees the resolved absolute path
+		// (or no `cwd` key at all when null). The original opaque blob is
+		// preserved verbatim on the wire envelope and the in-memory session.
+		const userConfig = configResult.value;
+		const cwdResolution = resolveSessionCwd(
+			config.workspaceRoot,
+			(userConfig as Record<string, unknown>).cwd,
+		);
+		if (!cwdResolution.ok) {
+			writeJson(res, 400, errorEnvelope("invalid_cwd", cwdResolution.message));
+			return;
+		}
 		const adapter = adapters[gatewayCfg.adapter];
 		if (adapter === undefined) {
 			writeJson(
@@ -417,9 +431,10 @@ async function handleSessionsCollection(
 			);
 			return;
 		}
+		const forwardedConfig = buildForwardedConfig(userConfig, cwdResolution.cwd);
 		let nativeRef: Awaited<ReturnType<typeof adapter.createSession>>;
 		try {
-			nativeRef = await adapter.createSession(configResult.value);
+			nativeRef = await adapter.createSession(forwardedConfig);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			const isTimeout = /timed out/i.test(msg);
@@ -438,8 +453,9 @@ async function handleSessionsCollection(
 			session = sessions.create(
 				gatewayName,
 				gatewayCfg.adapter,
-				configResult.value,
+				userConfig,
 				nativeRef,
+				cwdResolution.cwd,
 			);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
@@ -901,4 +917,25 @@ function extractConfig(body: Record<string, unknown>): ConfigResult {
 		};
 	}
 	return { ok: true, value: raw as SessionConfig };
+}
+
+/**
+ * Build the opaque config blob the adapter will see.
+ *
+ * The user-supplied `cwd` (if any) is replaced with the server-resolved
+ * absolute path. When `resolvedCwd` is `null` (no cwd hint), the `cwd` key is
+ * removed entirely so adapters can fall back to their constructor / process
+ * default. All other keys round-trip untouched.
+ */
+function buildForwardedConfig(
+	original: SessionConfig,
+	resolvedCwd: string | null,
+): SessionConfig {
+	const out: Record<string, unknown> = { ...original };
+	if (resolvedCwd === null) {
+		delete out.cwd;
+	} else {
+		out.cwd = resolvedCwd;
+	}
+	return out as SessionConfig;
 }
