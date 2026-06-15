@@ -87,6 +87,7 @@ describe("e2e: hermes roundtrip (real hermes binary)", () => {
 			hermes: {
 				adapter: "hermes",
 				capabilities: { resume: true, streaming: false },
+				config: null,
 			},
 		};
 		server = await startServer({

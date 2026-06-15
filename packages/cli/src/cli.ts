@@ -2,8 +2,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createClaudeCodeAdapter } from "@sumeru/adapter-claude-code";
-import { createHermesAdapter } from "@sumeru/adapter-hermes";
 import {
 	type GatewayConfig,
 	type InstanceConfig,
@@ -11,6 +9,7 @@ import {
 	startServer,
 } from "@sumeru/server";
 import { Command } from "commander";
+import { buildAdapters } from "./build-adapters.js";
 
 function findVersion(): string {
 	let dir = dirname(fileURLToPath(import.meta.url));
@@ -107,10 +106,7 @@ program
 				version: findVersion(),
 				gateways,
 				workspaceRoot,
-				adapters: {
-					hermes: createHermesAdapter({}),
-					"claude-code": createClaudeCodeAdapter({}),
-				},
+				adapters: buildAdapters(gateways),
 				sseHeartbeatMs: null,
 				sseBufferSize: null,
 				sseRetentionMs: null,

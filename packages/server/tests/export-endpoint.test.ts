@@ -27,10 +27,12 @@ const TWO_GATEWAYS: Record<string, GatewayConfig> = {
 	hermes: {
 		adapter: "hermes",
 		capabilities: { resume: true, streaming: true },
+		config: null,
 	},
 	"claude-code": {
 		adapter: "claude-code",
 		capabilities: { resume: true, streaming: false },
+		config: null,
 	},
 };
 

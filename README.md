@@ -102,6 +102,31 @@ POST /gateways/:name/sessions/:id/export → tar.gz 导出
 | `@sumeru/adapter-hermes` | Adapter for Hermes Agent |
 | `@sumeru/cli` | CLI tool (`sumeru start`) |
 
+## Configuration
+
+Each `gateways.<name>` entry supports an optional `config:` block. The block
+is forwarded verbatim to the adapter factory at boot — the YAML loader does
+not validate keys against any adapter's schema, so adapter-specific options
+pass through. Example: raise the claude-code adapter's `send` timeout from
+the 30-minute default to 1 hour for very long tasks:
+
+```yaml
+gateways:
+  claude-code:
+    adapter: claude-code
+    config:
+      sendTimeoutMs: 3600000          # 1 h (default 30 min)
+      createSessionTimeoutMs: 300000  # 5 min (default 5 min)
+      maxTurns: 120                   # default 90
+    capabilities:
+      resume: true
+      streaming: true
+```
+
+Omit `config:` entirely (or set it to `null` / `{}`) to keep the adapter's
+built-in defaults. Unknown keys are passed through but ignored by the
+adapter; non-mapping values (numbers, arrays) are rejected at load time.
+
 ## Development
 
 ```bash

@@ -24,6 +24,7 @@ const HERMES_GATEWAY: Record<string, GatewayConfig> = {
 	hermes: {
 		adapter: "hermes",
 		capabilities: { resume: true, streaming: false },
+		config: null,
 	},
 };
 

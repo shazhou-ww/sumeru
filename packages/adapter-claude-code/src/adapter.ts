@@ -41,7 +41,16 @@ import type {
 const DEFAULT_CLAUDE_BIN = "claude";
 const DEFAULT_MAX_TURNS = 90;
 const DEFAULT_CREATE_TIMEOUT_MS = 5 * 60_000;
-const DEFAULT_SEND_TIMEOUT_MS = 10 * 60_000;
+/**
+ * Default `send` timeout — 30 minutes.
+ *
+ * Raised from 10 minutes (issue #32) so long-running solve-issue developer
+ * runs do not get killed mid-execution. Operators may further override via
+ * the `gateways.<name>.config.sendTimeoutMs` field in `sumeru.yaml`. 30 min
+ * balances "long enough for typical CC tasks" against "short enough to
+ * detect a wedged process".
+ */
+const DEFAULT_SEND_TIMEOUT_MS = 30 * 60_000;
 const STDERR_TRUNCATE_LIMIT = 500;
 const NOT_LOGGED_IN_MESSAGE =
 	"claude code is not logged in. Run `claude login` first.";
