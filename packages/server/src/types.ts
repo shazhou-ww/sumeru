@@ -125,6 +125,15 @@ export type GatewayCapabilities = {
 export type GatewayConfig = {
 	adapter: string;
 	capabilities: GatewayCapabilities;
+	/**
+	 * Adapter-specific options blob. Forwarded verbatim to the adapter
+	 * factory at boot via the CLI (see `cli-pass-gateway-config.md`).
+	 * `null` when absent in YAML — never `undefined`.
+	 *
+	 * The server does NOT validate or normalize this value; each adapter
+	 * validates its own option keys.
+	 */
+	config: Record<string, unknown> | null;
 };
 
 /** Parsed `sumeru.yaml`. Order of `gateways` keys is preserved. */

@@ -133,7 +133,37 @@ function validateGatewayEntry(
 	}
 	const capabilities = validateCapabilities(capsRaw, key, path);
 
-	return { adapter, capabilities };
+	const config = validateGatewayConfigBlob(obj.config, key, path);
+
+	return { adapter, capabilities, config };
+}
+
+/**
+ * Validate the optional adapter-specific `config:` blob on a gateway entry.
+ *
+ * Absent / undefined → `null`. Explicit `null` → `null`. Mapping (object) →
+ * passed through verbatim with no key validation. Anything else (number,
+ * string, boolean, array) → throws with the path / gateway / field name and
+ * the actual shape.
+ *
+ * The contents of a mapping are NOT validated here — each adapter validates
+ * its own option keys at construction time. See
+ * `specs/config-load-gateway-config-blob.md`.
+ */
+function validateGatewayConfigBlob(
+	raw: unknown,
+	key: string,
+	path: string,
+): Record<string, unknown> | null {
+	if (raw === undefined || raw === null) return null;
+	if (typeof raw !== "object" || Array.isArray(raw)) {
+		throw new Error(
+			`Config ${path} gateway "${key}" field "config" must be a mapping (got ${describeShape(
+				raw,
+			)})`,
+		);
+	}
+	return raw as Record<string, unknown>;
 }
 
 function validateCapabilities(

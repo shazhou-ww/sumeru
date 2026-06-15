@@ -28,7 +28,7 @@ export type ClaudeCodeAdapterOptions = {
 	cwd: string | null;
 	/** Default 5-minute timeout for `createSession`. */
 	createSessionTimeoutMs: number | null;
-	/** Default 10-minute timeout for `send` (CC sessions can be long). */
+	/** Default 30-minute timeout for `send` (raised from 10 min by issue #32 — CC sessions can be long). */
 	sendTimeoutMs: number | null;
 	/**
 	 * Test-only override for `child_process.spawn`. Production code never

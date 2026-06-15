@@ -14,6 +14,13 @@ gateways:
 
   claude-code:
     adapter: claude-code
+    # Per-gateway adapter options. Forwarded verbatim to the adapter factory
+    # at boot. See `specs/adapter-claude-code-timeout-config.md`. The defaults
+    # below cover long-running solve-issue runs; trim them for short tasks.
+    config:
+      sendTimeoutMs: 1800000        # 30 min — kill a wedged `claude` send
+      createSessionTimeoutMs: 300000 # 5 min — kill a stuck initial spawn
+      maxTurns: 120
     capabilities:
       resume: true
       streaming: true

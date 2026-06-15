@@ -17,10 +17,12 @@ describe("loadConfig — valid input", () => {
 				hermes: {
 					adapter: "hermes",
 					capabilities: { resume: true, streaming: true },
+					config: null,
 				},
 				"claude-code": {
 					adapter: "claude-code",
 					capabilities: { resume: true, streaming: false },
+					config: null,
 				},
 			},
 		});
@@ -37,6 +39,7 @@ describe("loadConfig — valid input", () => {
 		expect(cfg.gateways.hermes).toEqual({
 			adapter: "hermes",
 			capabilities: { resume: true, streaming: true },
+			config: null,
 		});
 		// Unknown gateway field "foo" must NOT appear in the parsed entry.
 		expect(

@@ -126,6 +126,7 @@ describe("startServer — wiring the ocas store", () => {
 				hermes: {
 					adapter: "hermes",
 					capabilities: { resume: true, streaming: false },
+					config: null,
 				},
 			},
 			workspaceRoot: null,

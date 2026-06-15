@@ -1,0 +1,12 @@
+name: sumeru@neko
+
+gateways:
+  hermes:
+    adapter: hermes
+    config:
+      - 1
+      - 2
+      - 3
+    capabilities:
+      resume: true
+      streaming: true
