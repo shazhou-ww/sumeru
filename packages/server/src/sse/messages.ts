@@ -585,6 +585,11 @@ function writeSseHeaders(res: ServerResponse): void {
 	res.setHeader("Cache-Control", "no-cache, no-transform");
 	res.setHeader("Connection", "keep-alive");
 	res.setHeader("X-Accel-Buffering", "no");
+	// Disable Nagle's algorithm so each res.write() flushes immediately.
+	// Without this, SSE events (heartbeats, turns, done) are buffered by
+	// the TCP stack and never reach the client — the broker's consumeSse
+	// blocks on reader.read() forever. Fixes #30.
+	res.socket?.setNoDelay(true);
 	res.flushHeaders?.();
 }
 
