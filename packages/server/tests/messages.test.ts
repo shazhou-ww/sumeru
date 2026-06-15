@@ -486,4 +486,80 @@ describe("@sumeru/server — POST /gateways/:name/sessions/:id/messages (SSE)", 
 		},
 		90_000,
 	);
+
+	// Regression: SSE events must be flushed to the client immediately —
+	// heartbeats must arrive WHILE the adapter is still running, not
+	// buffered until after res.end(). Fixes #30.
+	it("flushes heartbeats to client while adapter is running (no TCP buffering)", async () => {
+		// Adapter takes 600ms to respond; heartbeat interval is 100ms.
+		// We expect at least 2 heartbeats to arrive BEFORE the adapter
+		// returns — proving they were flushed incrementally.
+		const stub = makeStubAdapter({
+			name: "hermes",
+			sendDelayMs: 600,
+		});
+		const { server, baseUrl } = await startTest(stub, {
+			sseHeartbeatMs: 100,
+		});
+
+		const sessionId = await createSession(baseUrl);
+
+		// Use a streaming reader instead of res.text() — we need to
+		// observe chunks arriving incrementally, not after the stream ends.
+		const res = await fetch(
+			`${baseUrl}/gateways/hermes/sessions/${sessionId}/messages`,
+			{
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					accept: "text/event-stream",
+				},
+				body: JSON.stringify({ content: "hello" }),
+			},
+		);
+		expect(res.status).toBe(200);
+		expect(res.body).not.toBeNull();
+
+		const reader = res.body!.getReader();
+		const decoder = new TextDecoder();
+		let accumulated = "";
+		let heartbeatsSeen = 0;
+		let doneEventSeen = false;
+		const deadline = Date.now() + 3000;
+
+		while (Date.now() < deadline) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			accumulated += decoder.decode(value, { stream: true });
+
+			// Count complete SSE events in accumulated text so far
+			const records = accumulated
+				.split("\n\n")
+				.filter((r) => r.trim().length > 0);
+			heartbeatsSeen = 0;
+			doneEventSeen = false;
+			for (const record of records) {
+				if (
+					record.includes("event: heartbeat") ||
+					record.includes("event:heartbeat")
+				) {
+					heartbeatsSeen += 1;
+				}
+				if (record.includes("event: done") || record.includes("event:done")) {
+					doneEventSeen = true;
+				}
+			}
+
+			if (doneEventSeen) break;
+		}
+
+		await reader.cancel().catch(() => {});
+		await server.stop();
+
+		// With 600ms adapter delay and 100ms heartbeat interval, we expect
+		// at least 2 heartbeats to have arrived before the done event.
+		// If setNoDelay is missing, 0 heartbeats arrive (all buffered).
+		expect(heartbeatsSeen).toBeGreaterThanOrEqual(2);
+		expect(doneEventSeen).toBe(true);
+	}, 10_000);
 });
