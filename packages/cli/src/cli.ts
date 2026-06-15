@@ -10,6 +10,14 @@ import {
 } from "@sumeru/server";
 import { Command } from "commander";
 import { buildAdapters } from "./build-adapters.js";
+import {
+	isProcessAlive,
+	readPidFile,
+	removePidFile,
+	resolvePidFilePath,
+	writePidFile,
+} from "./pid-file.js";
+import { formatPortInUse, killHolder, lookupPortHolder } from "./port-check.js";
 
 function findVersion(): string {
 	let dir = dirname(fileURLToPath(import.meta.url));
@@ -67,6 +75,10 @@ program
 		"--ocas-dir <path>",
 		"Directory for the ocas content-addressed store (default: $SUMERU_OCAS_DIR or ~/.sumeru/ocas)",
 	)
+	.option(
+		"--force",
+		"Kill any process holding the chosen port before binding (sends SIGTERM, then SIGKILL after 2s)",
+	)
 	.action(async (opts) => {
 		const port = Number.parseInt(opts.port, 10);
 		if (Number.isNaN(port) || port < 0) {
@@ -74,6 +86,7 @@ program
 			process.exit(1);
 		}
 		const host = String(opts.host);
+		const force = Boolean(opts.force);
 		const ocasDir =
 			typeof opts.ocasDir === "string" && opts.ocasDir.length > 0
 				? opts.ocasDir
@@ -98,43 +111,105 @@ program
 			workspaceRoot = cfg.workspaceRoot;
 		}
 
+		// --- PID file lifecycle (issue #33) ---
+		const pidFilePath = resolvePidFilePath();
+		const existingPid = readPidFile(pidFilePath);
+		if (existingPid !== null) {
+			if (isProcessAlive(existingPid)) {
+				if (force) {
+					try {
+						await killHolder(existingPid, port, host);
+						console.error(
+							`[sumeru] killed pid ${existingPid} from stale pid file`,
+						);
+					} catch (err) {
+						const msg = err instanceof Error ? err.message : String(err);
+						console.error(`Failed to kill pid ${existingPid}: ${msg}`);
+						process.exit(1);
+					}
+				} else {
+					console.error(
+						`Another sumeru appears to be running (pid ${existingPid}, recorded in ${pidFilePath}).\n  Stop it first, or run \`sumeru start … --force\` to terminate it.`,
+					);
+					process.exit(1);
+				}
+			} else {
+				console.error(
+					`[sumeru] removing stale pid file (pid ${existingPid} not running)`,
+				);
+				// fall through; writePidFile below will overwrite.
+			}
+		}
+
 		try {
-			const server = await startServer({
+			writePidFile(pidFilePath, process.pid);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			console.error(`[sumeru] could not write pid file ${pidFilePath}: ${msg}`);
+			// Best-effort — continue startup.
+		}
+
+		try {
+			const server = await startServerWithRetry({
 				port,
 				host,
 				name,
 				version: findVersion(),
 				gateways,
 				workspaceRoot,
-				adapters: buildAdapters(gateways),
-				sseHeartbeatMs: null,
-				sseBufferSize: null,
-				sseRetentionMs: null,
 				ocasDir,
+				force,
 			});
 			console.log(`Listening on http://${server.host}:${server.port}`);
 
-			const shutdown = async (): Promise<void> => {
+			let shuttingDown = false;
+			const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+				if (shuttingDown) {
+					// Second signal — escape hatch for a hung shutdown.
+					const code = signal === "SIGINT" ? 130 : 143;
+					process.exit(code);
+				}
+				shuttingDown = true;
+				console.error(`[sumeru] shutting down (${signal})...`);
 				try {
 					await server.stop();
+					try {
+						removePidFile(pidFilePath);
+					} catch (err) {
+						const msg = err instanceof Error ? err.message : String(err);
+						console.error(`[sumeru] could not remove pid file: ${msg}`);
+					}
 					process.exit(0);
 				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
-					console.error(`Failed to stop server: ${msg}`);
+					console.error(`[sumeru] failed to stop server: ${msg}`);
+					try {
+						removePidFile(pidFilePath);
+					} catch {
+						/* ignore on the failure path */
+					}
 					process.exit(1);
 				}
 			};
-			process.on("SIGINT", shutdown);
-			process.on("SIGTERM", shutdown);
+			process.on("SIGINT", () => {
+				void shutdown("SIGINT");
+			});
+			process.on("SIGTERM", () => {
+				void shutdown("SIGTERM");
+			});
 		} catch (err) {
+			try {
+				removePidFile(pidFilePath);
+			} catch {
+				/* best effort on the error path */
+			}
 			const code =
 				err instanceof Error && "code" in err
 					? (err as { code: unknown }).code
 					: null;
 			if (code === "EADDRINUSE") {
-				console.error(
-					`Port ${port} is already in use on ${host}. Choose a different --port or stop the conflicting process.`,
-				);
+				const holder = await lookupPortHolder(host, port);
+				console.error(formatPortInUse({ host, port, holder }));
 			} else {
 				const msg = err instanceof Error ? err.message : String(err);
 				console.error(`Failed to start server: ${msg}`);
@@ -142,5 +217,73 @@ program
 			process.exit(1);
 		}
 	});
+
+type StartArgs = {
+	port: number;
+	host: string;
+	name: string;
+	version: string;
+	gateways: Record<string, GatewayConfig>;
+	workspaceRoot: string | null;
+	ocasDir: string | null;
+	force: boolean;
+};
+
+async function startServerWithRetry(
+	args: StartArgs,
+): Promise<Awaited<ReturnType<typeof startServer>>> {
+	try {
+		return await startServer({
+			port: args.port,
+			host: args.host,
+			name: args.name,
+			version: args.version,
+			gateways: args.gateways,
+			workspaceRoot: args.workspaceRoot,
+			adapters: buildAdapters(args.gateways),
+			sseHeartbeatMs: null,
+			sseBufferSize: null,
+			sseRetentionMs: null,
+			ocasDir: args.ocasDir,
+		});
+	} catch (err) {
+		const code =
+			err instanceof Error && "code" in err
+				? (err as { code: unknown }).code
+				: null;
+		if (code !== "EADDRINUSE" || !args.force) throw err;
+
+		const holder = await lookupPortHolder(args.host, args.port);
+		if (holder === null) {
+			// Cannot identify holder — propagate the original error so the
+			// generic diagnostic kicks in.
+			throw err;
+		}
+		try {
+			await killHolder(holder.pid, args.port, args.host);
+		} catch (killErr) {
+			const msg = killErr instanceof Error ? killErr.message : String(killErr);
+			console.error(`Failed to kill pid ${holder.pid}: ${msg}`);
+			process.exit(1);
+		}
+		console.error(
+			`[sumeru] killed pid ${holder.pid} holding port ${args.port}`,
+		);
+		// Retry the bind once.
+		return startServer({
+			port: args.port,
+			host: args.host,
+			name: args.name,
+			version: args.version,
+			gateways: args.gateways,
+			workspaceRoot: args.workspaceRoot,
+			adapters: buildAdapters(args.gateways),
+			sseHeartbeatMs: null,
+			sseBufferSize: null,
+			sseRetentionMs: null,
+			ocasDir: args.ocasDir,
+		});
+	}
+}
 
 program.parse();
