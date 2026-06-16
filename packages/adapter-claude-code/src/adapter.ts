@@ -96,6 +96,17 @@ export function createClaudeCodeAdapter(
 			"--output-format",
 			"stream-json",
 			"--verbose",
+			// TODO(permission-suspend): `--dangerously-skip-permissions` is a
+			// TEMPORARY measure. It bypasses ALL of Claude Code's permission
+			// checks so unattended uwf/Sumeru runs don't deadlock on a prompt.
+			// The intended replacement: run CC with
+			//   `--input-format stream-json --output-format stream-json --include-hook-events`
+			// catch the permission-request hook event on the stream, and instead
+			// of auto-approving, propagate it UP as a uwf `$SUSPEND` so a human
+			// supervisor can approve/deny via `uwf thread resume`. This is a
+			// cross-layer change (CC hook → Sumeru SSE → agent-sumeru → uwf step
+			// boundary) — see cards/adapter-claude-code.md "Permission Handling".
+			// Until then: only run this adapter in trusted, sandboxed cwds.
 			"--dangerously-skip-permissions",
 			"--max-turns",
 			String(maxTurns),
