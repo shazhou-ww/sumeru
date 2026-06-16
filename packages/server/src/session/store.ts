@@ -138,6 +138,84 @@ export function createSessionStore(ocas: OcasConfig): SessionStore {
 		return `${gateway}\u0000${id}`;
 	}
 
+	/**
+	 * Phase 6 (Refs #399): rebuild `byGateway` from disk BEFORE serving any
+	 * request, so a restarted process recovers previously-recorded sessions
+	 * and their ordered turn-list pointers. Reads:
+	 *   1. every `sumeru_session_index` row (ordered by `created_at ASC`), and
+	 *   2. the per-session turn hashes in one bulk query.
+	 * `config` is recovered from the immutable `@sumeru/session-meta` node at
+	 * `metaHash`; a missing/unreadable meta node falls back to `config: {}`
+	 * with a structured warning. `nativeRef` is intentionally NOT restored —
+	 * a rehydrated session is read-complete but not resumable for new sends.
+	 */
+	function rehydrate(): void {
+		let sessionCount = 0;
+		let turnCount = 0;
+		let rows: ReturnType<typeof ocas.searchIndex.loadSessionRows>;
+		let turnsBySession: Map<string, Hash[]>;
+		try {
+			rows = ocas.searchIndex.loadSessionRows();
+			turnsBySession = ocas.searchIndex.loadSessionTurnsBulk();
+		} catch (err) {
+			const cause = err instanceof Error ? err.message : String(err);
+			console.warn(`[sumeru] session rehydrate failed: ${cause}`);
+			return;
+		}
+		for (const row of rows) {
+			const inner = ensureGatewayMap(row.gateway);
+			const config = recoverConfig(row.sessionId, row.metaHash);
+			const turnHashes = turnsBySession.get(row.sessionId) ?? [];
+			const session: Session = {
+				id: row.sessionId,
+				gateway: row.gateway,
+				status: row.status,
+				createdAt: row.createdAt,
+				config,
+				metaHash: row.metaHash ?? "",
+				turnHashes: [...turnHashes],
+			};
+			inner.set(session.id, session);
+			sessionCount += 1;
+			turnCount += turnHashes.length;
+		}
+		if (sessionCount > 0) {
+			console.log(
+				`[sumeru] rehydrated ${sessionCount} sessions, ${turnCount} turns`,
+			);
+		}
+	}
+
+	/**
+	 * Read a session's opaque `config` from its immutable `@sumeru/session-meta`
+	 * node. Falls back to `{}` (with a warning) when `metaHash` is `null` or the
+	 * node is missing/malformed — turn history is the priority, not config.
+	 */
+	function recoverConfig(
+		sessionId: string,
+		metaHash: Hash | null,
+	): SessionConfig {
+		if (metaHash === null) {
+			console.warn(
+				`[sumeru] session ${sessionId} has no meta_hash; config falls back to {}`,
+			);
+			return {};
+		}
+		const node = ocas.store.cas.get(metaHash);
+		if (node === null) {
+			console.warn(
+				`[sumeru] session ${sessionId} meta node ${metaHash} missing; config falls back to {}`,
+			);
+			return {};
+		}
+		const payload = node.payload as { config?: unknown };
+		const config = payload.config;
+		if (config === undefined || config === null || typeof config !== "object") {
+			return {};
+		}
+		return config as SessionConfig;
+	}
+
 	function create(
 		gateway: string,
 		adapter: string,
@@ -160,12 +238,15 @@ export function createSessionStore(ocas: OcasConfig): SessionStore {
 		});
 		// Phase 5: seed the search index. Failures here do NOT roll back the
 		// ocas write — the index can always be rebuilt from the meta node.
+		// Phase 6 (Refs #399): persist `metaHash` so a restart can re-read
+		// `config` from the immutable `@sumeru/session-meta` node.
 		try {
 			ocas.searchIndex.indexSessionMeta({
 				sessionId: id,
 				gateway,
 				adapter,
 				createdAt,
+				metaHash,
 			});
 		} catch (err) {
 			const cause = err instanceof Error ? err.message : String(err);
@@ -206,6 +287,14 @@ export function createSessionStore(ocas: OcasConfig): SessionStore {
 	function appendTurnHash(gateway: string, id: string, hash: Hash): void {
 		const session = get(gateway, id);
 		if (session === null) return;
+		// Phase 6 (Refs #399): persist the list pointer BEFORE mutating memory
+		// so disk never lags behind memory. `turn_index` is the 0-based append
+		// position (the array length before the push). The write is idempotent
+		// on (session_id, turn_index); a persistence failure propagates so the
+		// caller's existing error handling (sse/messages.ts) can react — we do
+		// NOT silently diverge memory from disk.
+		const turnIndex = session.turnHashes.length;
+		ocas.searchIndex.appendSessionTurn(session.id, turnIndex, hash);
 		session.turnHashes.push(hash);
 	}
 
@@ -260,6 +349,10 @@ export function createSessionStore(ocas: OcasConfig): SessionStore {
 		session.status = "idle";
 		return { ok: true, session };
 	}
+
+	// Phase 6 (Refs #399): recover persisted sessions + turn-list pointers from
+	// disk before the store serves any request.
+	rehydrate();
 
 	return {
 		create,

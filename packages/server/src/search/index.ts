@@ -12,6 +12,7 @@ export {
 } from "./sqlite-index.js";
 export type {
 	IndexTurnInput,
+	PersistedSessionRow,
 	SearchHit,
 	SearchIndex,
 	SearchOptions,
