@@ -27,6 +27,36 @@ export type SearchIndex = {
 	indexTurn: (input: IndexTurnInput) => void;
 	/** Update `sumeru_session_index.status` for a session. Best-effort. */
 	markSessionClosed: (sessionId: string) => void;
+	/**
+	 * Phase 6 (Refs #399): persist one durable row in `sumeru_session_turns`
+	 * recording `(session_id, turn_index, turn_hash)`. Idempotent on
+	 * `(session_id, turn_index)` (`ON CONFLICT DO NOTHING`). This is the
+	 * canonical turn-list pointer the session store rehydrates from on boot;
+	 * it is NOT touched by `rebuild`.
+	 */
+	appendSessionTurn: (
+		sessionId: string,
+		turnIndex: number,
+		turnHash: Hash,
+	) => void;
+	/**
+	 * Phase 6 (Refs #399): read one session's ordered turn hashes from
+	 * `sumeru_session_turns`, ordered by `turn_index ASC`. Returns `[]` for an
+	 * unknown session.
+	 */
+	listSessionTurns: (sessionId: string) => Hash[];
+	/**
+	 * Phase 6 (Refs #399): bulk-load every session's ordered turn hashes in a
+	 * single query, grouped by `session_id` and ordered by `turn_index ASC`.
+	 * Used at store construction so rehydration is O(1) queries.
+	 */
+	loadSessionTurnsBulk: () => Map<string, Hash[]>;
+	/**
+	 * Phase 6 (Refs #399): read every persisted session row from
+	 * `sumeru_session_index` (ordered by `created_at ASC`) so the store can
+	 * rebuild its in-memory maps on boot.
+	 */
+	loadSessionRows: () => PersistedSessionRow[];
 	/** Run a search and return aggregated session-granularity hits. */
 	search: (opts: SearchOptions) => SearchResult;
 	/** Walk the ocas store and rebuild every index row from scratch. */
@@ -40,12 +70,34 @@ export type SearchIndex = {
 /**
  * Payload accepted by `indexSessionMeta`. Mirrors the public
  * `@sumeru/session-meta` schema with `status` defaulted to `idle`.
+ *
+ * Phase 6 (Refs #399): carries `metaHash` so the persisted
+ * `sumeru_session_index` row records the immutable `@sumeru/session-meta`
+ * node hash. On boot the store re-reads `config` from that node. `null` is
+ * accepted for callers/tests that have no meta node (the column is nullable).
  */
 export type SessionMetaInput = {
 	sessionId: string;
 	gateway: string;
 	adapter: string;
 	createdAt: string;
+	metaHash: Hash | null;
+};
+
+/**
+ * One row read back from `sumeru_session_index` at boot (Refs #399). Used by
+ * the session store to rebuild its in-memory maps. `metaHash` is `null` for
+ * rows that predate the `meta_hash` column.
+ */
+export type PersistedSessionRow = {
+	sessionId: string;
+	gateway: string;
+	adapter: string;
+	status: SessionStatus;
+	createdAt: string;
+	lastActiveAt: string;
+	turnCount: number;
+	metaHash: Hash | null;
 };
 
 /** Payload accepted by `indexTurn`. */

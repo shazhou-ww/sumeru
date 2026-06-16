@@ -67,6 +67,7 @@ GET /gateways/:name     → @sumeru/gateway  (单个 gateway 详情)
 ```
 POST   /gateways/:name/sessions          → 201 @sumeru/session (创建)
 GET    /gateways/:name/sessions/:id      → @sumeru/session     (查看)
+GET    /gateways/:name/sessions/:id/messages → @sumeru/message-history (历史)
 DELETE /gateways/:name/sessions/:id      → 204                 (关闭)
 ```
 
@@ -92,6 +93,18 @@ SSE 事件流：
 GET  /sessions?q=keyword&gateway=hermes  → FTS5 全文搜索
 POST /gateways/:name/sessions/:id/export → tar.gz 导出
 ```
+
+### 持久化 & 重启
+
+所有 turn 内容、session-meta，以及每个 session 的 **有序 turn 列表指针** 都落在
+`<ocasDir>/_store.db`（与 FTS5 索引同库）。server 重启后 `createSessionStore`
+会从盘上 rehydrate：之前记录过的 session 重新可见，`GET .../messages` 返回的历史
+与重启前完全一致（相同 total、相同 hash、相同顺序）。
+
+注意：adapter 侧的 `NativeSessionRef` 是运行时状态、不落盘——rehydrate 出来的
+session 历史可读但不可继续发新消息，`POST .../messages` 会返回
+`503 adapter_unavailable`。已关闭的 session 重启后仍为 `closed`；idle/active 统一
+恢复为 `idle`（重启不可能让一次发送悬在半途）。
 
 ## Packages
 

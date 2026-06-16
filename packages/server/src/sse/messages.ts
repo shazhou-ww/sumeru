@@ -318,7 +318,24 @@ export async function handleMessageEndpoint(
 		);
 		return;
 	}
-	sessions.appendTurnHash(gatewayName, sessionId, userHash);
+	// Phase 6 (Refs #399): persist the turn-list pointer. A failure here must
+	// not silently diverge memory from disk — fail fast with a clean 500 before
+	// the SSE stream starts (headers are written just below).
+	try {
+		sessions.appendTurnHash(gatewayName, sessionId, userHash);
+	} catch (err) {
+		sessions.markIdle(gatewayName, sessionId);
+		const cause = err instanceof Error ? err.message : String(err);
+		writeJson(
+			res,
+			500,
+			errorEnvelope(
+				"turn_persist_failed",
+				`Failed to persist turn list: ${truncate(cause, 500)}`,
+			),
+		);
+		return;
+	}
 
 	const buf = bufferStore.create(gatewayName, sessionId);
 	writeSseHeaders(res);
@@ -397,7 +414,20 @@ export async function handleMessageEndpoint(
 				};
 				break;
 			}
-			sessions.appendTurnHash(gatewayName, sessionId, hash);
+			// Phase 6 (Refs #399): persist the turn-list pointer for the
+			// assistant turn. A failure feeds the same in-stream error surface
+			// as a search-index failure (the durable ocas write already
+			// happened); the loop aborts rather than diverging memory/disk.
+			try {
+				sessions.appendTurnHash(gatewayName, sessionId, hash);
+			} catch (err) {
+				const cause = err instanceof Error ? err.message : String(err);
+				validationFailure = {
+					reason: "turn_persist_failed",
+					message: `Failed to persist turn list: ${truncate(cause, 500)}`,
+				};
+				break;
+			}
 			const wireTurn: Turn = { ...turn, hash };
 			const evt = appendEvent(
 				buf,

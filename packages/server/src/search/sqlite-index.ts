@@ -22,6 +22,7 @@ import type { CasNode, Hash } from "@ocas/core";
 import type { SessionStatus } from "../types.js";
 import type {
 	IndexTurnInput,
+	PersistedSessionRow,
 	SearchHit,
 	SearchIndex,
 	SearchOptions,
@@ -52,12 +53,25 @@ CREATE TABLE IF NOT EXISTS sumeru_session_index (
   status          TEXT NOT NULL,
   created_at      TEXT NOT NULL,
   last_active_at  TEXT NOT NULL,
-  turn_count      INTEGER NOT NULL DEFAULT 0
+  turn_count      INTEGER NOT NULL DEFAULT 0,
+  meta_hash       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_sumeru_session_index_gateway
   ON sumeru_session_index(gateway);
 CREATE INDEX IF NOT EXISTS idx_sumeru_session_index_last_active
   ON sumeru_session_index(last_active_at DESC);
+
+-- Phase 6 (Refs #399): durable, ordered, per-session turn-list pointer. This
+-- is the canonical list the session store rehydrates on boot. It is NOT owned
+-- by FTS and is never cleared by rebuild().
+CREATE TABLE IF NOT EXISTS sumeru_session_turns (
+  session_id  TEXT NOT NULL,
+  turn_index  INTEGER NOT NULL,
+  turn_hash   TEXT NOT NULL,
+  PRIMARY KEY (session_id, turn_index)
+);
+CREATE INDEX IF NOT EXISTS idx_sumeru_session_turns_session
+  ON sumeru_session_turns(session_id);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS sumeru_turn_fts USING fts5(
   content,
@@ -88,6 +102,7 @@ export function createSearchIndex(dbPath: string): SearchIndex {
 	try {
 		db.exec("BEGIN");
 		db.exec(SCHEMA_DDL);
+		migrateMetaHashColumn(db);
 		db.exec("COMMIT");
 	} catch (err) {
 		try {
@@ -101,8 +116,8 @@ export function createSearchIndex(dbPath: string): SearchIndex {
 
 	const insertSession = db.prepare(`
 		INSERT INTO sumeru_session_index
-			(session_id, gateway, adapter, status, created_at, last_active_at, turn_count)
-		VALUES (?, ?, ?, 'idle', ?, ?, 0)
+			(session_id, gateway, adapter, status, created_at, last_active_at, turn_count, meta_hash)
+		VALUES (?, ?, ?, 'idle', ?, ?, 0, ?)
 		ON CONFLICT(session_id) DO NOTHING
 	`);
 	const insertTurn = db.prepare(`
@@ -123,6 +138,29 @@ export function createSearchIndex(dbPath: string): SearchIndex {
 		 WHERE session_id = ?
 	`);
 	const countTurns = db.prepare(`SELECT COUNT(*) AS c FROM sumeru_turn_index`);
+	// Phase 6 (Refs #399): turn-list pointer statements.
+	const appendTurn = db.prepare(`
+		INSERT INTO sumeru_session_turns (session_id, turn_index, turn_hash)
+		VALUES (?, ?, ?)
+		ON CONFLICT(session_id, turn_index) DO NOTHING
+	`);
+	const selectTurnsForSession = db.prepare(`
+		SELECT turn_hash
+		  FROM sumeru_session_turns
+		 WHERE session_id = ?
+		 ORDER BY turn_index ASC
+	`);
+	const selectAllTurns = db.prepare(`
+		SELECT session_id, turn_hash
+		  FROM sumeru_session_turns
+		 ORDER BY session_id, turn_index ASC
+	`);
+	const selectAllSessions = db.prepare(`
+		SELECT session_id, gateway, adapter, status,
+		       created_at, last_active_at, turn_count, meta_hash
+		  FROM sumeru_session_index
+		 ORDER BY created_at ASC
+	`);
 
 	function indexSessionMeta(meta: SessionMetaInput): void {
 		insertSession.run(
@@ -131,7 +169,63 @@ export function createSearchIndex(dbPath: string): SearchIndex {
 			meta.adapter,
 			meta.createdAt,
 			meta.createdAt,
+			meta.metaHash,
 		);
+	}
+
+	function appendSessionTurn(
+		sessionId: string,
+		turnIndex: number,
+		turnHash: Hash,
+	): void {
+		appendTurn.run(sessionId, turnIndex, turnHash);
+	}
+
+	function listSessionTurns(sessionId: string): Hash[] {
+		const rows = selectTurnsForSession.all(sessionId) as Array<{
+			turn_hash: string;
+		}>;
+		return rows.map((r) => r.turn_hash as Hash);
+	}
+
+	function loadSessionTurnsBulk(): Map<string, Hash[]> {
+		const rows = selectAllTurns.all() as Array<{
+			session_id: string;
+			turn_hash: string;
+		}>;
+		const out = new Map<string, Hash[]>();
+		for (const row of rows) {
+			let list = out.get(row.session_id);
+			if (list === undefined) {
+				list = [];
+				out.set(row.session_id, list);
+			}
+			list.push(row.turn_hash as Hash);
+		}
+		return out;
+	}
+
+	function loadSessionRows(): PersistedSessionRow[] {
+		const rows = selectAllSessions.all() as Array<{
+			session_id: string;
+			gateway: string;
+			adapter: string;
+			status: string;
+			created_at: string;
+			last_active_at: string;
+			turn_count: number;
+			meta_hash: string | null;
+		}>;
+		return rows.map((r) => ({
+			sessionId: r.session_id,
+			gateway: r.gateway,
+			adapter: r.adapter,
+			status: normalizeStatus(r.status),
+			createdAt: r.created_at,
+			lastActiveAt: r.last_active_at,
+			turnCount: Number(r.turn_count ?? 0),
+			metaHash: r.meta_hash === null ? null : (r.meta_hash as Hash),
+		}));
 	}
 
 	function indexTurn(input: IndexTurnInput): void {
@@ -325,6 +419,10 @@ export function createSearchIndex(dbPath: string): SearchIndex {
 		indexSessionMeta,
 		indexTurn,
 		markSessionClosed,
+		appendSessionTurn,
+		listSessionTurns,
+		loadSessionTurnsBulk,
+		loadSessionRows,
 		search,
 		rebuild,
 		turnCount,
@@ -360,6 +458,7 @@ export function rebuildSearchIndex(
 			gateway: meta.gateway,
 			adapter: meta.adapter,
 			createdAt: meta.createdAt,
+			metaHash: root.metaHash,
 		});
 		for (let i = 0; i < root.turnHashes.length; i += 1) {
 			const turnHash = root.turnHashes[i];
@@ -415,6 +514,33 @@ function clamp(n: number, min: number, max: number): number {
 	if (n < min) return min;
 	if (n > max) return max;
 	return n;
+}
+
+/**
+ * Phase 6 (Refs #399): add the nullable `meta_hash` column to a pre-existing
+ * `sumeru_session_index` that predates it. SQLite has no
+ * `ADD COLUMN IF NOT EXISTS`, so we probe `PRAGMA table_info` first and only
+ * `ALTER` when the column is absent. Runs inside the open transaction; a no-op
+ * when the column already exists (fresh DBs already define it in the DDL).
+ */
+function migrateMetaHashColumn(db: DatabaseSync): void {
+	const cols = db
+		.prepare("PRAGMA table_info(sumeru_session_index)")
+		.all() as Array<{ name: string }>;
+	const hasMetaHash = cols.some((c) => c.name === "meta_hash");
+	if (!hasMetaHash) {
+		db.exec("ALTER TABLE sumeru_session_index ADD COLUMN meta_hash TEXT");
+	}
+}
+
+/**
+ * Normalize a persisted status column into a `SessionStatus` for rehydration.
+ * `closed` is preserved; everything else (idle, active, or any unexpected
+ * value) folds to `idle` — a process restart can never leave a send in flight,
+ * so `active` is a transient in-memory state that must not be restored.
+ */
+function normalizeStatus(raw: string): SessionStatus {
+	return raw === "closed" ? "closed" : "idle";
 }
 
 /** Open a SQLite handle, retrying on SQLITE_BUSY up to 3× with 50 ms backoff. */

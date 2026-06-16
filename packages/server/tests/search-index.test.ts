@@ -46,6 +46,7 @@ function seedSession(
 		gateway,
 		adapter: "stub",
 		createdAt,
+		metaHash: null,
 	});
 }
 
