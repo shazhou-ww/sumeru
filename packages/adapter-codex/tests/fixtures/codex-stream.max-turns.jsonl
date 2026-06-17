@@ -1,0 +1,4 @@
+{"type":"session.start","session_id":"codex-max-turns","model":"o3"}
+{"type":"user","role":"user","content":"Do something."}
+{"type":"assistant","role":"assistant","content":"I tried."}
+{"type":"result","subtype":"error_max_turns","session_id":"codex-max-turns","duration_ms":5000,"stop_reason":"max_turns","usage":{"input_tokens":200,"output_tokens":100}}

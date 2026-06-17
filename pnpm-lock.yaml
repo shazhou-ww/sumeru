@@ -30,6 +30,12 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/adapter-codex:
+    dependencies:
+      '@sumeru/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/adapter-cursor-agent:
     dependencies:
       '@sumeru/core':
@@ -47,6 +53,9 @@ importers:
       '@sumeru/adapter-claude-code':
         specifier: workspace:^
         version: link:../adapter-claude-code
+      '@sumeru/adapter-codex':
+        specifier: workspace:^
+        version: link:../adapter-codex
       '@sumeru/adapter-hermes':
         specifier: workspace:^
         version: link:../adapter-hermes

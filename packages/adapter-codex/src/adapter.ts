@@ -1,0 +1,372 @@
+/**
+ * Codex adapter — implements the `Adapter` contract from `@sumeru/core`
+ * by shelling out to `codex exec <prompt> --json
+ * --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check`
+ * for create/send and parsing the resulting JSONL stream into `Turn[]`.
+ *
+ * Codex supports session resume via `codex exec resume <id> <prompt>`.
+ * The adapter caches parsed turns in an in-memory `Map<string, Turn[]>`
+ * keyed by `nativeId` and is the sole authority on history for the
+ * lifetime of the adapter instance.
+ *
+ * The factory:
+ *   - createSession spawns `codex exec <initialQuery> --json ...` and
+ *     parses the JSONL stream for the session id.
+ *   - send spawns `codex exec resume <id> <prompt> --json ...` and rewrites
+ *     the per-run turn indices so they are globally monotonic across the
+ *     whole `nativeId` lifetime.
+ *   - close is a logical close — adds the nativeId to a per-instance Set;
+ *     no Codex-side notification, no cache eviction.
+ *   - getTurns returns a defensive copy of the in-memory cache.
+ */
+
+import type {
+	Adapter,
+	AgentResponse,
+	NativeSessionRef,
+	TokenUsage,
+	Turn,
+} from "@sumeru/core";
+import { defaultSpawn } from "./spawn.js";
+import { parseCodexJson } from "./stream-parser.js";
+import type {
+	CodexAdapterOptions,
+	CodexParsedResult,
+	SpawnFn,
+	SpawnResult,
+} from "./types.js";
+
+const DEFAULT_CODEX_BIN = "codex";
+const DEFAULT_CREATE_TIMEOUT_MS = 5 * 60_000;
+/**
+ * Default `send` timeout — 30 minutes.
+ *
+ * Consistent with adapter-claude-code. Operators may further override via
+ * the `gateways.<name>.config.sendTimeoutMs` field in `sumeru.yaml`.
+ */
+const DEFAULT_SEND_TIMEOUT_MS = 30 * 60_000;
+const STDERR_TRUNCATE_LIMIT = 500;
+const API_KEY_ERROR_MESSAGE =
+	"codex API key error. Check your OPENAI_API_KEY configuration.";
+const API_KEY_PATTERNS: readonly RegExp[] = [
+	/invalid api key/i,
+	/OPENAI_API_KEY/i,
+	/authentication/i,
+	/unauthorized/i,
+	/api.?key/i,
+];
+
+export function createCodexAdapter(
+	options: Partial<CodexAdapterOptions> = {},
+): Adapter {
+	const codexBin = options.codexBin ?? DEFAULT_CODEX_BIN;
+	const defaultModel = options.model ?? null;
+	const cwd = options.cwd ?? null;
+	const createSessionTimeoutMs =
+		options.createSessionTimeoutMs ?? DEFAULT_CREATE_TIMEOUT_MS;
+	const sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
+	const spawnFn: SpawnFn = options.spawnFn ?? defaultSpawn;
+	const dangerouslyBypassApprovals = options.dangerouslyBypassApprovals ?? true;
+	const skipGitRepoCheck = options.skipGitRepoCheck ?? true;
+
+	const turnsCache = new Map<string, Turn[]>();
+	const closedRefs = new Set<string>();
+	const sendLocks = new Map<string, Promise<unknown>>();
+
+	function resolveCwd(): string {
+		return cwd ?? process.cwd();
+	}
+
+	function buildArgs(
+		prompt: string,
+		resumeId: string | null,
+		model: string | null,
+		spawnCwd: string,
+	): string[] {
+		const args: string[] = ["exec"];
+
+		// Resume mode: `codex exec resume <id> "<prompt>"`
+		if (resumeId !== null) {
+			args.push("resume", resumeId);
+		}
+
+		// Add the prompt
+		args.push(prompt);
+
+		// Add --json for JSONL output
+		args.push("--json");
+
+		// Add permission bypass flags if enabled
+		if (dangerouslyBypassApprovals) {
+			args.push("--dangerously-bypass-approvals-and-sandbox");
+		}
+
+		if (skipGitRepoCheck) {
+			args.push("--skip-git-repo-check");
+		}
+
+		// Add working directory
+		args.push("-C", spawnCwd);
+
+		// Add model if specified
+		if (model !== null) {
+			args.push("-m", model);
+		}
+
+		return args;
+	}
+
+	async function withRefLock<T>(
+		nativeId: string,
+		fn: () => Promise<T>,
+	): Promise<T> {
+		const prev = sendLocks.get(nativeId) ?? Promise.resolve();
+		let release: () => void = () => {};
+		const next = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const chain = prev.then(() => next);
+		sendLocks.set(nativeId, chain);
+		try {
+			await prev;
+			return await fn();
+		} finally {
+			release();
+			if (sendLocks.get(nativeId) === chain) {
+				sendLocks.delete(nativeId);
+			}
+		}
+	}
+
+	async function runCodex(
+		prompt: string,
+		resumeId: string | null,
+		model: string | null,
+		timeoutMs: number,
+		spawnCwd: string,
+	): Promise<{ result: SpawnResult; parsed: CodexParsedResult | null }> {
+		const args = buildArgs(prompt, resumeId, model, spawnCwd);
+		const result = await spawnFn({
+			command: codexBin,
+			args,
+			timeoutMs,
+			cwd: spawnCwd,
+		}).catch((err) => {
+			const detail = err instanceof Error ? err.message : String(err);
+			throw new Error(`codex adapter failed to spawn '${codexBin}': ${detail}`);
+		});
+		const parsed = parseCodexJson(result.stdout);
+		return { result, parsed };
+	}
+
+	async function createSession(
+		config: Record<string, unknown>,
+	): Promise<NativeSessionRef> {
+		const initialQuery =
+			typeof config.initialQuery === "string" && config.initialQuery.length > 0
+				? config.initialQuery
+				: "ping";
+		const model =
+			typeof config.model === "string" && config.model.length > 0
+				? config.model
+				: defaultModel;
+		const spawnCwd = resolveCwd();
+
+		const { result, parsed } = await runCodex(
+			initialQuery,
+			null,
+			model,
+			createSessionTimeoutMs,
+			spawnCwd,
+		);
+
+		if (result.timedOut) {
+			throw new Error(
+				`createSession timed out after ${createSessionTimeoutMs}ms`,
+			);
+		}
+
+		if (parsed === null) {
+			throw makeUnparseableOrExitError(result, codexBin);
+		}
+
+		// Parsed but no session id — treat as unparseable.
+		if (parsed.sessionId === "") {
+			throw makeUnparseableOrExitError(result, codexBin);
+		}
+
+		// Adapter rewrites indices to be globally monotonic from 0.
+		const rewritten = rewriteIndices(parsed.turns, -1);
+		turnsCache.set(parsed.sessionId, rewritten);
+
+		const meta: Record<string, unknown> = {
+			cwd: spawnCwd,
+			model: parsed.model !== "" ? parsed.model : model,
+			createdAt: new Date().toISOString(),
+			subtype: parsed.subtype,
+		};
+		return { nativeId: parsed.sessionId, meta };
+	}
+
+	async function send(
+		ref: NativeSessionRef,
+		content: string,
+	): Promise<AgentResponse> {
+		assertRef(ref, "send");
+		if (closedRefs.has(ref.nativeId)) {
+			throw new Error(`codex session ${ref.nativeId} is closed`);
+		}
+		if (typeof content !== "string" || content.length === 0) {
+			throw new Error("send: content must be a non-empty string");
+		}
+
+		return withRefLock(ref.nativeId, async () => {
+			const before = turnsCache.get(ref.nativeId) ?? [];
+			const highWater =
+				before.length === 0
+					? -1
+					: before.reduce((m, t) => (t.index > m ? t.index : m), -1);
+
+			const refModel =
+				typeof ref.meta.model === "string" && ref.meta.model.length > 0
+					? ref.meta.model
+					: defaultModel;
+			const refCwd =
+				typeof ref.meta.cwd === "string" && ref.meta.cwd.length > 0
+					? ref.meta.cwd
+					: resolveCwd();
+
+			const startedAt = Date.now();
+			const { result, parsed } = await runCodex(
+				content,
+				ref.nativeId,
+				refModel,
+				sendTimeoutMs,
+				refCwd,
+			);
+
+			if (result.timedOut) {
+				throw new Error(`send timed out after ${sendTimeoutMs}ms`);
+			}
+
+			if (parsed === null) {
+				throw makeUnparseableOrExitError(result, codexBin, ref.nativeId);
+			}
+
+			// Rewrite indices to be globally monotonic across the nativeId's history.
+			const delta = rewriteIndices(parsed.turns, highWater);
+			const existing = turnsCache.get(ref.nativeId) ?? [];
+			turnsCache.set(ref.nativeId, [...existing, ...delta]);
+
+			const tokens = deriveTokens(parsed);
+			return {
+				turns: delta,
+				tokens,
+				durationMs: Date.now() - startedAt,
+			};
+		});
+	}
+
+	async function close(ref: NativeSessionRef): Promise<void> {
+		assertRef(ref, "close");
+		closedRefs.add(ref.nativeId);
+	}
+
+	async function getTurns(ref: NativeSessionRef): Promise<Turn[]> {
+		assertRef(ref, "getTurns");
+		const cached = turnsCache.get(ref.nativeId);
+		if (cached === undefined) return [];
+		return [...cached];
+	}
+
+	return {
+		name: "codex",
+		capabilities: { resume: true, streaming: false },
+		createSession,
+		send,
+		close,
+		getTurns,
+	};
+}
+
+function assertRef(
+	ref: NativeSessionRef | null | undefined,
+	op: "send" | "close" | "getTurns",
+): void {
+	if (
+		ref === null ||
+		ref === undefined ||
+		typeof ref !== "object" ||
+		typeof (ref as NativeSessionRef).nativeId !== "string" ||
+		(ref as NativeSessionRef).nativeId.length === 0
+	) {
+		throw new Error(`${op}: invalid NativeSessionRef`);
+	}
+}
+
+function rewriteIndices(turns: Turn[], highWater: number): Turn[] {
+	let nextIndex = highWater + 1;
+	return turns.map((turn) => ({
+		...turn,
+		index: nextIndex++,
+	}));
+}
+
+function deriveTokens(parsed: CodexParsedResult): TokenUsage | null {
+	const input = parsed.usage.inputTokens;
+	const output = parsed.usage.outputTokens;
+	if (input === 0 && output === 0 && parsed.subtype === "incomplete") {
+		return null;
+	}
+	return { input, output };
+}
+
+function makeUnparseableOrExitError(
+	result: SpawnResult,
+	codexBin: string,
+	nativeId: string | null = null,
+): Error {
+	const stderr = result.stderr ?? "";
+	const stdout = result.stdout ?? "";
+	const stderrTrimmed = stderr.trim();
+
+	// API key errors take precedence over generic exit errors.
+	for (const pattern of API_KEY_PATTERNS) {
+		if (pattern.test(stderrTrimmed)) {
+			const codeText =
+				result.exitCode === null ? "null" : String(result.exitCode);
+			return new Error(
+				`codex exited with code ${codeText}: ${API_KEY_ERROR_MESSAGE}`,
+			);
+		}
+	}
+
+	// Session-not-found heuristic for resume failures.
+	if (nativeId !== null && /not found|no such session/i.test(stderrTrimmed)) {
+		return new Error(
+			`codex session ${nativeId} not found: ${tail(stderrTrimmed, STDERR_TRUNCATE_LIMIT)}`,
+		);
+	}
+
+	if (result.exitCode !== null && result.exitCode !== 0) {
+		const codeText = String(result.exitCode);
+		const snippet =
+			stderrTrimmed === ""
+				? ""
+				: `: ${tail(stderrTrimmed, STDERR_TRUNCATE_LIMIT)}`;
+		return new Error(`codex exited with code ${codeText}${snippet}`);
+	}
+
+	// Unparseable but exit was 0 (or null) — generic parse error referencing
+	// codexBin so callers can debug a misconfigured PATH.
+	const head = stdout.slice(0, 500);
+	const stderrTail = tail(stderrTrimmed, STDERR_TRUNCATE_LIMIT);
+	return new Error(
+		`codex returned unparseable json output (bin=${codexBin}, first 500 chars: ${head}, stderr tail: ${stderrTail})`,
+	);
+}
+
+function tail(s: string, n: number): string {
+	if (s.length <= n) return s;
+	return s.slice(s.length - n);
+}
