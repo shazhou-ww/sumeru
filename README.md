@@ -166,6 +166,51 @@ uwf/broker (session 路由层)
 
 详细设计见 [specs/architecture.md](specs/architecture.md)。
 
+## 部署
+
+Sumeru 以 **systemd user service** 运行，与 `hermes-gateway.service` 完全解耦。
+gateway 重启不再影响 Sumeru。
+
+### 安装服务
+
+```bash
+# 1. 复制或符号链接 unit 文件
+mkdir -p ~/.config/systemd/user
+cp deploy/sumeru.service ~/.config/systemd/user/
+# 或使用符号链接（开发时方便更新）:
+# ln -s $(pwd)/deploy/sumeru.service ~/.config/systemd/user/
+
+# 2. 重载 systemd
+systemctl --user daemon-reload
+
+# 3. 启用并启动服务
+systemctl --user enable --now sumeru
+```
+
+### 查看日志
+
+```bash
+journalctl --user -u sumeru -f
+```
+
+### 重启服务
+
+```bash
+systemctl --user restart sumeru
+```
+
+### 查看状态
+
+```bash
+systemctl --user status sumeru
+```
+
+### 为什么是独立 service
+
+以前 Sumeru 作为 hermes-gateway 的子进程运行，gateway 重启时 systemd 会杀掉整个
+进程树 —— Sumeru 连带阵亡。改为独立 user service 后，Sumeru 有自己的进程树，
+gateway 重启对它毫无影响。
+
 ## Name
 
 > 须弥山 — 佛教宇宙观中的世界中心。一粒芥子里装一座须弥山 — 一个小小的 HTTP 服务里，容纳了整个 agent 世界。

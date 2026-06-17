@@ -1,0 +1,15 @@
+[Unit]
+Description=Sumeru Agent House
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/repos/sumeru
+ExecStart=/usr/bin/node packages/cli/dist/cli.js start --port 7900 --config sumeru.yaml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
