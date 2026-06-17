@@ -113,6 +113,8 @@ session 历史可读但不可继续发新消息，`POST .../messages` 会返回
 | `@sumeru/core` | Core type definitions (Adapter, Turn, Session types) |
 | `@sumeru/server` | HTTP service (Instance, Gateway, Session management) |
 | `@sumeru/adapter-hermes` | Adapter for Hermes Agent |
+| `@sumeru/adapter-claude-code` | Adapter for Claude Code CLI |
+| `@sumeru/adapter-cursor-agent` | Adapter for Cursor Agent CLI |
 | `@sumeru/cli` | CLI tool (`sumeru start`) |
 
 ## Configuration
