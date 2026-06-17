@@ -11,6 +11,8 @@ Monorepo with packages under `packages/`:
 | `@sumeru/core` | `packages/core` | Core type definitions (Adapter, Turn, Session types) |
 | `@sumeru/server` | `packages/server` | HTTP service (Instance, Gateway, Session management) |
 | `@sumeru/adapter-hermes` | `packages/adapter-hermes` | Adapter for Hermes Agent |
+| `@sumeru/adapter-claude-code` | `packages/adapter-claude-code` | Adapter for Claude Code CLI |
+| `@sumeru/adapter-cursor-agent` | `packages/adapter-cursor-agent` | Adapter for Cursor Agent CLI |
 | `@sumeru/cli` | `packages/cli` | CLI tool (`sumeru start`) |
 
 ## Core Concepts

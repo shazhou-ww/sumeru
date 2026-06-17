@@ -1,0 +1,9 @@
+{"type":"system","subtype":"init","session_id":"edit-session-001","model":"claude-sonnet-4","cwd":"/workspace","permissionMode":"force"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Create a hello.ts file"}]}}
+{"type":"thinking","subtype":"delta","content":"I need to create a file..."}
+{"type":"thinking","subtype":"completed","content":"I'll create a hello.ts file with a greeting."}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll create that file for you."}]}}
+{"type":"tool_call","subtype":"started","call_id":"call_edit_001","tool_call":{"editToolCall":{"args":{"filePath":"/workspace/hello.ts","content":"export const greeting = \"Hello, world!\";\n"}}},"model_call_id":"mc_001"}
+{"type":"tool_call","subtype":"completed","call_id":"call_edit_001","tool_call":{"editToolCall":{"result":{"content":"File created successfully"}}},"model_call_id":"mc_001"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done! I've created hello.ts with a greeting export."}]}}
+{"type":"result","subtype":"success","result":"Done! I've created hello.ts with a greeting export.","duration_ms":4567,"usage":{"inputTokens":300,"outputTokens":80,"cacheReadTokens":50,"cacheWriteTokens":10},"request_id":"req_002"}
