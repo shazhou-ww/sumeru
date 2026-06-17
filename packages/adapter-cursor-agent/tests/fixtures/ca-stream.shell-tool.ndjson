@@ -1,0 +1,7 @@
+{"type":"system","subtype":"init","session_id":"shell-session-001","model":"claude-sonnet-4","cwd":"/workspace","permissionMode":"force"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Run ls in the current directory"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll run ls for you."}]}}
+{"type":"tool_call","subtype":"started","call_id":"call_shell_001","tool_call":{"shellToolCall":{"args":{"command":"ls","args":["-la"]}}},"model_call_id":"mc_002"}
+{"type":"tool_call","subtype":"completed","call_id":"call_shell_001","tool_call":{"shellToolCall":{"result":{"stdout":"total 8\ndrwxr-xr-x 2 user user 4096 Jan 1 00:00 .\ndrwxr-xr-x 3 user user 4096 Jan 1 00:00 ..\n-rw-r--r-- 1 user user    0 Jan 1 00:00 hello.ts","exitCode":0}}},"model_call_id":"mc_002"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Here's the directory listing. I can see hello.ts is present."}]}}
+{"type":"result","subtype":"success","result":"Here's the directory listing. I can see hello.ts is present.","duration_ms":3210,"usage":{"inputTokens":200,"outputTokens":45,"cacheReadTokens":100,"cacheWriteTokens":0},"request_id":"req_003"}

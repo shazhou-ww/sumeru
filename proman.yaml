@@ -11,6 +11,10 @@ packages:
     path: packages/adapter-claude-code
     type: lib
 
+  - name: "@sumeru/adapter-cursor-agent"
+    path: packages/adapter-cursor-agent
+    type: lib
+
   - name: "@sumeru/server"
     path: packages/server
     type: lib
