@@ -1,0 +1,222 @@
+import { describe, expect, it } from "vitest";
+import { createCodexAdapter } from "../src/index.js";
+import { buildJsonl, fakeSpawn, loadFixture } from "./test-utils.js";
+
+describe("createCodexAdapter().createSession()", () => {
+	it("spawns codex with the expected argv and returns a NativeSessionRef", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: loadFixture("codex-stream.success.jsonl"),
+			exitCode: 0,
+		});
+		const adapter = createCodexAdapter({ spawnFn, model: null });
+		const ref = await adapter.createSession({
+			model: "o3",
+			initialQuery: "Say hi.",
+		});
+
+		expect(calls.length).toBe(1);
+		expect(calls[0]?.command).toBe("codex");
+		expect(calls[0]?.args).toEqual([
+			"exec",
+			"Say hi.",
+			"--json",
+			"--dangerously-bypass-approvals-and-sandbox",
+			"--skip-git-repo-check",
+			"-C",
+			process.cwd(),
+			"-m",
+			"o3",
+		]);
+		expect(ref.nativeId).toBe("codex-session-001");
+		expect(ref.meta.cwd).toBe(process.cwd());
+		expect(ref.meta.model).toBe("o3");
+		expect(ref.meta.subtype).toBe("success");
+		expect(typeof ref.meta.createdAt).toBe("string");
+	});
+
+	it("defaults initialQuery to 'ping' when missing or empty", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId: "sess-default" }),
+		});
+		const adapter = createCodexAdapter({ spawnFn });
+		await adapter.createSession({});
+		expect(calls[0]?.args[0]).toBe("exec");
+		expect(calls[0]?.args[1]).toBe("ping");
+
+		await adapter.createSession({ initialQuery: "" });
+		expect(calls[1]?.args[1]).toBe("ping");
+	});
+
+	it("does not pass -m when neither config nor constructor specify one", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId: "sess-no-model", model: "" }),
+		});
+		const adapter = createCodexAdapter({ spawnFn });
+		await adapter.createSession({});
+		expect(calls[0]?.args).not.toContain("-m");
+	});
+
+	it("uses constructor model when config does not provide one", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId: "sess-ctor-model" }),
+		});
+		const adapter = createCodexAdapter({
+			spawnFn,
+			model: "gpt-4o",
+		});
+		await adapter.createSession({});
+		expect(calls[0]?.args).toContain("-m");
+		const idx = calls[0]?.args.indexOf("-m") ?? -1;
+		expect(calls[0]?.args[idx + 1]).toBe("gpt-4o");
+	});
+
+	it("config.model overrides constructor.model", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId: "sess-config-model" }),
+		});
+		const adapter = createCodexAdapter({
+			spawnFn,
+			model: "ctor-model",
+		});
+		await adapter.createSession({ model: "config-model" });
+		const idx = calls[0]?.args.indexOf("-m") ?? -1;
+		expect(calls[0]?.args[idx + 1]).toBe("config-model");
+	});
+
+	it("populates the in-memory turn cache so getTurns returns >0 turns", async () => {
+		const { spawnFn } = fakeSpawn({
+			stdout: loadFixture("codex-stream.success.jsonl"),
+		});
+		const adapter = createCodexAdapter({ spawnFn });
+		const ref = await adapter.createSession({ initialQuery: "Say hi." });
+		const turns = await adapter.getTurns(ref);
+		expect(turns.length).toBeGreaterThan(0);
+		expect(turns[0]?.role).toBe("user");
+	});
+
+	it("rejects when json output is unparseable (no session / no result)", async () => {
+		const { spawnFn } = fakeSpawn({
+			stdout: loadFixture("codex-stream.malformed.jsonl"),
+			exitCode: 0,
+		});
+		const adapter = createCodexAdapter({ spawnFn });
+		await expect(adapter.createSession({})).rejects.toThrow(/unparseable json/);
+	});
+
+	it("rejects with an API key error when stderr matches API key patterns", async () => {
+		const { spawnFn } = fakeSpawn({
+			stdout: "",
+			stderr: "OPENAI_API_KEY environment variable not set or invalid api key",
+			exitCode: 1,
+		});
+		const adapter = createCodexAdapter({ spawnFn });
+		await expect(adapter.createSession({})).rejects.toThrow(/API key/i);
+	});
+
+	it("rejects on timeout", async () => {
+		const { spawnFn } = fakeSpawn({
+			stdout: "",
+			stderr: "",
+			exitCode: null,
+			timedOut: true,
+		});
+		const adapter = createCodexAdapter({
+			spawnFn,
+			createSessionTimeoutMs: 100,
+		});
+		await expect(adapter.createSession({})).rejects.toThrow(
+			/createSession timed out after 100ms/,
+		);
+	});
+
+	it("does NOT pass resume on a fresh createSession", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId: "sess-fresh" }),
+		});
+		const adapter = createCodexAdapter({ spawnFn });
+		await adapter.createSession({});
+		expect(calls[0]?.args).not.toContain("resume");
+	});
+
+	it("error_max_turns at init resolves cleanly with subtype reflected in meta", async () => {
+		const { spawnFn } = fakeSpawn({
+			stdout: loadFixture("codex-stream.max-turns.jsonl"),
+			exitCode: 0,
+		});
+		const adapter = createCodexAdapter({ spawnFn });
+		const ref = await adapter.createSession({});
+		expect(ref.meta.subtype).toBe("error");
+		const turns = await adapter.getTurns(ref);
+		expect(turns.length).toBeGreaterThan(0);
+	});
+
+	it("two parallel createSession calls return distinct nativeIds", async () => {
+		let counter = 0;
+		const { spawnFn } = fakeSpawn(() => ({
+			stdout: buildJsonl({ sessionId: `sess-${counter++}` }),
+		}));
+		const adapter = createCodexAdapter({ spawnFn });
+		const [a, b] = await Promise.all([
+			adapter.createSession({}),
+			adapter.createSession({}),
+		]);
+		expect(a.nativeId).not.toBe(b.nativeId);
+	});
+
+	it("argv passes unicode/quotes verbatim (no shell interpolation)", async () => {
+		const tricky = 'line1\nline2 中文 🍊 "quoted" \\back';
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId: "sess-unicode", userText: tricky }),
+		});
+		const adapter = createCodexAdapter({ spawnFn });
+		await adapter.createSession({ initialQuery: tricky });
+		expect(calls[0]?.args[1]).toBe(tricky);
+	});
+
+	it("uses options.cwd when provided", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId: "sess-cwd" }),
+		});
+		const adapter = createCodexAdapter({ spawnFn, cwd: "/tmp/xx" });
+		await adapter.createSession({});
+		expect(calls[0]?.cwd).toBe("/tmp/xx");
+	});
+
+	it("respects dangerouslyBypassApprovals option", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId: "sess-bypass" }),
+		});
+		const adapter = createCodexAdapter({
+			spawnFn,
+			dangerouslyBypassApprovals: false,
+		});
+		await adapter.createSession({});
+		expect(calls[0]?.args).not.toContain(
+			"--dangerously-bypass-approvals-and-sandbox",
+		);
+	});
+
+	it("respects skipGitRepoCheck option", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId: "sess-git" }),
+		});
+		const adapter = createCodexAdapter({
+			spawnFn,
+			skipGitRepoCheck: false,
+		});
+		await adapter.createSession({});
+		expect(calls[0]?.args).not.toContain("--skip-git-repo-check");
+	});
+
+	it("rejects with non-zero-exit error when output is unparseable AND exit code is non-zero", async () => {
+		const { spawnFn } = fakeSpawn({
+			stdout: "",
+			stderr: "boom: something bad happened",
+			exitCode: 2,
+		});
+		const adapter = createCodexAdapter({ spawnFn });
+		await expect(adapter.createSession({})).rejects.toThrow(
+			/exited with code 2/,
+		);
+	});
+});

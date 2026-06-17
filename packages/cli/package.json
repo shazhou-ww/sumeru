@@ -11,6 +11,7 @@
   ],
   "dependencies": {
     "@sumeru/adapter-claude-code": "workspace:^",
+    "@sumeru/adapter-codex": "workspace:^",
     "@sumeru/adapter-hermes": "workspace:^",
     "@sumeru/core": "workspace:^",
     "@sumeru/server": "workspace:^",

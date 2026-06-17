@@ -15,6 +15,7 @@
  * See `specs/cli-pass-gateway-config.md` (issue #32).
  */
 import { createClaudeCodeAdapter } from "@sumeru/adapter-claude-code";
+import { createCodexAdapter } from "@sumeru/adapter-codex";
 import { createHermesAdapter } from "@sumeru/adapter-hermes";
 import type { Adapter } from "@sumeru/core";
 import type { GatewayConfig } from "@sumeru/server";
@@ -32,6 +33,7 @@ export type AdapterFactoryMap = Record<string, AdapterFactory>;
 export const DEFAULT_ADAPTER_FACTORIES: AdapterFactoryMap = {
 	hermes: (opts) => createHermesAdapter(opts),
 	"claude-code": (opts) => createClaudeCodeAdapter(opts),
+	codex: (opts) => createCodexAdapter(opts),
 };
 
 /**

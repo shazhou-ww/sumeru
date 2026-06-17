@@ -10,6 +10,7 @@
     { "path": "../core" },
     { "path": "../server" },
     { "path": "../adapter-hermes" },
-    { "path": "../adapter-claude-code" }
+    { "path": "../adapter-claude-code" },
+    { "path": "../adapter-codex" }
   ]
 }

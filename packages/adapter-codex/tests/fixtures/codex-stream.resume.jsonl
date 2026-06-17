@@ -1,0 +1,6 @@
+{"type":"session.start","session_id":"codex-session-002","model":"o3","cwd":"/tmp/work"}
+{"type":"user","role":"user","content":"Continue work."}
+{"type":"assistant","role":"assistant","content":"Continuing from where we left off.","tool_calls":[{"id":"tc_001","type":"function","function":{"name":"shell","arguments":"{\"command\":\"echo hello\"}"}}]}
+{"type":"tool_call_output","tool_call_id":"tc_001","output":"hello"}
+{"type":"assistant","role":"assistant","content":"Done!"}
+{"type":"result","subtype":"success","session_id":"codex-session-002","duration_ms":2500,"stop_reason":"end_turn","usage":{"input_tokens":100,"output_tokens":50}}
