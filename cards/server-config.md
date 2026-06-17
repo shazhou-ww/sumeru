@@ -5,9 +5,11 @@ sources:
   - packages/server/src/config.ts
   - packages/server/src/start.ts
   - packages/server/src/types.ts
+  - packages/cli/src/build-adapters.ts
+  - README.md
 tags: [architecture, server, configuration]
 created: 2026-06-15
-updated: 2026-06-15
+updated: 2026-06-17
 ---
 
 # Server Configuration
@@ -22,11 +24,16 @@ workspaceRoot: /path/to/root   # optional, null if absent/empty
 gateways:                      # optional mapping (empty = no gateways)
   hermes:
     adapter: hermes            # required, non-empty string
+    config:                    # optional, adapter-specific options
+      timeout: 3600            # forwarded verbatim to adapter factory
     capabilities:              # required
       resume: true             # required boolean
       streaming: false         # required boolean
-  claude:
+  claude-code:
     adapter: claude-code
+    config:
+      sendTimeoutMs: 3600000   # 1 h (default 30 min)
+      maxTurns: 120            # default 90
     capabilities:
       resume: false
       streaming: true
@@ -54,6 +61,7 @@ Each gateway entry within the config:
 type GatewayConfig = {
   adapter: string;                    // adapter name to look up at runtime
   capabilities: GatewayCapabilities;
+  config: Record<string, unknown> | null;  // adapter-specific options
 };
 
 type GatewayCapabilities = {
@@ -120,11 +128,37 @@ Three-phase pipeline:
 | `workspaceRoot` | optional; absent/null/empty string → `null`; non-string → error |
 | `gateways` | optional mapping; absent/null → empty `{}`; non-object → error |
 | `gateways[key].adapter` | required, non-empty string |
+| `gateways[key].config` | optional mapping; absent/null → `null`; non-mapping → error; contents **not validated** |
 | `gateways[key].capabilities` | required mapping |
 | `capabilities.resume` | required boolean (not truthy — strict `typeof === "boolean"`) |
 | `capabilities.streaming` | required boolean |
 
 Unknown keys at any level are silently tolerated for forward-compatibility.
+
+### Gateway Config Forwarding (Issue #32)
+
+Each gateway's `config:` block is an **opaque adapter-specific blob** that the server does NOT validate:
+
+- **At config load time**: `loadConfig()` accepts any mapping (object), rejects scalars/arrays/etc.
+- **At adapter factory time**: The CLI's `buildAdapters()` forwards `gw.config ?? {}` verbatim to the adapter factory (e.g. `createHermesAdapter(opts)`, `createClaudeCodeAdapter(opts)`)
+- **Adapter validates its own keys**: Each adapter is responsible for validating its own option schema and throwing on unknown/invalid keys
+
+Example: claude-code adapter's configurable timeouts and limits:
+
+```yaml
+gateways:
+  claude-code:
+    adapter: claude-code
+    config:
+      sendTimeoutMs: 3600000          # 1 h (default 30 min)
+      createSessionTimeoutMs: 300000  # 5 min (default 5 min)
+      maxTurns: 120                   # default 90
+    capabilities:
+      resume: true
+      streaming: true
+```
+
+Omit `config:` entirely (or set to `null` / `{}`) to use adapter's built-in defaults. Unknown keys are passed through to the adapter but silently ignored if the adapter doesn't recognize them.
 
 ## workspaceRoot
 
