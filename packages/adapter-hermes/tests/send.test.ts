@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SendEvent, Turn } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
-import type { SpawnFn, TurnsReader } from "../src/index.js";
+import type { SpawnArgs, SpawnFn, TurnsReader } from "../src/index.js";
 import { createHermesAdapter } from "../src/index.js";
 
 const NATIVE = "20260613_120000_aaaaaa";
@@ -33,6 +33,27 @@ function makeSpawn(
 		timedOut: opts.timedOut ?? false,
 		durationMs: 0,
 	});
+}
+
+/**
+ * Capturing spawn — records the `SpawnArgs` of each call (including the new
+ * `cwd` field) so the #66 resume-cwd cases can assert what was forwarded to
+ * `child_process.spawn`.
+ */
+function captureSpawn(): { calls: SpawnArgs[]; spawnFn: SpawnFn } {
+	const calls: SpawnArgs[] = [];
+	const spawnFn: SpawnFn = async (args) => {
+		calls.push(args);
+		return {
+			stdout: "",
+			stderr: "",
+			exitCode: 0,
+			signal: null,
+			timedOut: false,
+			durationMs: 0,
+		};
+	};
+	return { calls, spawnFn };
 }
 
 /** Collect all events from an AsyncIterable<SendEvent>. */
@@ -149,6 +170,40 @@ describe("@sumeru/adapter-hermes — send", () => {
 		expect(captured).toContain("--source");
 		// content is passed as argv (not shell)
 		expect(captured).toContain("ping");
+	});
+
+	// ── cwd pinning on resume (issue #66) ──
+
+	it("pins SpawnArgs.cwd to ref.meta.cwd on resume", async () => {
+		const { calls, spawnFn } = captureSpawn();
+		const adapter = createHermesAdapter({
+			spawnFn,
+			turnsReader: async () => [],
+		});
+		const pinnedRef = {
+			nativeId: NATIVE,
+			meta: {
+				cwd: "/srv/projects/x",
+				sourceTag: "sumeru",
+				model: null,
+				createdAt: "2026-06-13T12:00:00.000Z",
+			},
+		};
+		await drain(adapter.send(pinnedRef, "My favorite number is 42."));
+		expect(calls.length).toBe(1);
+		expect(calls[0]?.cwd).toBe("/srv/projects/x");
+		// cwd is NOT a CLI flag.
+		expect(calls[0]?.args).not.toContain("--cwd");
+	});
+
+	it("falls back to process.cwd() when ref.meta.cwd is absent (legacy meta: {})", async () => {
+		const { calls, spawnFn } = captureSpawn();
+		const adapter = createHermesAdapter({
+			spawnFn,
+			turnsReader: async () => [],
+		});
+		await drain(adapter.send(ref(), "hi"));
+		expect(calls[0]?.cwd).toBe(process.cwd());
 	});
 
 	it("throws synchronously after close with 'is closed'", async () => {
