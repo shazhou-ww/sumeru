@@ -2,9 +2,13 @@
  * Adapter contract — the abstraction that sits between `@sumeru/server` and a
  * concrete agent CLI/SDK (Hermes, Claude Code, etc.).
  *
- * Each adapter package (`@sumeru/adapter-hermes`, future
- * `@sumeru/adapter-claude-code`, …) imports `Adapter` from `@sumeru/core` and
- * exports a factory function returning an object that satisfies the contract.
+ * Each adapter package (`@sumeru/adapter-hermes`, `@sumeru/adapter-claude-code`,
+ * …) imports `Adapter` from `@sumeru/core` and exports a factory function
+ * returning an object that satisfies the contract.
+ *
+ * Streaming-first: `send` returns `AsyncIterable<SendEvent>` so the server can
+ * process turns incrementally as the agent produces them — no waiting for the
+ * full run to finish before emitting SSE events.
  */
 
 import type { TokenUsage, Turn } from "./types.js";
@@ -24,36 +28,37 @@ export type NativeSessionRef = {
 	meta: Record<string, unknown>;
 };
 
-/** Result of a single `Adapter.send` call. */
-export type AgentResponse = {
-	/** Turns produced by the agent during this `send` call, in order. */
-	turns: Turn[];
-	/** Aggregated token usage for the call, or null if unreported. */
-	tokens: TokenUsage | null;
-	/** Wall-clock duration of the call in milliseconds (non-negative integer). */
-	durationMs: number;
-};
-
 /**
- * Capability flags. Structurally identical to `GatewayCapabilities` in
- * `@sumeru/server` — a server can source `gateway.capabilities` from
- * `adapter.capabilities` without conversion.
+ * Configuration passed to `Adapter.createSession`. The adapter uses these to
+ * spawn the agent process — `model` selects the LLM, `cwd` sets the working
+ * directory. Both are nullable (adapter picks its own defaults when null).
  */
-export type AdapterCapabilities = {
-	resume: boolean;
-	streaming: boolean;
+export type SessionConfig = {
+	model: string | null;
+	cwd: string | null;
 };
 
 /**
- * The Adapter contract. All methods are Promise-returning to keep the
- * surface uniform across sync- and async-backed adapters.
+ * Events yielded by `Adapter.send` as the agent runs:
+ *
+ * - `turn`  — a single turn produced by the agent.
+ * - `done`  — signals completion with wall-clock duration and optional token usage.
+ * - `error` — signals an adapter-level error; terminates the stream.
+ */
+export type SendEvent =
+	| { type: "turn"; turn: Turn }
+	| { type: "done"; durationMs: number; tokens: TokenUsage | null }
+	| { type: "error"; error: Error };
+
+/**
+ * The Adapter contract. All methods are Promise-returning (or AsyncIterable)
+ * to keep the surface uniform across sync- and async-backed adapters.
  */
 export type Adapter = {
 	/** Stable adapter name (lower-case kebab), e.g. "hermes", "claude-code". */
 	name: string;
-	capabilities: AdapterCapabilities;
-	createSession(config: Record<string, unknown>): Promise<NativeSessionRef>;
-	send(ref: NativeSessionRef, content: string): Promise<AgentResponse>;
+	createSession(config: SessionConfig): Promise<NativeSessionRef>;
+	send(ref: NativeSessionRef, content: string): AsyncIterable<SendEvent>;
 	close(ref: NativeSessionRef): Promise<void>;
 	getTurns(ref: NativeSessionRef): Promise<Turn[]>;
 };

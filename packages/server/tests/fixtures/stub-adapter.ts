@@ -6,28 +6,27 @@
 
 import type {
 	Adapter,
-	AdapterCapabilities,
-	AgentResponse,
 	NativeSessionRef,
+	SendEvent,
+	SessionConfig,
 	Turn,
 } from "@sumeru/core";
 
 export type StubAdapterOptions = {
 	name: string;
-	capabilities: AdapterCapabilities;
 	/**
-	 * Per-call response fabricator. Receives `(content)` and returns the turns
-	 * that should be emitted for that send. If null, a default echo response
-	 * is produced.
+	 * Per-call response fabricator. Receives `(content, ref)` and returns the
+	 * SendEvents that should be yielded. If null, a default echo response is
+	 * produced.
 	 */
 	respond:
-		| ((content: string, ref: NativeSessionRef) => Promise<AgentResponse>)
+		| ((content: string, ref: NativeSessionRef) => AsyncIterable<SendEvent>)
 		| null;
-	/** Per-call delay before the response resolves. */
+	/** Per-call delay before each event is yielded. */
 	sendDelayMs: number;
-	/** When true, every send rejects with the configured error message. */
+	/** When non-null, every send yields an error event with this message. */
 	failOnSend: string | null;
-	/** When true, createSession rejects with the configured error message. */
+	/** When non-null, createSession rejects with this error message. */
 	failOnCreate: string | null;
 };
 
@@ -37,7 +36,7 @@ export type StubAdapterControl = {
 	created: NativeSessionRef[];
 	/** Update the response factory at runtime (used by some tests). */
 	setResponse: (
-		fn: (content: string, ref: NativeSessionRef) => Promise<AgentResponse>,
+		fn: (content: string, ref: NativeSessionRef) => AsyncIterable<SendEvent>,
 	) => void;
 };
 
@@ -48,10 +47,6 @@ export function makeStubAdapter(
 ): StubAdapterControl {
 	const opts: StubAdapterOptions = {
 		name: override.name ?? "stub",
-		capabilities: override.capabilities ?? {
-			resume: true,
-			streaming: false,
-		},
 		respond: override.respond ?? null,
 		sendDelayMs: override.sendDelayMs ?? 0,
 		failOnSend: override.failOnSend ?? null,
@@ -64,8 +59,7 @@ export function makeStubAdapter(
 
 	const adapter: Adapter = {
 		name: opts.name,
-		capabilities: opts.capabilities,
-		async createSession(): Promise<NativeSessionRef> {
+		async createSession(_config: SessionConfig): Promise<NativeSessionRef> {
 			if (opts.failOnCreate !== null) {
 				throw new Error(opts.failOnCreate);
 			}
@@ -77,34 +71,42 @@ export function makeStubAdapter(
 			created.push(ref);
 			return ref;
 		},
-		async send(ref: NativeSessionRef, content: string): Promise<AgentResponse> {
-			if (opts.failOnSend !== null) {
+		send(ref: NativeSessionRef, content: string): AsyncIterable<SendEvent> {
+			async function* generate(): AsyncGenerator<SendEvent> {
+				if (opts.failOnSend !== null) {
+					if (opts.sendDelayMs > 0) {
+						await delay(opts.sendDelayMs);
+					}
+					yield { type: "error", error: new Error(opts.failOnSend) };
+					return;
+				}
 				if (opts.sendDelayMs > 0) {
 					await delay(opts.sendDelayMs);
 				}
-				throw new Error(opts.failOnSend);
+				if (respond !== null) {
+					yield* respond(content, ref);
+					return;
+				}
+				const turns: Turn[] = [
+					{
+						index: 1,
+						role: "assistant",
+						content: `echo: ${content}`,
+						toolCalls: null,
+						tokens: null,
+						timestamp: new Date().toISOString(),
+					},
+				];
+				for (const turn of turns) {
+					yield { type: "turn", turn };
+				}
+				yield {
+					type: "done",
+					durationMs: opts.sendDelayMs,
+					tokens: { input: 1, output: 2 },
+				};
 			}
-			if (opts.sendDelayMs > 0) {
-				await delay(opts.sendDelayMs);
-			}
-			if (respond !== null) {
-				return respond(content, ref);
-			}
-			const turns: Turn[] = [
-				{
-					index: 1,
-					role: "assistant",
-					content: `echo: ${content}`,
-					toolCalls: null,
-					tokens: null,
-					timestamp: new Date().toISOString(),
-				},
-			];
-			return {
-				turns,
-				tokens: { input: 1, output: 2 },
-				durationMs: opts.sendDelayMs,
-			};
+			return generate();
 		},
 		async close(ref: NativeSessionRef): Promise<void> {
 			closed.add(ref.nativeId);

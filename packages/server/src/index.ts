@@ -53,11 +53,11 @@ export type {
 	SearchResultValue,
 	ServerConfig,
 	Session,
-	SessionConfig,
 	SessionListEntry,
 	SessionStatus,
 	SessionWire,
 	StartConfig,
 	StartedServer,
 	TurnValue,
+	UserSessionConfig,
 } from "./types.js";

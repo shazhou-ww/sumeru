@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Turn } from "@sumeru/core";
+import type { SendEvent, Turn } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import type { SpawnFn, TurnsReader } from "../src/index.js";
 import { createHermesAdapter } from "../src/index.js";
@@ -35,8 +35,51 @@ function makeSpawn(
 	});
 }
 
+/** Collect all events from an AsyncIterable<SendEvent>. */
+async function collectEvents(
+	iter: AsyncIterable<SendEvent>,
+): Promise<SendEvent[]> {
+	const events: SendEvent[] = [];
+	for await (const event of iter) {
+		events.push(event);
+	}
+	return events;
+}
+
+/** Extract turns from collected events. */
+function extractTurns(events: SendEvent[]): Turn[] {
+	return events
+		.filter((e): e is Extract<SendEvent, { type: "turn" }> => e.type === "turn")
+		.map((e) => e.turn);
+}
+
+/** Extract the done event from collected events. */
+function extractDone(
+	events: SendEvent[],
+): Extract<SendEvent, { type: "done" }> | undefined {
+	return events.find(
+		(e): e is Extract<SendEvent, { type: "done" }> => e.type === "done",
+	);
+}
+
+/** Extract the error event from collected events. */
+function extractError(
+	events: SendEvent[],
+): Extract<SendEvent, { type: "error" }> | undefined {
+	return events.find(
+		(e): e is Extract<SendEvent, { type: "error" }> => e.type === "error",
+	);
+}
+
+/** Drain the iterable to force the full stream to execute. */
+async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
+	for await (const _ of iter) {
+		// consume all events
+	}
+}
+
 describe("@sumeru/adapter-hermes — send", () => {
-	it("returns the delta turns produced after the call", async () => {
+	it("yields delta turn events followed by a done event", async () => {
 		const reads: number[] = [];
 		const turnsReader: TurnsReader = async () => {
 			reads.push(reads.length);
@@ -51,11 +94,14 @@ describe("@sumeru/adapter-hermes — send", () => {
 			spawnFn: makeSpawn(),
 			turnsReader,
 		});
-		const result = await adapter.send(ref(), "what?");
-		expect(result.turns.map((t) => t.index)).toEqual([1, 2]);
-		expect(result.turns[0].role).toBe("user");
-		expect(result.turns[1].role).toBe("assistant");
-		expect(typeof result.durationMs).toBe("number");
+		const events = await collectEvents(adapter.send(ref(), "what?"));
+		const turns = extractTurns(events);
+		const done = extractDone(events);
+		expect(turns.map((t) => t.index)).toEqual([1, 2]);
+		expect(turns[0].role).toBe("user");
+		expect(turns[1].role).toBe("assistant");
+		expect(done).toBeDefined();
+		expect(typeof done?.durationMs).toBe("number");
 	});
 
 	it("filters system turns by default", async () => {
@@ -73,8 +119,9 @@ describe("@sumeru/adapter-hermes — send", () => {
 			spawnFn: makeSpawn(),
 			turnsReader,
 		});
-		const result = await adapter.send(ref(), "go");
-		expect(result.turns.map((t) => t.role)).toEqual(["user", "assistant"]);
+		const events = await collectEvents(adapter.send(ref(), "go"));
+		const turns = extractTurns(events);
+		expect(turns.map((t) => t.role)).toEqual(["user", "assistant"]);
 	});
 
 	it("invokes hermes with --resume <id> and --quiet --pass-session-id", async () => {
@@ -92,7 +139,7 @@ describe("@sumeru/adapter-hermes — send", () => {
 		};
 		const turnsReader: TurnsReader = async () => [];
 		const adapter = createHermesAdapter({ spawnFn, turnsReader });
-		await adapter.send(ref(), "ping");
+		await drain(adapter.send(ref(), "ping"));
 		expect(captured[0]).toBe("chat");
 		expect(captured).toContain("--resume");
 		const idx = captured.indexOf("--resume");
@@ -104,33 +151,37 @@ describe("@sumeru/adapter-hermes — send", () => {
 		expect(captured).toContain("ping");
 	});
 
-	it("rejects after close with 'is closed'", async () => {
+	it("throws synchronously after close with 'is closed'", async () => {
 		const adapter = createHermesAdapter({
 			spawnFn: makeSpawn(),
 			turnsReader: async () => [],
 		});
 		const r = ref();
 		await adapter.close(r);
-		await expect(adapter.send(r, "hi")).rejects.toThrow(/is closed/);
+		expect(() => adapter.send(r, "hi")).toThrow(/is closed/);
 	});
 
-	it("rejects on non-zero hermes exit with stderr tail", async () => {
+	it("yields error event on non-zero hermes exit with stderr tail", async () => {
 		const adapter = createHermesAdapter({
 			spawnFn: makeSpawn({ exitCode: 1, stderr: "session not found" }),
 			turnsReader: async () => [],
 		});
-		await expect(adapter.send(ref(), "hi")).rejects.toThrow(/not found/);
+		const events = await collectEvents(adapter.send(ref(), "hi"));
+		const error = extractError(events);
+		expect(error).toBeDefined();
+		expect(error?.error.message).toMatch(/not found/);
 	});
 
-	it("rejects on timeout", async () => {
+	it("yields error event on timeout", async () => {
 		const adapter = createHermesAdapter({
 			spawnFn: makeSpawn({ timedOut: true }),
 			turnsReader: async () => [],
 			sendTimeoutMs: 50,
 		});
-		await expect(adapter.send(ref(), "hi")).rejects.toThrow(
-			/send timed out after 50ms/,
-		);
+		const events = await collectEvents(adapter.send(ref(), "hi"));
+		const error = extractError(events);
+		expect(error).toBeDefined();
+		expect(error?.error.message).toMatch(/send timed out after 50ms/);
 	});
 
 	it("serializes concurrent sends per nativeId via mutex", async () => {
@@ -156,7 +207,10 @@ describe("@sumeru/adapter-hermes — send", () => {
 		const turnsReader: TurnsReader = async () => [];
 		const adapter = createHermesAdapter({ spawnFn, turnsReader });
 		const r = ref();
-		await Promise.all([adapter.send(r, "first"), adapter.send(r, "second")]);
+		await Promise.all([
+			drain(adapter.send(r, "first")),
+			drain(adapter.send(r, "second")),
+		]);
 		expect(maxInFlight).toBe(1);
 		expect(log).toEqual(["enter", "exit", "enter", "exit"]);
 	});
@@ -179,21 +233,19 @@ describe("@sumeru/adapter-hermes — send", () => {
 			turnsReader: async () => [],
 		});
 		const content = 'line1\nline2\n中文 🍊 "quoted"';
-		await adapter.send(ref(), content);
+		await drain(adapter.send(ref(), content));
 		expect(captured).toContain(content);
 	});
 
-	it("rejects empty content", async () => {
+	it("throws synchronously on empty content", async () => {
 		const adapter = createHermesAdapter({
 			spawnFn: makeSpawn(),
 			turnsReader: async () => [],
 		});
-		await expect(adapter.send(ref(), "")).rejects.toThrow(/non-empty/);
+		expect(() => adapter.send(ref(), "")).toThrow(/non-empty/);
 	});
 
 	it("computes delta against the JSONL file (v0.15.1 behavior)", async () => {
-		// Write a JSONL file with 2 existing rows; the spawnFn rewrites it
-		// during the call so the post-spawn read sees 4 rows total.
 		const sessionsDir = mkdtempSync(join(tmpdir(), "sumeru-send-jsonl-"));
 		const jsonlPath = join(sessionsDir, `${NATIVE}.jsonl`);
 		writeFileSync(
@@ -261,37 +313,41 @@ describe("@sumeru/adapter-hermes — send", () => {
 			};
 		};
 		const adapter = createHermesAdapter({ spawnFn, sessionsDir });
-		const r = await adapter.send(ref(), "new q");
-		expect(r.turns.length).toBe(2);
-		expect(r.turns[0].role).toBe("user");
-		expect(r.turns[0].content).toBe("new q");
-		expect(r.turns[1].role).toBe("assistant");
-		expect(r.turns[1].content).toBe("new a");
-		expect(r.turns[0].index).toBe(2);
-		expect(r.turns[1].index).toBe(3);
+		const events = await collectEvents(adapter.send(ref(), "new q"));
+		const turns = extractTurns(events);
+		expect(turns.length).toBe(2);
+		expect(turns[0].role).toBe("user");
+		expect(turns[0].content).toBe("new q");
+		expect(turns[1].role).toBe("assistant");
+		expect(turns[1].content).toBe("new a");
+		expect(turns[0].index).toBe(2);
+		expect(turns[1].index).toBe(3);
 	});
 
 	// Opt-in integration: verify resume context against a real Hermes binary.
-	// Sends "remember 42", then "what is my number?", confirming the second
-	// reply contains "42". Skipped by default — set SUMERU_HERMES_INTEGRATION=1.
 	it.skipIf(process.env.SUMERU_HERMES_INTEGRATION !== "1")(
 		"resume context: r2 sees the number from r1",
 		async () => {
 			const adapter = createHermesAdapter({});
 			const sessionRef = await adapter.createSession({
 				model: "anthropic/claude-haiku-4",
-				systemPrompt: "Reply tersely.",
+				cwd: null,
 			});
 			try {
-				await adapter.send(
-					sessionRef,
-					"My favorite number is 42. Acknowledge briefly.",
+				await drain(
+					adapter.send(
+						sessionRef,
+						"My favorite number is 42. Acknowledge briefly.",
+					),
 				);
-				const r2 = await adapter.send(
-					sessionRef,
-					"What is my favorite number? Reply with just the digits.",
+				const events = await collectEvents(
+					adapter.send(
+						sessionRef,
+						"What is my favorite number? Reply with just the digits.",
+					),
 				);
-				const assistantContent = r2.turns
+				const turns = extractTurns(events);
+				const assistantContent = turns
 					.filter((t) => t.role === "assistant")
 					.map((t) => t.content)
 					.join(" ");

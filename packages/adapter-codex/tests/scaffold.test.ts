@@ -6,10 +6,6 @@ describe("@sumeru/adapter-codex — package scaffold", () => {
 	it("createCodexAdapter() returns an object satisfying Adapter", () => {
 		const adapter: Adapter = createCodexAdapter();
 		expect(adapter.name).toBe("codex");
-		expect(adapter.capabilities).toEqual({
-			resume: true,
-			streaming: false,
-		});
 		expect(typeof adapter.createSession).toBe("function");
 		expect(typeof adapter.send).toBe("function");
 		expect(typeof adapter.close).toBe("function");
@@ -23,6 +19,5 @@ describe("@sumeru/adapter-codex — package scaffold", () => {
 			model: "o3",
 		});
 		expect(a1.name).toBe(a2.name);
-		expect(a1.capabilities).toEqual(a2.capabilities);
 	});
 });

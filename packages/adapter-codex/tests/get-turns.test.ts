@@ -1,6 +1,14 @@
+import type { SendEvent } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createCodexAdapter } from "../src/index.js";
 import { buildJsonl, fakeSpawn } from "./test-utils.js";
+
+/** Drain the iterable (consume all events, discard results). */
+async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
+	for await (const _ of iter) {
+		// discard
+	}
+}
 
 describe("createCodexAdapter().getTurns()", () => {
 	it("after createSession, getTurns returns the initial turns", async () => {
@@ -8,7 +16,7 @@ describe("createCodexAdapter().getTurns()", () => {
 			stdout: buildJsonl({ sessionId: "sess-get-turns" }),
 		});
 		const adapter = createCodexAdapter({ spawnFn });
-		const ref = await adapter.createSession({ initialQuery: "hi" });
+		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		const turns = await adapter.getTurns(ref);
 		expect(turns.length).toBeGreaterThan(0);
@@ -30,10 +38,10 @@ describe("createCodexAdapter().getTurns()", () => {
 		});
 
 		const adapter = createCodexAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		const initialTurns = await adapter.getTurns(ref);
-		await adapter.send(ref, "second message");
+		await drain(adapter.send(ref, "second message"));
 		const afterSend = await adapter.getTurns(ref);
 
 		expect(afterSend.length).toBeGreaterThan(initialTurns.length);
@@ -44,7 +52,7 @@ describe("createCodexAdapter().getTurns()", () => {
 			stdout: buildJsonl({ sessionId: "sess-mutate" }),
 		});
 		const adapter = createCodexAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		const turns1 = await adapter.getTurns(ref);
 		const originalLength = turns1.length;

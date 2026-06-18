@@ -6,7 +6,7 @@ describe("createSession", () => {
 	it("returns a NativeSessionRef with session id from the system line", async () => {
 		const { spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		const ref = await adapter.createSession({ initialQuery: "Say hi." });
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		expect(ref.nativeId).toBe("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
 		expect(ref.meta.cwd).toBeDefined();
 		expect(ref.meta.model).toBe("claude-sonnet-4");
@@ -14,24 +14,17 @@ describe("createSession", () => {
 		expect(ref.meta.subtype).toBe("success");
 	});
 
-	it("uses 'ping' as default query when initialQuery is empty", async () => {
+	it("always uses 'ping' as the prompt", async () => {
 		const { calls, spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		expect(calls[0]?.args[1]).toBe("ping");
-	});
-
-	it("passes initialQuery via argv", async () => {
-		const { calls, spawnFn } = fakeSpawn({});
-		const adapter = createCursorAgentAdapter({ spawnFn });
-		await adapter.createSession({ initialQuery: "Hello world!" });
-		expect(calls[0]?.args[1]).toBe("Hello world!");
 	});
 
 	it("includes --print --output-format stream-json --trust --force flags", async () => {
 		const { calls, spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		const args = calls[0]?.args;
 		expect(args).toContain("--print");
 		expect(args).toContain("--output-format");
@@ -43,7 +36,7 @@ describe("createSession", () => {
 	it("includes --workspace with cwd", async () => {
 		const { calls, spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/my/workspace" });
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		const args = calls[0]?.args;
 		const wsIdx = args.indexOf("--workspace");
 		expect(wsIdx).toBeGreaterThan(-1);
@@ -53,7 +46,7 @@ describe("createSession", () => {
 	it("passes --model when model is specified in config", async () => {
 		const { calls, spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		await adapter.createSession({ model: "sonnet-4", initialQuery: "hi" });
+		await adapter.createSession({ model: "sonnet-4", cwd: null });
 		const args = calls[0]?.args;
 		expect(args).toContain("--model");
 		expect(args).toContain("sonnet-4");
@@ -62,9 +55,19 @@ describe("createSession", () => {
 	it("does not pass --model when model is null", async () => {
 		const { calls, spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		await adapter.createSession({ initialQuery: "hi" });
+		await adapter.createSession({ model: null, cwd: null });
 		const args = calls[0]?.args;
 		expect(args).not.toContain("--model");
+	});
+
+	it("uses config.cwd when provided", async () => {
+		const { calls, spawnFn } = fakeSpawn({});
+		const adapter = createCursorAgentAdapter({ spawnFn });
+		await adapter.createSession({ model: null, cwd: "/from/config" });
+		expect(calls[0]?.cwd).toBe("/from/config");
+		const args = calls[0]?.args;
+		const wsIdx = args.indexOf("--workspace");
+		expect(args[wsIdx + 1]).toBe("/from/config");
 	});
 
 	it("passes --yolo when permissionMode is yolo", async () => {
@@ -73,7 +76,7 @@ describe("createSession", () => {
 			spawnFn,
 			permissionMode: "yolo",
 		});
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		const args = calls[0]?.args;
 		expect(args).toContain("--yolo");
 		expect(args).not.toContain("--force");
@@ -85,7 +88,7 @@ describe("createSession", () => {
 			spawnFn,
 			sandbox: "enabled",
 		});
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		const args = calls[0]?.args;
 		expect(args).toContain("--sandbox");
 		expect(args).toContain("enabled");
@@ -94,7 +97,7 @@ describe("createSession", () => {
 	it("populates the turn cache on successful createSession", async () => {
 		const { spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		const ref = await adapter.createSession({ initialQuery: "Say hi." });
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const turns = await adapter.getTurns(ref);
 		expect(turns.length).toBeGreaterThan(0);
 		expect(turns[0]?.role).toBe("user");
@@ -105,13 +108,17 @@ describe("createSession", () => {
 			throw new Error("ENOENT");
 		});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		await expect(adapter.createSession({})).rejects.toThrow(/ENOENT/);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/ENOENT/);
 	});
 
 	it("rejects with unparseable error when stdout is blank", async () => {
 		const { spawnFn } = fakeSpawn({ stdout: "\n\n\n" });
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		await expect(adapter.createSession({})).rejects.toThrow(/unparseable/);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/unparseable/);
 	});
 
 	it("rejects with API key error when stderr matches pattern", async () => {
@@ -121,9 +128,9 @@ describe("createSession", () => {
 			exitCode: 1,
 		});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		await expect(adapter.createSession({})).rejects.toThrow(
-			/cursor-agent API key error/,
-		);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/cursor-agent API key error/);
 	});
 
 	it("rejects with trust error when stderr matches trust pattern", async () => {
@@ -133,13 +140,17 @@ describe("createSession", () => {
 			exitCode: 1,
 		});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		await expect(adapter.createSession({})).rejects.toThrow(/requires --trust/);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/requires --trust/);
 	});
 
 	it("rejects with timeout error when timedOut is true", async () => {
 		const { spawnFn } = fakeSpawn({ stdout: "", timedOut: true });
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		await expect(adapter.createSession({})).rejects.toThrow(/timed out/);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/timed out/);
 	});
 
 	it("two parallel createSession calls return distinct nativeIds", async () => {
@@ -150,17 +161,32 @@ describe("createSession", () => {
 		});
 		const adapter = createCursorAgentAdapter({ spawnFn });
 		const [ref1, ref2] = await Promise.all([
-			adapter.createSession({}),
-			adapter.createSession({}),
+			adapter.createSession({ model: null, cwd: null }),
+			adapter.createSession({ model: null, cwd: null }),
 		]);
 		expect(ref1.nativeId).not.toBe(ref2.nativeId);
 	});
 
-	it("handles unicode/special characters in initialQuery", async () => {
+	it("constructor model is used when config.model is null", async () => {
 		const { calls, spawnFn } = fakeSpawn({});
-		const adapter = createCursorAgentAdapter({ spawnFn });
-		const query = 'Say "hello"\nnewline\t🎉';
-		await adapter.createSession({ initialQuery: query });
-		expect(calls[0]?.args[1]).toBe(query);
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			model: "ctor-model",
+		});
+		await adapter.createSession({ model: null, cwd: null });
+		expect(calls[0]?.args).toContain("--model");
+		const idx = calls[0]?.args.indexOf("--model") ?? -1;
+		expect(calls[0]?.args[idx + 1]).toBe("ctor-model");
+	});
+
+	it("config.model overrides constructor model", async () => {
+		const { calls, spawnFn } = fakeSpawn({});
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			model: "ctor-model",
+		});
+		await adapter.createSession({ model: "config-model", cwd: null });
+		const idx = calls[0]?.args.indexOf("--model") ?? -1;
+		expect(calls[0]?.args[idx + 1]).toBe("config-model");
 	});
 });

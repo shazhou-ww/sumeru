@@ -1,13 +1,56 @@
-import type { NativeSessionRef } from "@sumeru/core";
+import type { NativeSessionRef, SendEvent, Turn } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createClaudeCodeAdapter } from "../src/index.js";
 import { buildNdjson, fakeSpawn } from "./test-utils.js";
+
+/** Collect all events from an AsyncIterable<SendEvent>. */
+async function collectEvents(
+	iter: AsyncIterable<SendEvent>,
+): Promise<SendEvent[]> {
+	const events: SendEvent[] = [];
+	for await (const event of iter) {
+		events.push(event);
+	}
+	return events;
+}
+
+/** Extract turns from collected events. */
+function extractTurns(events: SendEvent[]): Turn[] {
+	return events
+		.filter((e): e is Extract<SendEvent, { type: "turn" }> => e.type === "turn")
+		.map((e) => e.turn);
+}
+
+/** Extract the done event from collected events. */
+function extractDone(
+	events: SendEvent[],
+): Extract<SendEvent, { type: "done" }> | undefined {
+	return events.find(
+		(e): e is Extract<SendEvent, { type: "done" }> => e.type === "done",
+	);
+}
+
+/** Extract the error event from collected events. */
+function extractError(
+	events: SendEvent[],
+): Extract<SendEvent, { type: "error" }> | undefined {
+	return events.find(
+		(e): e is Extract<SendEvent, { type: "error" }> => e.type === "error",
+	);
+}
+
+/** Drain the iterable to force the full stream to execute. */
+async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
+	for await (const _ of iter) {
+		// consume all events
+	}
+}
 
 async function _makeRef(
 	adapter: ReturnType<typeof createClaudeCodeAdapter>,
 	_sessionId: string,
 ): Promise<NativeSessionRef> {
-	return adapter.createSession({ initialQuery: "init" });
+	return adapter.createSession({ model: null, cwd: null });
 }
 
 describe("createClaudeCodeAdapter().send()", () => {
@@ -33,8 +76,8 @@ describe("createClaudeCodeAdapter().send()", () => {
 			};
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({ initialQuery: "init" });
-		const r1 = await adapter.send(ref, "magic word?");
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		const events = await collectEvents(adapter.send(ref, "magic word?"));
 
 		// First call (createSession) and second call (send) — verify the second.
 		expect(calls.length).toBe(2);
@@ -43,8 +86,9 @@ describe("createClaudeCodeAdapter().send()", () => {
 		expect(sendArgs[1]).toBe("magic word?");
 		expect(sendArgs).toContain("--resume");
 		expect(sendArgs[sendArgs.indexOf("--resume") + 1]).toBe("sess-resume");
-		expect(r1.turns.length).toBeGreaterThan(0);
-		expect(r1.turns.some((t) => t.role === "assistant")).toBe(true);
+		const turns = extractTurns(events);
+		expect(turns.length).toBeGreaterThan(0);
+		expect(turns.some((t) => t.role === "assistant")).toBe(true);
 	});
 
 	it("rewrites delta indices to be globally monotonic (highWater + 1, +2, …)", async () => {
@@ -68,18 +112,19 @@ describe("createClaudeCodeAdapter().send()", () => {
 			};
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({ initialQuery: "init" });
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const initialTurns = await adapter.getTurns(ref);
 		const initialMaxIndex = initialTurns.reduce(
 			(m, t) => (t.index > m ? t.index : m),
 			-1,
 		);
-		const r1 = await adapter.send(ref, "next");
-		expect(r1.turns[0]?.index).toBe(initialMaxIndex + 1);
+		const events = await collectEvents(adapter.send(ref, "next"));
+		const turns = extractTurns(events);
+		expect(turns[0]?.index).toBe(initialMaxIndex + 1);
 		// Strictly monotonic across delta.
-		for (let i = 1; i < r1.turns.length; i++) {
-			const a = r1.turns[i - 1];
-			const b = r1.turns[i];
+		for (let i = 1; i < turns.length; i++) {
+			const a = turns[i - 1];
+			const b = turns[i];
 			expect(b !== undefined && a !== undefined && b.index > a.index).toBe(
 				true,
 			);
@@ -101,11 +146,12 @@ describe("createClaudeCodeAdapter().send()", () => {
 			};
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const before = await adapter.getTurns(ref);
-		const r1 = await adapter.send(ref, "more");
+		const events = await collectEvents(adapter.send(ref, "more"));
+		const deltaTurns = extractTurns(events);
 		const after = await adapter.getTurns(ref);
-		expect(after.length).toBe(before.length + r1.turns.length);
+		expect(after.length).toBe(before.length + deltaTurns.length);
 		// No overlapping indices.
 		const allIdx = after.map((t) => t.index);
 		expect(new Set(allIdx).size).toBe(allIdx.length);
@@ -131,40 +177,41 @@ describe("createClaudeCodeAdapter().send()", () => {
 			};
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
-		await Promise.all([adapter.send(ref, "a"), adapter.send(ref, "b")]);
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		await Promise.all([
+			drain(adapter.send(ref, "a")),
+			drain(adapter.send(ref, "b")),
+		]);
 		expect(maxInflight).toBe(1);
 	});
 
-	it("rejects when the ref is closed", async () => {
+	it("throws synchronously when the ref is closed", async () => {
 		const { spawnFn } = fakeSpawn({
 			stdout: buildNdjson({ sessionId: "sess-closed" }),
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		await adapter.close(ref);
-		await expect(adapter.send(ref, "anything")).rejects.toThrow(
-			/sess-closed.*closed/,
-		);
+		expect(() => adapter.send(ref, "anything")).toThrow(/sess-closed.*closed/);
 	});
 
-	it("rejects on empty content", async () => {
+	it("throws synchronously on empty content", async () => {
 		const { spawnFn } = fakeSpawn({
 			stdout: buildNdjson({ sessionId: "sess-empty" }),
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
-		await expect(adapter.send(ref, "")).rejects.toThrow(/non-empty string/);
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		expect(() => adapter.send(ref, "")).toThrow(/non-empty string/);
 	});
 
-	it("rejects on invalid ref", async () => {
+	it("throws synchronously on invalid ref", async () => {
 		const adapter = createClaudeCodeAdapter({ spawnFn: fakeSpawn({}).spawnFn });
-		await expect(adapter.send({} as NativeSessionRef, "x")).rejects.toThrow(
+		expect(() => adapter.send({} as NativeSessionRef, "x")).toThrow(
 			/send: invalid NativeSessionRef/,
 		);
 	});
 
-	it("rejects on send timeout", async () => {
+	it("yields error event on send timeout", async () => {
 		let phase = 0;
 		const { spawnFn } = fakeSpawn(() => {
 			if (phase++ === 0) {
@@ -176,13 +223,14 @@ describe("createClaudeCodeAdapter().send()", () => {
 			spawnFn,
 			sendTimeoutMs: 100,
 		});
-		const ref = await adapter.createSession({});
-		await expect(adapter.send(ref, "x")).rejects.toThrow(
-			/send timed out after 100ms/,
-		);
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		const events = await collectEvents(adapter.send(ref, "x"));
+		const error = extractError(events);
+		expect(error).toBeDefined();
+		expect(error?.error.message).toMatch(/send timed out after 100ms/);
 	});
 
-	it("error_max_turns mid-conversation resolves with the partial turns", async () => {
+	it("error_max_turns mid-conversation yields the partial turns and done event", async () => {
 		let phase = 0;
 		const { spawnFn } = fakeSpawn(() => {
 			if (phase++ === 0) {
@@ -198,13 +246,15 @@ describe("createClaudeCodeAdapter().send()", () => {
 			};
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
-		const r = await adapter.send(ref, "more");
-		expect(r.turns.length).toBeGreaterThan(0);
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		const events = await collectEvents(adapter.send(ref, "more"));
+		const turns = extractTurns(events);
+		const done = extractDone(events);
+		expect(turns.length).toBeGreaterThan(0);
+		expect(done).toBeDefined();
 	});
 
 	it("returns durationMs measured from spawn start to exit (wall-clock)", async () => {
-		const _phase = 0;
 		const { spawnFn } = fakeSpawn(async (_args, ci) => {
 			if (ci === 0) {
 				return { stdout: buildNdjson({ sessionId: "sess-dur" }) };
@@ -219,9 +269,11 @@ describe("createClaudeCodeAdapter().send()", () => {
 			};
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
-		const r = await adapter.send(ref, "x");
-		expect(r.durationMs).toBeGreaterThanOrEqual(20);
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		const events = await collectEvents(adapter.send(ref, "x"));
+		const done = extractDone(events);
+		expect(done).toBeDefined();
+		expect(done?.durationMs).toBeGreaterThanOrEqual(20);
 	});
 
 	it("aggregates tokens from result.usage", async () => {
@@ -240,9 +292,11 @@ describe("createClaudeCodeAdapter().send()", () => {
 			};
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
-		const r = await adapter.send(ref, "x");
-		expect(r.tokens?.input).toBe(100);
-		expect(r.tokens?.output).toBe(25);
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		const events = await collectEvents(adapter.send(ref, "x"));
+		const done = extractDone(events);
+		expect(done).toBeDefined();
+		expect(done?.tokens?.input).toBe(100);
+		expect(done?.tokens?.output).toBe(25);
 	});
 });

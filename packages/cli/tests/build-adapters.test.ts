@@ -6,7 +6,7 @@
  * `specs/cli-pass-gateway-config.md` (issue #32).
  */
 
-import type { Adapter, AdapterCapabilities } from "@sumeru/core";
+import type { Adapter, SendEvent, SessionConfig } from "@sumeru/core";
 import type { GatewayConfig } from "@sumeru/server";
 import { describe, expect, it } from "vitest";
 import {
@@ -15,12 +15,18 @@ import {
 } from "../src/build-adapters.js";
 
 function fakeAdapter(name: string): Adapter {
-	const caps: AdapterCapabilities = { resume: true, streaming: false };
 	return {
 		name,
-		capabilities: caps,
-		createSession: async () => ({ nativeId: "x", meta: {} }),
-		send: async () => ({ turns: [], tokens: null, durationMs: 0 }),
+		createSession: async (_config: SessionConfig) => ({
+			nativeId: "x",
+			meta: {},
+		}),
+		send(_ref, _content): AsyncIterable<SendEvent> {
+			async function* generate(): AsyncGenerator<SendEvent> {
+				yield { type: "done", durationMs: 0, tokens: null };
+			}
+			return generate();
+		},
 		close: async () => {},
 		getTurns: async () => [],
 	};

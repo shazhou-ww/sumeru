@@ -12,7 +12,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { SchemaValidationError } from "@ocas/core";
-import type { Adapter, AgentResponse, Turn } from "@sumeru/core";
+import type { Adapter, Turn } from "@sumeru/core";
 import { errorEnvelope } from "../envelope.js";
 import { recordPayload } from "../ocas/index.js";
 import type { SessionStore } from "../session/index.js";
@@ -343,19 +343,124 @@ export async function handleMessageEndpoint(
 	const startedAt = Date.now();
 	const heartbeatTimer = startHeartbeats(res, buf, startedAt, config);
 
-	let response: AgentResponse | null = null;
-	let adapterError: Error | null = null;
+	let turnCount = 0;
 	try {
-		response = await adapterByName.send(nativeRef, body.value.content);
+		for await (const event of adapterByName.send(
+			nativeRef,
+			body.value.content,
+		)) {
+			if (event.type === "turn") {
+				const turn = event.turn;
+				const payload = turnPayload(turn);
+				let hash: string;
+				try {
+					hash = recordPayload(
+						config.ocas.store,
+						config.ocas.turnSchemaHash,
+						payload,
+					);
+				} catch (err) {
+					const cause = err instanceof Error ? err.message : String(err);
+					const reason =
+						err instanceof SchemaValidationError
+							? "adapter_returned_invalid_turn"
+							: "ocas_write_failed";
+					const errEvt = appendEvent(
+						buf,
+						"error",
+						JSON.stringify({
+							type: "@sumeru/error",
+							value: { error: reason, message: truncate(cause, 500) },
+						}),
+					);
+					res.write(formatEvent(errEvt));
+					break;
+				}
+				try {
+					config.ocas.searchIndex.indexTurn({
+						turnHash: hash,
+						sessionId,
+						gateway: gatewayName,
+						turnIndex: turn.index,
+						role: turn.role,
+						content: turn.content,
+						createdAt: turn.timestamp,
+					});
+				} catch (err) {
+					const cause = err instanceof Error ? err.message : String(err);
+					const errEvt = appendEvent(
+						buf,
+						"error",
+						JSON.stringify({
+							type: "@sumeru/error",
+							value: {
+								error: "search_index_failed",
+								message: `Failed to update search index: ${truncate(cause, 500)}`,
+							},
+						}),
+					);
+					res.write(formatEvent(errEvt));
+					break;
+				}
+				try {
+					sessions.appendTurnHash(gatewayName, sessionId, hash);
+				} catch (err) {
+					const cause = err instanceof Error ? err.message : String(err);
+					const errEvt = appendEvent(
+						buf,
+						"error",
+						JSON.stringify({
+							type: "@sumeru/error",
+							value: {
+								error: "turn_persist_failed",
+								message: `Failed to persist turn list: ${truncate(cause, 500)}`,
+							},
+						}),
+					);
+					res.write(formatEvent(errEvt));
+					break;
+				}
+				const wireTurn: Turn = { ...turn, hash };
+				const evt = appendEvent(
+					buf,
+					"turn",
+					JSON.stringify({ type: "@sumeru/turn", value: wireTurn }),
+				);
+				res.write(formatEvent(evt));
+				turnCount += 1;
+			} else if (event.type === "done") {
+				const summary = {
+					turnCount,
+					tokens:
+						event.tokens === null
+							? null
+							: { in: event.tokens.input, out: event.tokens.output },
+					durationMs: event.durationMs,
+				};
+				const doneEvt = appendEvent(
+					buf,
+					"done",
+					JSON.stringify({ type: "@sumeru/summary", value: summary }),
+				);
+				res.write(formatEvent(doneEvt));
+			} else if (event.type === "error") {
+				const errEvt = appendEvent(
+					buf,
+					"error",
+					JSON.stringify({
+						type: "@sumeru/error",
+						value: {
+							error: "adapter_error",
+							message: truncate(event.error.message, 500),
+						},
+					}),
+				);
+				res.write(formatEvent(errEvt));
+			}
+		}
 	} catch (err) {
-		adapterError = err instanceof Error ? err : new Error(String(err));
-	} finally {
-		clearInterval(heartbeatTimer);
-		sessions.markIdle(gatewayName, sessionId);
-	}
-
-	if (adapterError !== null) {
-		const evt = appendEvent(
+		const adapterError = err instanceof Error ? err : new Error(String(err));
+		const errEvt = appendEvent(
 			buf,
 			"error",
 			JSON.stringify({
@@ -366,107 +471,10 @@ export async function handleMessageEndpoint(
 				},
 			}),
 		);
-		res.write(formatEvent(evt));
-		bufferStore.finish(buf);
-		res.end();
-		return;
-	}
-
-	if (response !== null) {
-		let validationFailure: { reason: string; message: string } | null = null;
-		for (const turn of response.turns) {
-			const payload = turnPayload(turn);
-			let hash: string;
-			try {
-				hash = recordPayload(
-					config.ocas.store,
-					config.ocas.turnSchemaHash,
-					payload,
-				);
-			} catch (err) {
-				const cause = err instanceof Error ? err.message : String(err);
-				validationFailure = {
-					reason:
-						err instanceof SchemaValidationError
-							? "adapter_returned_invalid_turn"
-							: "ocas_write_failed",
-					message: truncate(cause, 500),
-				};
-				break;
-			}
-			// Phase 5: index the assistant turn. Failure here aborts the rest
-			// of the response (the durable ocas write has already happened).
-			try {
-				config.ocas.searchIndex.indexTurn({
-					turnHash: hash,
-					sessionId,
-					gateway: gatewayName,
-					turnIndex: turn.index,
-					role: turn.role,
-					content: turn.content,
-					createdAt: turn.timestamp,
-				});
-			} catch (err) {
-				const cause = err instanceof Error ? err.message : String(err);
-				validationFailure = {
-					reason: "search_index_failed",
-					message: `Failed to update search index: ${truncate(cause, 500)}`,
-				};
-				break;
-			}
-			// Phase 6 (Refs #399): persist the turn-list pointer for the
-			// assistant turn. A failure feeds the same in-stream error surface
-			// as a search-index failure (the durable ocas write already
-			// happened); the loop aborts rather than diverging memory/disk.
-			try {
-				sessions.appendTurnHash(gatewayName, sessionId, hash);
-			} catch (err) {
-				const cause = err instanceof Error ? err.message : String(err);
-				validationFailure = {
-					reason: "turn_persist_failed",
-					message: `Failed to persist turn list: ${truncate(cause, 500)}`,
-				};
-				break;
-			}
-			const wireTurn: Turn = { ...turn, hash };
-			const evt = appendEvent(
-				buf,
-				"turn",
-				JSON.stringify({ type: "@sumeru/turn", value: wireTurn }),
-			);
-			res.write(formatEvent(evt));
-		}
-		if (validationFailure !== null) {
-			const evt = appendEvent(
-				buf,
-				"error",
-				JSON.stringify({
-					type: "@sumeru/error",
-					value: {
-						error: validationFailure.reason,
-						message: validationFailure.message,
-					},
-				}),
-			);
-			res.write(formatEvent(evt));
-			bufferStore.finish(buf);
-			res.end();
-			return;
-		}
-		const summary = {
-			turnCount: countEventsByType(buf, "turn"),
-			tokens:
-				response.tokens === null
-					? null
-					: { in: response.tokens.input, out: response.tokens.output },
-			durationMs: response.durationMs,
-		};
-		const doneEvt = appendEvent(
-			buf,
-			"done",
-			JSON.stringify({ type: "@sumeru/summary", value: summary }),
-		);
-		res.write(formatEvent(doneEvt));
+		res.write(formatEvent(errEvt));
+	} finally {
+		clearInterval(heartbeatTimer);
+		sessions.markIdle(gatewayName, sessionId);
 	}
 
 	bufferStore.finish(buf);
@@ -646,14 +654,6 @@ function startHeartbeats(
 	);
 	timer.unref();
 	return timer;
-}
-
-function countEventsByType(buf: SseBuffer, event: string): number {
-	let n = 0;
-	for (const e of buf.events) {
-		if (e.event === event) n += 1;
-	}
-	return n;
 }
 
 function truncate(s: string, max: number): string {

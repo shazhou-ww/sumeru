@@ -10,11 +10,14 @@
  * lifetime of the adapter instance.
  *
  * The factory:
- *   - createSession spawns `codex exec <initialQuery> --json ...` and
- *     parses the JSONL stream for the session id.
- *   - send spawns `codex exec resume <id> <prompt> --json ...` and rewrites
- *     the per-run turn indices so they are globally monotonic across the
- *     whole `nativeId` lifetime.
+ *   - createSession spawns `codex exec "ping" --json ...` and parses the
+ *     JSONL stream for the session id. Accepts `SessionConfig` with
+ *     `model` and `cwd` fields.
+ *   - send is an async generator that spawns `codex exec resume <id>
+ *     <prompt> --json ...`, parses the JSONL output, and yields each
+ *     delta turn as `{ type: "turn", turn }` followed by
+ *     `{ type: "done", durationMs, tokens }`. On error yields
+ *     `{ type: "error", error }` instead of throwing.
  *   - close is a logical close — adds the nativeId to a per-instance Set;
  *     no Codex-side notification, no cache eviction.
  *   - getTurns returns a defensive copy of the in-memory cache.
@@ -22,8 +25,9 @@
 
 import type {
 	Adapter,
-	AgentResponse,
 	NativeSessionRef,
+	SendEvent,
+	SessionConfig,
 	TokenUsage,
 	Turn,
 } from "@sumeru/core";
@@ -160,20 +164,13 @@ export function createCodexAdapter(
 	}
 
 	async function createSession(
-		config: Record<string, unknown>,
+		config: SessionConfig,
 	): Promise<NativeSessionRef> {
-		const initialQuery =
-			typeof config.initialQuery === "string" && config.initialQuery.length > 0
-				? config.initialQuery
-				: "ping";
-		const model =
-			typeof config.model === "string" && config.model.length > 0
-				? config.model
-				: defaultModel;
-		const spawnCwd = resolveCwd();
+		const model = config.model ?? defaultModel;
+		const spawnCwd = config.cwd ?? resolveCwd();
 
 		const { result, parsed } = await runCodex(
-			initialQuery,
+			"ping",
 			null,
 			model,
 			createSessionTimeoutMs,
@@ -208,10 +205,10 @@ export function createCodexAdapter(
 		return { nativeId: parsed.sessionId, meta };
 	}
 
-	async function send(
+	function send(
 		ref: NativeSessionRef,
 		content: string,
-	): Promise<AgentResponse> {
+	): AsyncIterable<SendEvent> {
 		assertRef(ref, "send");
 		if (closedRefs.has(ref.nativeId)) {
 			throw new Error(`codex session ${ref.nativeId} is closed`);
@@ -220,51 +217,96 @@ export function createCodexAdapter(
 			throw new Error("send: content must be a non-empty string");
 		}
 
-		return withRefLock(ref.nativeId, async () => {
-			const before = turnsCache.get(ref.nativeId) ?? [];
-			const highWater =
-				before.length === 0
-					? -1
-					: before.reduce((m, t) => (t.index > m ? t.index : m), -1);
+		const nativeId = ref.nativeId;
 
-			const refModel =
-				typeof ref.meta.model === "string" && ref.meta.model.length > 0
-					? ref.meta.model
-					: defaultModel;
-			const refCwd =
-				typeof ref.meta.cwd === "string" && ref.meta.cwd.length > 0
-					? ref.meta.cwd
-					: resolveCwd();
+		async function* generate(): AsyncGenerator<SendEvent> {
+			const events: SendEvent[] = await withRefLock(nativeId, async () => {
+				if (closedRefs.has(nativeId)) {
+					return [
+						{
+							type: "error" as const,
+							error: new Error(`codex session ${nativeId} is closed`),
+						},
+					];
+				}
 
-			const startedAt = Date.now();
-			const { result, parsed } = await runCodex(
-				content,
-				ref.nativeId,
-				refModel,
-				sendTimeoutMs,
-				refCwd,
-			);
+				const before = turnsCache.get(nativeId) ?? [];
+				const highWater =
+					before.length === 0
+						? -1
+						: before.reduce((m, t) => (t.index > m ? t.index : m), -1);
 
-			if (result.timedOut) {
-				throw new Error(`send timed out after ${sendTimeoutMs}ms`);
+				const refModel =
+					typeof ref.meta.model === "string" && ref.meta.model.length > 0
+						? ref.meta.model
+						: defaultModel;
+				const refCwd =
+					typeof ref.meta.cwd === "string" && ref.meta.cwd.length > 0
+						? ref.meta.cwd
+						: resolveCwd();
+
+				const startedAt = Date.now();
+				let result: SpawnResult;
+				let parsed: CodexParsedResult | null;
+				try {
+					({ result, parsed } = await runCodex(
+						content,
+						nativeId,
+						refModel,
+						sendTimeoutMs,
+						refCwd,
+					));
+				} catch (err) {
+					return [
+						{
+							type: "error" as const,
+							error: err instanceof Error ? err : new Error(String(err)),
+						},
+					];
+				}
+
+				if (result.timedOut) {
+					return [
+						{
+							type: "error" as const,
+							error: new Error(`send timed out after ${sendTimeoutMs}ms`),
+						},
+					];
+				}
+
+				if (parsed === null) {
+					return [
+						{
+							type: "error" as const,
+							error: makeUnparseableOrExitError(result, codexBin, nativeId),
+						},
+					];
+				}
+
+				// Rewrite indices to be globally monotonic across the nativeId's history.
+				const delta = rewriteIndices(parsed.turns, highWater);
+				const existing = turnsCache.get(nativeId) ?? [];
+				turnsCache.set(nativeId, [...existing, ...delta]);
+
+				const tokens = deriveTokens(parsed);
+				const out: SendEvent[] = [];
+				for (const turn of delta) {
+					out.push({ type: "turn", turn });
+				}
+				out.push({
+					type: "done",
+					durationMs: Date.now() - startedAt,
+					tokens,
+				});
+				return out;
+			});
+
+			for (const event of events) {
+				yield event;
 			}
+		}
 
-			if (parsed === null) {
-				throw makeUnparseableOrExitError(result, codexBin, ref.nativeId);
-			}
-
-			// Rewrite indices to be globally monotonic across the nativeId's history.
-			const delta = rewriteIndices(parsed.turns, highWater);
-			const existing = turnsCache.get(ref.nativeId) ?? [];
-			turnsCache.set(ref.nativeId, [...existing, ...delta]);
-
-			const tokens = deriveTokens(parsed);
-			return {
-				turns: delta,
-				tokens,
-				durationMs: Date.now() - startedAt,
-			};
-		});
+		return generate();
 	}
 
 	async function close(ref: NativeSessionRef): Promise<void> {
@@ -281,7 +323,6 @@ export function createCodexAdapter(
 
 	return {
 		name: "codex",
-		capabilities: { resume: true, streaming: false },
 		createSession,
 		send,
 		close,

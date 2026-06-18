@@ -8,7 +8,6 @@ describe("adapter scaffold", () => {
 		const { spawnFn } = fakeSpawn({});
 		const adapter: Adapter = createCursorAgentAdapter({ spawnFn });
 		expect(adapter.name).toBe("cursor-agent");
-		expect(adapter.capabilities).toEqual({ resume: true, streaming: false });
 		expect(typeof adapter.createSession).toBe("function");
 		expect(typeof adapter.send).toBe("function");
 		expect(typeof adapter.close).toBe("function");

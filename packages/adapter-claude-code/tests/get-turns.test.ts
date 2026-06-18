@@ -1,7 +1,14 @@
-import type { NativeSessionRef } from "@sumeru/core";
+import type { NativeSessionRef, SendEvent } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createClaudeCodeAdapter } from "../src/index.js";
 import { buildNdjson, fakeSpawn } from "./test-utils.js";
+
+/** Drain the iterable to force the full stream to execute. */
+async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
+	for await (const _ of iter) {
+		// consume all events
+	}
+}
 
 describe("createClaudeCodeAdapter().getTurns()", () => {
 	it("returns the parsed initial Turn[] in order after createSession", async () => {
@@ -13,7 +20,7 @@ describe("createClaudeCodeAdapter().getTurns()", () => {
 			}),
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({ initialQuery: "hi" });
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const turns = await adapter.getTurns(ref);
 		expect(turns.length).toBeGreaterThanOrEqual(2);
 		expect(turns[0]?.role).toBe("user");
@@ -38,9 +45,9 @@ describe("createClaudeCodeAdapter().getTurns()", () => {
 			};
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
-		await adapter.send(ref, "x");
-		await adapter.send(ref, "y");
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		await drain(adapter.send(ref, "x"));
+		await drain(adapter.send(ref, "y"));
 		const turns = await adapter.getTurns(ref);
 		// Indices must be strictly monotonic.
 		for (let i = 1; i < turns.length; i++) {
@@ -58,7 +65,7 @@ describe("createClaudeCodeAdapter().getTurns()", () => {
 			stdout: buildNdjson({ sessionId: "sess-defensive" }),
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const turns1 = await adapter.getTurns(ref);
 		const length1 = turns1.length;
 		turns1.pop();
@@ -90,7 +97,7 @@ describe("createClaudeCodeAdapter().getTurns()", () => {
 			stdout: buildNdjson({ sessionId: "sess-close-readback" }),
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const before = await adapter.getTurns(ref);
 		await adapter.close(ref);
 		const after = await adapter.getTurns(ref);
@@ -102,7 +109,7 @@ describe("createClaudeCodeAdapter().getTurns()", () => {
 			stdout: buildNdjson({ sessionId: "sess-instance-iso" }),
 		});
 		const a1 = createClaudeCodeAdapter({ spawnFn });
-		const ref = await a1.createSession({});
+		const ref = await a1.createSession({ model: null, cwd: null });
 		const a2 = createClaudeCodeAdapter({ spawnFn });
 		const a2Turns = await a2.getTurns(ref);
 		expect(a2Turns).toEqual([]);

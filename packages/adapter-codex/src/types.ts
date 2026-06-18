@@ -2,9 +2,9 @@
  * Public types for `@sumeru/adapter-codex`.
  *
  * Most of the adapter contract lives in `@sumeru/core` (`Adapter`,
- * `NativeSessionRef`, `AgentResponse`, `Turn`, `ToolCall`, `TokenUsage`).
- * This module only declares package-local options, the parser's intermediate
- * shape, and the `child_process.spawn` test seam.
+ * `NativeSessionRef`, `SendEvent`, `SessionConfig`, `Turn`, `ToolCall`,
+ * `TokenUsage`). This module only declares package-local options, the
+ * parser's intermediate shape, and the `child_process.spawn` test seam.
  */
 
 import type { Turn } from "@sumeru/core";

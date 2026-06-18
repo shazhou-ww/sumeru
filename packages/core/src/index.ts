@@ -1,8 +1,8 @@
 export type {
 	Adapter,
-	AdapterCapabilities,
-	AgentResponse,
 	NativeSessionRef,
+	SendEvent,
+	SessionConfig,
 } from "./adapter.js";
 export type {
 	Knowledge,
