@@ -61,8 +61,8 @@ tags: [ocas, schema, turn, session-meta, json-schema, phase-4]
               "properties": {
                 "tool":       { "type": "string", "minLength": 1 },
                 "input":      { "type": "object" },
-                "output":     { "type": "string" },
-                "durationMs": { "type": "integer", "minimum": 0 },
+                "output":     { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+                "durationMs": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
                 "exitCode":   { "anyOf": [{ "type": "null" }, { "type": "integer" }] }
               }
             }
@@ -89,6 +89,7 @@ tags: [ocas, schema, turn, session-meta, json-schema, phase-4]
   - `tokens` is the only optional property (because `Turn.tokens` in `@sumeru/core` is an optional `TokenUsage`). When present it must be a fully-specified TokenUsage; when absent the property is simply missing (NOT `null`).
   - `role` enum is exactly `["user", "assistant"]` — `"system"` from `@sumeru/core.Turn` is excluded because Sumeru does not record system turns through the message endpoint.
   - `toolCalls` is required: the `null` form represents a user turn or an assistant turn with no tool calls. Skipping the field is invalid.
+  - Inside a tool-call item, `output` and `durationMs` accept `null` — adapters may emit `null` when the tool produced no textual output or when timing data is unavailable. `exitCode` already accepted `null`.
 - **Schema hashes** — Both schemas, when serialized via `@ocas/core`'s deterministic CBOR encoder, produce 13-character Crockford Base32 hashes that match `^[0-9A-HJKMNP-TV-Z]{13}$`. The hashes are exposed as named constants:
   ```typescript
   // packages/server/src/ocas/schemas.ts
@@ -101,9 +102,11 @@ tags: [ocas, schema, turn, session-meta, json-schema, phase-4]
 - **Validation behavior — `validate(payload, schema)` returns:**
   - `true` for: a turn with `role="user"`, `toolCalls=null`, no `tokens`.
   - `true` for: a turn with `role="assistant"`, `toolCalls=[{tool:"terminal",input:{...},output:"...",durationMs:50,exitCode:0}]`, `tokens={input:100,output:50}`.
+  - `true` for: a turn with `role="assistant"`, `toolCalls=[{tool:"bash",input:{...},output:null,durationMs:null,exitCode:null}]` — null `output` and `durationMs` are valid.
   - `false` for: missing `toolCalls` (required even when `null`).
   - `false` for: `role="system"` (not in enum).
   - `false` for: `tokens.input = -1` (minimum 0 violated).
+  - `false` for: `durationMs = -1` (minimum 0 violated when non-null).
   - `false` for: a session-meta with `status` set (additionalProperties false).
 - **Round-trip via `GET /ocas/<schema-hash>`** — Both schema hashes return:
   ```json
