@@ -18,7 +18,7 @@
  */
 
 import { DatabaseSync } from "node:sqlite";
-import type { CasNode, Hash } from "@ocas/core";
+import type { Hash } from "@ocas/core";
 import type { SessionStatus } from "../types.js";
 import type {
 	IndexTurnInput,
@@ -384,6 +384,18 @@ export function createSearchIndex(dbPath: string): SearchIndex {
 	}
 
 	function rebuild(ocas: SearchRebuildOcas): void {
+		// Step 1: Read sumeru_session_turns BEFORE any deletes to build
+		// turnHash → sessionId lookup (this table survives the rebuild).
+		const turnAssocRows = selectAllTurns.all() as Array<{
+			session_id: string;
+			turn_hash: string;
+		}>;
+		const turnHashToSessionId = new Map<string, string>();
+		for (const row of turnAssocRows) {
+			turnHashToSessionId.set(row.turn_hash, row.session_id);
+		}
+
+		// Step 2: DELETE from FTS index tables (sumeru_session_turns is NOT touched).
 		db.exec("BEGIN");
 		try {
 			db.exec("DELETE FROM sumeru_turn_index");
@@ -398,12 +410,82 @@ export function createSearchIndex(dbPath: string): SearchIndex {
 			throw err;
 		}
 
-		// The store does NOT expose a "list by type" API in @ocas/core.Store, so
-		// this rebuild path is exercised by tests that inject the hashes they
-		// know about. For server-internal use, the hashes are tracked in memory
-		// (Session.metaHash / Session.turnHashes) — the caller iterates those.
-		// We accept a Store + schema hashes here for forward-compat.
-		void ocas;
+		// Step 3: Enumerate all session-meta nodes from ocas store.
+		const sessionMetaEntries = ocas.store.cas.listByType(
+			ocas.sessionMetaSchemaHash,
+		);
+
+		// Step 4-6: Index each session-meta and build sessionId → gateway map.
+		const sessionIdToGateway = new Map<string, string>();
+		for (const entry of sessionMetaEntries) {
+			const node = ocas.store.cas.get(entry.hash);
+			if (node === null) continue;
+			const payload = node.payload as {
+				id: string;
+				gateway: string;
+				adapter: string;
+				createdAt: string;
+			};
+			indexSessionMeta({
+				sessionId: payload.id,
+				gateway: payload.gateway,
+				adapter: payload.adapter,
+				createdAt: payload.createdAt,
+				metaHash: entry.hash as Hash,
+			});
+			sessionIdToGateway.set(payload.id, payload.gateway);
+		}
+
+		// Step 7-8: Enumerate all turn nodes and index them.
+		const turnEntries = ocas.store.cas.listByType(ocas.turnSchemaHash);
+		for (const entry of turnEntries) {
+			const node = ocas.store.cas.get(entry.hash);
+			if (node === null) continue;
+			const payload = node.payload as {
+				index: number;
+				role: "user" | "assistant" | "system";
+				content: string;
+				timestamp: string;
+			};
+
+			// Look up sessionId from the turnHash → sessionId map.
+			const sessionId = turnHashToSessionId.get(entry.hash);
+			if (sessionId === undefined) {
+				console.warn(`[sumeru] rebuild: skipping orphaned turn ${entry.hash}`);
+				continue;
+			}
+
+			// Look up gateway from the sessionId → gateway map.
+			const gateway = sessionIdToGateway.get(sessionId);
+			if (gateway === undefined) {
+				console.warn(`[sumeru] rebuild: skipping orphaned turn ${entry.hash}`);
+				continue;
+			}
+
+			indexTurn({
+				turnHash: entry.hash as Hash,
+				sessionId,
+				gateway,
+				turnIndex: payload.index,
+				role: payload.role,
+				content: payload.content,
+				createdAt: payload.timestamp,
+			});
+		}
+
+		// Step 9: Corrective UPDATE to fix turn_count and last_active_at.
+		db.exec(`
+			UPDATE sumeru_session_index
+			   SET turn_count = (
+			         SELECT COUNT(*) FROM sumeru_turn_index
+			          WHERE sumeru_turn_index.session_id = sumeru_session_index.session_id
+			       ),
+			       last_active_at = COALESCE(
+			         (SELECT MAX(created_at) FROM sumeru_turn_index
+			           WHERE sumeru_turn_index.session_id = sumeru_session_index.session_id),
+			         sumeru_session_index.created_at
+			       )
+		`);
 	}
 
 	function turnCount(): number {
@@ -431,57 +513,18 @@ export function createSearchIndex(dbPath: string): SearchIndex {
 }
 
 /**
- * Re-index a session-meta + every turn associated with the session list. The
- * caller owns "what to re-index" — typically `Session.metaHash` plus
- * `Session.turnHashes` for every session known in memory. Used by tests.
+ * Walk every `@sumeru/session-meta` and `@sumeru/turn` node in the ocas store
+ * and rebuild the FTS5 index from scratch. The internal `rebuild` closure
+ * handles full enumeration via `listByType` and uses `sumeru_session_turns`
+ * for turn→session association.
+ *
+ * Callers no longer need to supply `roots` — the store is the source of truth.
  */
 export function rebuildSearchIndex(
 	index: SearchIndex,
 	ocas: SearchRebuildOcas,
-	roots: Array<{
-		metaHash: Hash;
-		turnHashes: Hash[];
-	}>,
 ): void {
 	index.rebuild(ocas);
-	for (const root of roots) {
-		const metaNode = ocas.store.cas.get(root.metaHash);
-		if (metaNode === null) continue;
-		const meta = metaNode.payload as {
-			id: string;
-			gateway: string;
-			adapter: string;
-			createdAt: string;
-		};
-		index.indexSessionMeta({
-			sessionId: meta.id,
-			gateway: meta.gateway,
-			adapter: meta.adapter,
-			createdAt: meta.createdAt,
-			metaHash: root.metaHash,
-		});
-		for (let i = 0; i < root.turnHashes.length; i += 1) {
-			const turnHash = root.turnHashes[i];
-			if (turnHash === undefined) continue;
-			const turnNode = ocas.store.cas.get(turnHash);
-			if (turnNode === null) continue;
-			const turn = (turnNode as CasNode).payload as {
-				index: number;
-				role: "user" | "assistant" | "system";
-				content: string;
-				timestamp: string;
-			};
-			index.indexTurn({
-				turnHash,
-				sessionId: meta.id,
-				gateway: meta.gateway,
-				turnIndex: turn.index,
-				role: turn.role,
-				content: turn.content,
-				createdAt: turn.timestamp,
-			});
-		}
-	}
 }
 
 /** Wrap a query in `"..."` and double internal `"` to force FTS5 phrase mode. */
