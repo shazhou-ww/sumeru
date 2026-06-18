@@ -1,7 +1,7 @@
 ---
 scenario: "DELETE /gateways/:name/sessions/:id closes the session, returns 204, and is idempotent — closed sessions remain queryable"
 feature: server-http
-tags: [http, session, delete, close, envelope, error, 204, 404, phase-2]
+tags: [http, session, delete, close, envelope, error, 204, 404, phase-2, phase-3]
 ---
 
 ## Given
@@ -45,6 +45,7 @@ tags: [http, session, delete, close, envelope, error, 204, 404, phase-2]
 - **Trailing slash** — `DELETE /gateways/hermes/sessions/ses_<A>/` is normalized identically to `DELETE /gateways/hermes/sessions/ses_<A>` (returns the same `204` or `404` based on state).
 - **No request body** — `DELETE` requests with a body are accepted; the body is ignored. (Phase 2 does not introduce a delete-with-payload variant.)
 - **Phase-2 scope** — Closing the session does NOT (yet) call into any adapter. Adapter-level `close(nativeRef)` lands in a later phase when real agents are wired up. The Phase-2 close is purely a status flip on the in-memory record.
+- **Phase-3 supersede (adapter.close)** — The implementation now calls `adapter.close(nativeRef)` when `nativeRef !== null && adapter !== undefined && status !== "closed"`. This is a forward-compatible enhancement: the HTTP wire contract (204/404 responses, idempotency, status flip) is unchanged. The adapter call is best-effort cleanup — if the adapter is not wired or the session has no native ref, the close degrades to the Phase-2 status-flip-only behavior. Tests continue to pass because the observable HTTP behavior is identical.
 - **Concurrency note** — The 409 covered in `server-session-status-state-machine.md` only fires while a session is `active` (i.e. processing an in-flight message). In Phase 2 there is no message endpoint yet, so the practical state surface is `idle ↔ closed`; 409 paths are reserved and stubbed in the implementation. (The 409 contract is fully specified in the state-machine spec so callers know what to expect when message endpoints land.)
 - All Phase-1 and Phase-2 GET / POST behaviors continue to pass.
 - `pnpm run build`, `pnpm run check`, and `pnpm run test` all exit 0. Tests cover: success 204 + status flip, idempotent re-close 204, unknown-id 404, unknown-gateway 404, post-close detail still returns 200 with `closed`, post-close listing still includes the entry, and the gateway counter decrements.
