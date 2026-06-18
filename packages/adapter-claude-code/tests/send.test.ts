@@ -299,4 +299,30 @@ describe("createClaudeCodeAdapter().send()", () => {
 		expect(done?.tokens?.input).toBe(100);
 		expect(done?.tokens?.output).toBe(25);
 	});
+
+	it("pins the resume spawn cwd to ref.meta.cwd from create time (issue #54)", async () => {
+		let phase = 0;
+		const { calls, spawnFn } = fakeSpawn(() => {
+			if (phase++ === 0) {
+				return { stdout: buildNdjson({ sessionId: "sess-cwd-pin" }) };
+			}
+			return {
+				stdout: buildNdjson({
+					sessionId: "sess-cwd-pin",
+					userText: "again",
+					assistantText: "ok",
+				}),
+			};
+		});
+		const adapter = createClaudeCodeAdapter({ spawnFn });
+		const ref = await adapter.createSession({
+			model: null,
+			cwd: "/srv/projects/x",
+		});
+		await collectEvents(adapter.send(ref, "again"));
+		// calls[0] = createSession, calls[1] = the resume send.
+		expect(calls.length).toBe(2);
+		expect(calls[1]?.cwd).toBe("/srv/projects/x");
+		expect(calls[1]?.args).not.toContain("--cwd");
+	});
 });

@@ -18,6 +18,7 @@ export const defaultSpawn: SpawnFn = async ({
 	command,
 	args,
 	timeoutMs,
+	cwd,
 }: SpawnArgs): Promise<SpawnResult> => {
 	const startedAt = Date.now();
 	return new Promise<SpawnResult>((resolve, reject) => {
@@ -26,6 +27,9 @@ export const defaultSpawn: SpawnFn = async ({
 			child = spawn(command, args, {
 				stdio: ["ignore", "pipe", "pipe"],
 				windowsHide: true,
+				cwd,
+				env: process.env,
+				shell: false,
 			});
 		} catch (err) {
 			reject(err instanceof Error ? err : new Error(String(err)));

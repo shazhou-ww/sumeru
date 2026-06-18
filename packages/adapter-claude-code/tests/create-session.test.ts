@@ -187,6 +187,83 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 		expect(calls[0]?.cwd).toBe("/tmp/xx");
 	});
 
+	// ── cwd resolution policy (issue #54) — 5 cases byte-identical to hermes ──
+
+	it("Case 1: per-call config.cwd wins over constructor cwd", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-cwd-1" }),
+		});
+		const a = createClaudeCodeAdapter({ spawnFn, cwd: "/opt/default" });
+		const ref = await a.createSession({ model: null, cwd: "/srv/projects/x" });
+		expect(calls[0]?.cwd).toBe("/srv/projects/x");
+		expect(ref.meta.cwd).toBe("/srv/projects/x");
+	});
+
+	it("Case 2: constructor cwd applies when config.cwd is null", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-cwd-2" }),
+		});
+		const b = createClaudeCodeAdapter({ spawnFn, cwd: "/opt/default" });
+		const ref = await b.createSession({ model: null, cwd: null });
+		expect(calls[0]?.cwd).toBe("/opt/default");
+		expect(ref.meta.cwd).toBe("/opt/default");
+	});
+
+	it("Case 3: falls back to process.cwd() when no cwd anywhere", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-cwd-3" }),
+		});
+		const c = createClaudeCodeAdapter({ spawnFn });
+		const ref = await c.createSession({ model: null, cwd: null });
+		expect(calls[0]?.cwd).toBe(process.cwd());
+		expect(ref.meta.cwd).toBe(process.cwd());
+	});
+
+	it("Case 4: rejects a non-string config.cwd before spawning", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-cwd-4" }),
+		});
+		const d = createClaudeCodeAdapter({ spawnFn });
+		await expect(
+			d.createSession({ model: null, cwd: 42 as unknown as string }),
+		).rejects.toThrow(/cwd/);
+		await expect(
+			d.createSession({ model: null, cwd: 42 as unknown as string }),
+		).rejects.toThrow(/must be a string/);
+		// The spawn must NOT have been invoked.
+		expect(calls.length).toBe(0);
+	});
+
+	it("Case 5: empty-string config.cwd is treated as absent", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-cwd-5" }),
+		});
+		const e = createClaudeCodeAdapter({ spawnFn });
+		const ref = await e.createSession({ model: null, cwd: "" });
+		expect(calls[0]?.cwd).toBe(process.cwd());
+		expect(ref.meta.cwd).toBe(process.cwd());
+	});
+
+	it("does not add a --cwd flag to argv; cwd travels via spawn option only", async () => {
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-cwd-flag" }),
+		});
+		const a = createClaudeCodeAdapter({ spawnFn, cwd: "/opt/default" });
+		await a.createSession({ model: null, cwd: "/srv/projects/x" });
+		expect(calls[0]?.args).not.toContain("--cwd");
+	});
+
+	it("captures argv-hostile cwd paths verbatim (no shell, no escaping)", async () => {
+		const exotic = "/path with spaces/中文/🍊";
+		const { calls, spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-cwd-exotic" }),
+		});
+		const a = createClaudeCodeAdapter({ spawnFn });
+		const ref = await a.createSession({ model: null, cwd: exotic });
+		expect(calls[0]?.cwd).toBe(exotic);
+		expect(ref.meta.cwd).toBe(exotic);
+	});
+
 	it("uses constructor maxTurns when provided", async () => {
 		const { calls, spawnFn } = fakeSpawn({
 			stdout: buildNdjson({ sessionId: "sess-maxt" }),

@@ -16,6 +16,12 @@ export type HermesAdapterOptions = {
 	hermesBin: string | null;
 	/** `--source` value used when invoking `hermes chat`. Defaults to `"sumeru"`. */
 	sourceTag: string | null;
+	/**
+	 * Default working directory for spawned `hermes` processes. A per-call
+	 * `SessionConfig.cwd` overrides this; when both are absent the adapter falls
+	 * back to `process.cwd()`. Defaults to `null`.
+	 */
+	cwd: string | null;
 	/** Path to the SQLite session DB. Defaults to `~/.hermes/sessions.db`. */
 	dbPath: string | null;
 	/**
@@ -64,6 +70,13 @@ export type SpawnArgs = {
 	command: string;
 	args: string[];
 	timeoutMs: number;
+	/**
+	 * Working directory for the spawned process. Resolved by the adapter's
+	 * 5-case cwd policy (per-call `config.cwd` > constructor `cwd` >
+	 * `process.cwd()`); forwarded verbatim to `child_process.spawn`'s `cwd`
+	 * option. Byte-identical to `adapter-claude-code`'s `SpawnArgs.cwd`.
+	 */
+	cwd: string;
 };
 
 /** Result of a spawned `hermes` invocation. */

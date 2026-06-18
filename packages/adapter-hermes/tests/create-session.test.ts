@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SpawnFn, TurnsReader } from "../src/index.js";
+import type { SpawnArgs, SpawnFn, TurnsReader } from "../src/index.js";
 import { createHermesAdapter } from "../src/index.js";
 
 const VALID_SESSION = "20260613_120000_abcd12";
@@ -21,6 +21,30 @@ function makeSpawn(
 		timedOut: opts.timedOut ?? false,
 		durationMs: opts.durationMs ?? 1,
 	});
+}
+
+/**
+ * Capturing variant of `makeSpawn` — records every `SpawnArgs` it receives
+ * (including the new `cwd` field) into a `calls` array so cwd-resolution tests
+ * can assert what the adapter passed to `child_process.spawn`.
+ */
+function captureSpawn(
+	stdout: string,
+	opts: Partial<{ exitCode: number; stderr: string }> = {},
+): { calls: SpawnArgs[]; spawnFn: SpawnFn } {
+	const calls: SpawnArgs[] = [];
+	const spawnFn: SpawnFn = async (args) => {
+		calls.push(args);
+		return {
+			stdout,
+			stderr: opts.stderr ?? "",
+			exitCode: opts.exitCode ?? 0,
+			signal: null,
+			timedOut: false,
+			durationMs: 1,
+		};
+	};
+	return { calls, spawnFn };
 }
 
 const emptyTurns: TurnsReader = async () => [];
@@ -228,6 +252,93 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 		await expect(
 			adapter.createSession({ model: null, cwd: null }),
 		).rejects.toThrow(/stdout-only-noise/);
+	});
+
+	// ── cwd resolution policy (issue #53) — 5 cases byte-identical to claude-code ──
+
+	it("Case 1: per-call config.cwd wins over constructor cwd", async () => {
+		const { calls, spawnFn } = captureSpawn(`Session: ${VALID_SESSION}\n`);
+		const a = createHermesAdapter({
+			cwd: "/opt/default",
+			spawnFn,
+			turnsReader: emptyTurns,
+		});
+		const ref = await a.createSession({ model: null, cwd: "/srv/projects/x" });
+		expect(calls.length).toBe(1);
+		expect(calls[0]?.cwd).toBe("/srv/projects/x");
+		expect(ref.meta.cwd).toBe("/srv/projects/x");
+	});
+
+	it("Case 2: constructor cwd applies when config.cwd is null", async () => {
+		const { calls, spawnFn } = captureSpawn(`Session: ${VALID_SESSION}\n`);
+		const b = createHermesAdapter({
+			cwd: "/opt/default",
+			spawnFn,
+			turnsReader: emptyTurns,
+		});
+		const ref = await b.createSession({ model: null, cwd: null });
+		expect(calls[0]?.cwd).toBe("/opt/default");
+		expect(ref.meta.cwd).toBe("/opt/default");
+	});
+
+	it("Case 3: falls back to process.cwd() when no cwd anywhere", async () => {
+		const { calls, spawnFn } = captureSpawn(`Session: ${VALID_SESSION}\n`);
+		const c = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
+		const ref = await c.createSession({ model: null, cwd: null });
+		expect(calls[0]?.cwd).toBe(process.cwd());
+		expect(ref.meta.cwd).toBe(process.cwd());
+	});
+
+	it("Case 4: rejects a non-string config.cwd before spawning", async () => {
+		const { calls, spawnFn } = captureSpawn(`Session: ${VALID_SESSION}\n`);
+		const d = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
+		await expect(
+			d.createSession({ model: null, cwd: 42 as unknown as string }),
+		).rejects.toThrow(/cwd/);
+		await expect(
+			d.createSession({ model: null, cwd: 42 as unknown as string }),
+		).rejects.toThrow(/must be a string/);
+		// The spawn must NOT have been invoked.
+		expect(calls.length).toBe(0);
+	});
+
+	it("Case 5: empty-string config.cwd is treated as absent", async () => {
+		const { calls, spawnFn } = captureSpawn(`Session: ${VALID_SESSION}\n`);
+		const e = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
+		const ref = await e.createSession({ model: null, cwd: "" });
+		expect(calls[0]?.cwd).toBe(process.cwd());
+		expect(ref.meta.cwd).toBe(process.cwd());
+	});
+
+	it("SpawnArgs.cwd always equals ref.meta.cwd (single resolution expression)", async () => {
+		const { calls, spawnFn } = captureSpawn(`Session: ${VALID_SESSION}\n`);
+		const a = createHermesAdapter({
+			cwd: "/opt/default",
+			spawnFn,
+			turnsReader: emptyTurns,
+		});
+		const ref = await a.createSession({ model: null, cwd: "/srv/projects/x" });
+		expect(calls[0]?.cwd).toBe(ref.meta.cwd);
+	});
+
+	it("does not add a --cwd flag to argv; cwd travels via spawn option only", async () => {
+		const { calls, spawnFn } = captureSpawn(`Session: ${VALID_SESSION}\n`);
+		const a = createHermesAdapter({
+			cwd: "/opt/default",
+			spawnFn,
+			turnsReader: emptyTurns,
+		});
+		await a.createSession({ model: null, cwd: "/srv/projects/x" });
+		expect(calls[0]?.args).not.toContain("--cwd");
+	});
+
+	it("captures argv-hostile cwd paths verbatim (no shell, no escaping)", async () => {
+		const exotic = "/path with spaces/中文/🍊";
+		const { calls, spawnFn } = captureSpawn(`Session: ${VALID_SESSION}\n`);
+		const a = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
+		const ref = await a.createSession({ model: null, cwd: exotic });
+		expect(calls[0]?.cwd).toBe(exotic);
+		expect(ref.meta.cwd).toBe(exotic);
 	});
 
 	// Opt-in integration: spawn the real `hermes` binary and verify createSession.

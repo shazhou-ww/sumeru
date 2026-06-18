@@ -1,50 +1,50 @@
 ---
-scenario: "createHermesAdapter().send() forwards a user message to an existing Hermes session via `hermes chat -q --resume <id>`, returns the new turns produced by the agent, and supports session resume across calls"
+scenario: "createHermesAdapter().send() resumes an existing Hermes session via `hermes chat -q --resume <id>`, spawns with the cwd pinned on ref.meta.cwd at create time (issue #66), and streams the new turns as SendEvents followed by a done event"
 feature: adapter-hermes
-tags: [adapter, hermes, send, resume, turns, cli, phase-3]
+tags: [adapter, hermes, send, resume, turns, streaming, cwd, issue-66]
 ---
 
 ## Given
-- `@sumeru/adapter-hermes` is built and `hermes` is available on `$PATH`.
-- An adapter-managed session exists: `const ref = await adapter.createSession({ model: "anthropic/claude-haiku-4" })`.
-- The Hermes session DB at `~/.hermes/sessions.db` already contains the session row created above; `getTurns(ref)` (specced separately) can read its existing turns.
-- For determinism, all tests use a model that gives short, deterministic answers (`anthropic/claude-haiku-4` or a stubbed model in unit tests).
+- The branch `fix/53-adapter-cwd-trio` is checked out (off `main`, AFTER the streaming-adapter-contract refactor #51 merged).
+- The live contract from `@sumeru/core` is `send(ref: NativeSessionRef, content: string): AsyncIterable<SendEvent>`, where `SendEvent = { type: "turn"; turn: Turn } | { type: "done"; durationMs: number; tokens: TokenUsage | null } | { type: "error"; error: Error }`. `send` is NOT a `Promise<AgentResponse>` anymore (the pre-#51 issue text describing `AgentResponse` is stale — verify against current code).
+- A ref was minted by `createSession` and therefore carries `ref.meta.cwd` — a non-empty string resolved by the 5-case cwd policy in `adapter-hermes-cwd.md` (#53). For unit tests a ref may be hand-built, e.g. `{ nativeId: "20260613_120000_aaaaaa", meta: { cwd: "/srv/projects/x", sourceTag: "sumeru", model: null, createdAt: "..." } }`.
+- **The #66 defect being fixed:** in the current `packages/adapter-hermes/src/adapter.ts`, the `send` path spawns the `--resume` process WITHOUT any `cwd` field — `spawnFn({ command, args, timeoutMs })` — so the child inherits the Sumeru server's `process.cwd()` and ignores `ref.meta.cwd` entirely. (This is partly because `SpawnArgs` has no `cwd` field until #53 adds it; #66 resolves naturally once #53 lands and `send` is updated to pass `cwd`.)
+- The adapter already has `withRefLock(nativeId, fn)` serializing concurrent sends per `nativeId`, a `closedRefs: Set<string>`, and a JSONL-first / SQLite-fallback turns reader.
+- Tests use the `makeSpawn` helper in `packages/adapter-hermes/tests/send.test.ts` (extended to capture the full `SpawnArgs`, including the new `cwd` field) plus a stubbed `turnsReader`.
 
 ## When
-- The test calls:
+- The test creates an adapter with a recording `spawnFn` and a stubbed `turnsReader`, then drives a resume:
   ```typescript
-  const r1 = await adapter.send(ref, "My favorite number is 42. Please remember it.");
-  const r2 = await adapter.send(ref, "What is my favorite number? Reply with just the digits.");
+  const ref = { nativeId: NATIVE, meta: { cwd: "/srv/projects/x", sourceTag: "sumeru", model: null, createdAt: "2026-06-13T12:00:00.000Z" } };
+  const events: SendEvent[] = [];
+  for await (const ev of adapter.send(ref, "My favorite number is 42.")) events.push(ev);
   ```
-- Internally each call:
-  1. Records the **highest existing turn index** in the session before invoking Hermes (via `getTurns(ref)` or a direct DB read — implementation detail).
-  2. Spawns `hermes chat -q "<content>" --resume <ref.nativeId> --quiet --pass-session-id --source <sourceTag>` (model is NOT re-passed because Hermes pins the model on first creation; passing it on resume is a no-op or error depending on hermes version, so the adapter omits it).
-  3. Waits for the process to exit.
-  4. Re-reads the session turns and returns the **delta** — turns whose index is greater than the recorded high-water mark.
+- Internally each `send`:
+  1. Acquires the per-`nativeId` lock, records the highest existing turn index (high-water mark) via the turns reader.
+  2. Spawns `hermes chat -q "<content>" --resume <ref.nativeId> --pass-session-id --quiet --source <sourceTag>` — model is NOT re-passed (Hermes pins it at creation) — **with `SpawnArgs.cwd` set to `ref.meta.cwd`**.
+  3. Waits for exit, re-reads turns, computes the delta (index > high-water).
+  4. Yields one `{ type: "turn", turn }` per delta turn (system turns filtered unless `includeSystemTurns`), then exactly one `{ type: "done", durationMs, tokens }`.
 
 ## Then
-- **Resume works (the issue's first completion criterion)** — `r2.turns` contains an assistant message whose `content` includes the substring `"42"`. The model genuinely sees the prior conversation context. (This is the test that proves Hermes resume actually works through the adapter.)
-- **Return shape** — Each `AgentResponse` has:
-  - `turns: Turn[]` — the **new turns from this `send` call only**, not the entire history. Order is by `index` ascending, matching `Turn.index`.
-  - `tokens: TokenUsage | null` — sum of input/output tokens across the new turns; `null` only if Hermes did not report any token usage for any of them (rare edge case).
-  - `durationMs: number` — wall-clock time from `spawn` to process exit, integer.
-- **Turn shape per `@sumeru/core`** — Every emitted turn has:
-  - `index: number` — the absolute index in the Hermes session (not relative to this `send` call).
-  - `role: "user" | "assistant"` — adapter MUST emit at least one `role: "user"` turn (the message just sent) and at least one `role: "assistant"` turn (Hermes's reply). System messages from Hermes are filtered out unless `HermesAdapterOptions.includeSystemTurns === true` (default `false`).
-  - `content: string` — text content; never `undefined`, never `null`.
-  - `timestamp: string` — ISO-8601 UTC; matches the value Hermes wrote to its DB.
-  - `toolCalls: ToolCall[] | null` — full tool-call records for assistant turns that used tools; `null` when no tool calls were made (NOT `[]`).
-  - `tokens: TokenUsage | undefined` — the existing `Turn.tokens?` shape from `@sumeru/core` is preserved. (Note: a sibling task may convert this to `T | null`; if that happens, both core and adapter update together.)
-- **Tool-call passthrough (the issue's "含 toolCalls" requirement)** — If the model invokes a tool (e.g. asks Hermes to run `terminal: ls`), the resulting turn's `toolCalls` is a non-empty array; each `ToolCall` has `tool`, `input`, `output`, `durationMs`, and `exitCode` populated from the Hermes record. None of these fields are dropped or renamed. (Tested with `initialQuery: "Run \\`echo hi\\` in the terminal tool, then tell me the output."`)
-- **No turn duplication across `send` calls** — `r1.turns` and `r2.turns` have no overlapping `index` values. Assert: `new Set([...r1.turns, ...r2.turns].map(t => t.index)).size === r1.turns.length + r2.turns.length`.
-- **Session status side effects** — The adapter does NOT mutate the upstream `Session` (Sumeru-side) state — that's the server's responsibility. Adapter just shells out and reads turns.
-- **Concurrent send on the same ref** — Two parallel `send(ref, ...)` calls are **serialized inside the adapter** via a per-`nativeId` mutex. The second call awaits the first; the result of the second sees the first's turns. Neither rejects with `409` (that's a Sumeru-server-layer concern, not adapter). The adapter exposes no 409-like contract.
-- **Send to closed session** — If `ref.nativeId` was previously closed via `adapter.close(ref)`, calling `send(ref, …)` rejects with `Error("hermes session <id> is closed")`. (The adapter tracks closed refs in an internal `Set<string>` for the lifetime of the adapter instance.)
-- **Send to never-created session** — If `ref.nativeId` is a syntactically valid string that does NOT exist in the Hermes DB, `send` rejects with an `Error` whose message includes the id and the substring `"not found"`. (Hermes itself errors out; the adapter surfaces that.)
-- **Unicode / multiline content** — The adapter passes `content` to `hermes chat -q "<content>"` using argv (NOT shell interpolation), so embedded quotes, backslashes, newlines, and emoji round-trip without corruption. Verified with content `"line1\nline2\n中文 🍊 \"quoted\""`.
-- **Timeout** — `send` honors a per-call timeout (default 5 minutes, configurable via `HermesAdapterOptions.sendTimeoutMs`). On timeout: the spawned `hermes` process is killed (`SIGTERM`, then `SIGKILL` after 5 s); the promise rejects with `Error("send timed out after <ms>ms")`; turns produced **before** the timeout are NOT returned (they are still in the DB and can be retrieved by a subsequent `getTurns`).
-- **Non-zero exit** — `hermes` exiting non-zero rejects the promise with `Error("hermes exited with code <n>: <stderr tail>")`. No partial turns are returned.
+- **cwd is pinned from `ref.meta.cwd` (issue #66, the core assertion)** — the captured `SpawnArgs.cwd === "/srv/projects/x"` (i.e. exactly `ref.meta.cwd`), NOT `process.cwd()`. The resume child therefore runs in the same working directory the session was born in.
+  - The value is read from `ref.meta.cwd` when it is a non-empty string; if `ref.meta.cwd` is absent/empty/non-string (e.g. a hand-built ref with `meta: {}`), the adapter falls back to `process.cwd()` so existing tests with `meta: {}` keep working.
+  - There is NO per-`send` cwd parameter and NO `--cwd` CLI flag — assert `SpawnArgs.args` contains no `"--cwd"`. cwd travels solely via `child_process.spawn`'s `cwd` option (forwarded by the #53 `defaultSpawn` change).
+- **Streaming shape** — `send` returns an `AsyncIterable<SendEvent>`. On success the iterable yields zero or more `{ type: "turn", turn: Turn }` (one per delta turn, ascending `index`, globally monotonic) followed by exactly one `{ type: "done", durationMs: number, tokens: TokenUsage | null }`. Because hermes is batch (not incremental), all turn events arrive in a burst after the process exits — but they are individual events, never a single array.
+- **Resume works (integration)** — gated on `SUMERU_HERMES_INTEGRATION=1`: a second `send` asking "what is my favorite number?" yields an assistant turn whose `content` includes `"42"`, proving Hermes saw the prior context through the adapter.
+- **Argv** — the spawned argv is `chat -q <content> --resume <nativeId> --pass-session-id --quiet --source <sourceTag>`. `--resume` is immediately followed by `ref.nativeId`. `--model` is absent on resume.
+- **Delta only, no duplication** — turns yielded for a `send` are exactly those with `index >` the pre-send high-water mark. Across two sends, the union of yielded turn indices has size equal to the sum of counts (no overlap).
+- **Turn shape per `@sumeru/core`** — each turn has `index: number` (absolute), `role: "user" | "assistant"` (system filtered unless `includeSystemTurns`), `content: string` (never null/undefined), `timestamp: string` (ISO-8601 UTC), `toolCalls: ToolCall[] | null` (`null`, not `[]`, when none), and `tokens: TokenUsage | null`.
+- **Tool-call passthrough** — when the model used a tool, the assistant turn's `toolCalls` is a non-empty array; each `ToolCall` has `tool`, `input`, `output`, `durationMs`, `exitCode` populated from the Hermes record, none dropped or renamed.
+- **`done.tokens`** — sum of input/output tokens across the yielded turns; `null` only when Hermes reported no usage for any of them. `done.durationMs` is a non-negative integer (spawn → exit wall clock).
+- **Concurrent send on the same ref** — two parallel `send(ref, …)` iterations are serialized by the per-`nativeId` mutex; the second awaits the first and sees the first's turns. Neither surfaces a `409` (that is a server-layer concern; the adapter exposes no 409). The mutex behavior is UNCHANGED by #66 — adding `cwd` to the spawn args must not alter locking.
+- **Send to closed session** — after `await adapter.close(ref)`, iterating `send(ref, …)` yields a single `{ type: "error", error: Error("hermes session <id> is closed") }` (or throws synchronously before the iterable, matching current behavior) and no `done`.
+- **Send to never-created session** — if `nativeId` does not exist in the Hermes DB and hermes exits non-zero with a "not found" stderr, the iterable yields `{ type: "error", error }` whose message includes the id and `"not found"`, and terminates (no `done` after `error`).
+- **Unicode / multiline content** — `content` is passed via argv (no shell), so embedded quotes, backslashes, newlines, and emoji round-trip without corruption. Verified with `"line1\nline2\n中文 🍊 \"quoted\""`.
+- **Timeout** — `send` honors `HermesAdapterOptions.sendTimeoutMs` (default 5 min). On timeout the iterable yields `{ type: "error", error: Error("send timed out after <ms>ms") }`; turns produced before the timeout are not yielded (retrievable later via `getTurns`).
+- **Non-zero exit** — a non-zero hermes exit yields `{ type: "error", error: Error("hermes exited with code <n>: <stderr tail>") }`; no partial turns.
+- **No upstream mutation** — the adapter does not touch Sumeru-side `Session` state; it only shells out and reads turns.
 - **Tests** under `packages/adapter-hermes/tests/send.test.ts`:
-  - Resume context test (`r2` sees `42`) — gated on `SUMERU_HERMES_INTEGRATION=1`.
-  - Default suite uses a stubbed `spawn` that fakes Hermes output and a stubbed turns reader; verifies argv, mutex, closed-ref rejection, timeout, and unicode argv handling.
-- `pnpm run build`, `pnpm run check`, and `pnpm run test` all exit 0.
+  - **New `#66` case:** a resume send with `ref.meta.cwd === "/srv/projects/x"` asserts the recorded `SpawnArgs.cwd === "/srv/projects/x"` and that `args` has no `--cwd`.
+  - **New fallback case:** a ref with `meta: {}` records `SpawnArgs.cwd === process.cwd()` (keeps legacy hand-built refs green).
+  - Existing argv/mutex/closed-ref/timeout/unicode cases are updated only as needed to consume `AsyncIterable<SendEvent>` and the extended `SpawnArgs`.
+- `pnpm run build`, `pnpm run check`, and `pnpm run test` all exit 0. No `class`, no `interface`, no default exports, no optional `?:` properties added.

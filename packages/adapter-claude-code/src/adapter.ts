@@ -168,6 +168,13 @@ export function createClaudeCodeAdapter(
 	async function createSession(
 		config: SessionConfig,
 	): Promise<NativeSessionRef> {
+		// Case 4: a non-null, non-string cwd is a programming error — reject
+		// before spawning. `null` is "absent" (legal); only a wrong type rejects.
+		// Runs BEFORE the empty-string / resolveCwd computation below.
+		if (config.cwd !== null && typeof config.cwd !== "string") {
+			throw new Error("createSession: config.cwd must be a string or null");
+		}
+
 		const model =
 			config.model !== null && config.model.length > 0
 				? config.model

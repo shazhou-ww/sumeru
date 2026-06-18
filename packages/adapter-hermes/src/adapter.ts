@@ -50,6 +50,7 @@ export function createHermesAdapter(
 ): Adapter {
 	const hermesBin = options.hermesBin ?? DEFAULT_HERMES_BIN;
 	const sourceTag = options.sourceTag ?? DEFAULT_SOURCE_TAG;
+	const cwd = options.cwd ?? null;
 	const dbPath = options.dbPath ?? join(homedir(), ".hermes", "state.db");
 	const sessionsDir =
 		options.sessionsDir ?? join(homedir(), ".hermes", "sessions");
@@ -65,6 +66,11 @@ export function createHermesAdapter(
 
 	const closedRefs = new Set<string>();
 	const sendLocks = new Map<string, Promise<unknown>>();
+
+	/** Constructor cwd, else `process.cwd()` at call time. */
+	function resolveCwd(): string {
+		return cwd ?? process.cwd();
+	}
 
 	async function withRefLock<T>(
 		nativeId: string,
@@ -111,19 +117,32 @@ export function createHermesAdapter(
 	async function createSession(
 		config: SessionConfig,
 	): Promise<NativeSessionRef> {
+		// Case 4: a non-null, non-string cwd is a programming error — reject
+		// before spawning. `null` is "absent" (legal); only a wrong type rejects.
+		if (config.cwd !== null && typeof config.cwd !== "string") {
+			throw new Error("createSession: config.cwd must be a string or null");
+		}
+
 		const args = ["chat", "-q", "ping", "--pass-session-id", "--quiet"];
 		args.push("--source", sourceTag);
 		if (config.model !== null) {
 			args.push("--model", config.model);
 		}
 
-		const spawnCwd = config.cwd ?? undefined;
+		// Single resolution expression — per-call cwd (non-empty) wins, else the
+		// constructor cwd, else process.cwd(). The SAME value is passed to spawn
+		// and written to meta.cwd so they can never diverge. Empty string is
+		// treated as absent (mirrors the server-side resolveSessionCwd).
+		const spawnCwd =
+			typeof config.cwd === "string" && config.cwd.length > 0
+				? config.cwd
+				: resolveCwd();
 
 		const result = await spawnFn({
 			command: hermesBin,
 			args,
 			timeoutMs: createSessionTimeoutMs,
-			...(spawnCwd !== undefined ? { cwd: spawnCwd } : {}),
+			cwd: spawnCwd,
 		}).catch((err) => {
 			const detail = err instanceof Error ? err.message : String(err);
 			throw new Error(
@@ -163,7 +182,7 @@ export function createHermesAdapter(
 
 		const meta: Record<string, unknown> = {
 			sourceTag,
-			cwd: config.cwd ?? process.cwd(),
+			cwd: spawnCwd,
 			model: config.model,
 			createdAt: new Date().toISOString(),
 		};
@@ -212,6 +231,14 @@ export function createHermesAdapter(
 					sourceTag,
 				];
 
+				// #66: pin the resume cwd to the value the session was born with
+				// (ref.meta.cwd). Fall back to resolveCwd() for hand-built refs whose
+				// meta lacks a usable cwd (e.g. legacy `meta: {}`).
+				const sendCwd =
+					typeof ref.meta.cwd === "string" && ref.meta.cwd.length > 0
+						? ref.meta.cwd
+						: resolveCwd();
+
 				const startedAt = Date.now();
 				let result: Awaited<ReturnType<SpawnFn>>;
 				try {
@@ -219,6 +246,7 @@ export function createHermesAdapter(
 						command: hermesBin,
 						args,
 						timeoutMs: sendTimeoutMs,
+						cwd: sendCwd,
 					});
 				} catch (err) {
 					const detail = err instanceof Error ? err.message : String(err);
