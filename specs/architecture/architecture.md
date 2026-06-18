@@ -62,7 +62,8 @@ Session 是运行时实体，由调用方按需创建/复用/关闭。
 |------------|-----------|------|
 | `@sumeru/adapter-hermes` | Hermes Agent | 通过 ACP 或 CLI 通信，从 session DB 提取 turns |
 | `@sumeru/adapter-claude-code` | Claude Code | 通过 CLI 通信，从 session 文件提取 turns |
-| `@sumeru/adapter-openclaw` | OpenClaw | 待定 |
+| `@sumeru/adapter-codex` | Codex | 通过 `codex exec --json` 通信，解析 JSONL 流提取 turns |
+| `@sumeru/adapter-cursor-agent` | Cursor Agent | 通过 CLI 通信，解析 stream-json 提取 turns |
 
 加新 agent = 写一个新 adapter 包。Adapter 实现统一的接口：
 
@@ -426,7 +427,8 @@ packages/
   server/            # @sumeru/server — HTTP 服务
   adapter-hermes/    # @sumeru/adapter-hermes — Hermes Agent 适配
   adapter-claude-code/ # @sumeru/adapter-claude-code — Claude Code 适配
-  adapter-openclaw/  # @sumeru/adapter-openclaw — OpenClaw 适配
+  adapter-codex/     # @sumeru/adapter-codex — Codex 适配
+  adapter-cursor-agent/ # @sumeru/adapter-cursor-agent — Cursor Agent 适配
   cli/               # @sumeru/cli — sumeru start / run / status
 ```
 
