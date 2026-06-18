@@ -35,6 +35,7 @@ export type SseBufferStore = {
 	getLatestForSession: (gateway: string, sessionId: string) => SseBuffer | null;
 	finish: (buf: SseBuffer) => void;
 	purgeExpired: (now: number) => void;
+	wasRecentlyExpired: (gateway: string, sessionId: string) => boolean;
 };
 
 export type SseBufferOptions = {
@@ -57,6 +58,11 @@ export function createSseBufferStore(
 	// find it for a short window.
 	const all = new Map<string, SseBuffer>();
 	const latestBySession = new Map<string, string>();
+
+	// Ghost set: tracks recently-expired session keys so resume can
+	// distinguish "expired" (410) from "never existed" (404). Entries are
+	// pruned when older than retentionMs past their expiry time.
+	const recentlyExpired = new Map<string, number>();
 
 	function key(buf: SseBuffer): string {
 		return `${buf.gateway}\u0000${buf.sessionId}\u0000${buf.nonce}`;
@@ -97,10 +103,18 @@ export function createSseBufferStore(
 	}
 
 	function purgeExpired(now: number): void {
+		// First, prune ghost entries older than retentionMs past their expiry.
+		for (const [skey, expiredAt] of recentlyExpired) {
+			if (now - expiredAt > options.retentionMs) {
+				recentlyExpired.delete(skey);
+			}
+		}
+		// Then, move expired live buffers to the ghost set before deleting.
 		for (const [k, buf] of all) {
 			if (buf.doneAt !== null && now - buf.doneAt > options.retentionMs) {
-				all.delete(k);
 				const skey = sessionKey(buf.gateway, buf.sessionId);
+				recentlyExpired.set(skey, now);
+				all.delete(k);
 				if (latestBySession.get(skey) === k) {
 					latestBySession.delete(skey);
 				}
@@ -108,7 +122,17 @@ export function createSseBufferStore(
 		}
 	}
 
-	return { create, getLatestForSession, finish, purgeExpired };
+	function wasRecentlyExpired(gateway: string, sessionId: string): boolean {
+		return recentlyExpired.has(sessionKey(gateway, sessionId));
+	}
+
+	return {
+		create,
+		getLatestForSession,
+		finish,
+		purgeExpired,
+		wasRecentlyExpired,
+	};
 }
 
 /** Append an event to a buffer, maintaining `maxSize` ring semantics. */
