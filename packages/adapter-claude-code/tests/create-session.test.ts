@@ -11,14 +11,14 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 		const adapter = createClaudeCodeAdapter({ spawnFn, model: null });
 		const ref = await adapter.createSession({
 			model: "claude-sonnet-4-5",
-			initialQuery: "Say hi.",
+			cwd: null,
 		});
 
 		expect(calls.length).toBe(1);
 		expect(calls[0]?.command).toBe("claude");
 		expect(calls[0]?.args).toEqual([
 			"-p",
-			"Say hi.",
+			"ping",
 			"--output-format",
 			"stream-json",
 			"--verbose",
@@ -35,17 +35,14 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 		expect(typeof ref.meta.createdAt).toBe("string");
 	});
 
-	it("defaults initialQuery to 'ping' when missing or empty", async () => {
+	it("always uses 'ping' as the prompt", async () => {
 		const { calls, spawnFn } = fakeSpawn({
 			stdout: buildNdjson({ sessionId: "sess-default" }),
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		expect(calls[0]?.args[0]).toBe("-p");
 		expect(calls[0]?.args[1]).toBe("ping");
-
-		await adapter.createSession({ initialQuery: "" });
-		expect(calls[1]?.args[1]).toBe("ping");
 	});
 
 	it("does not pass --model when neither config nor constructor specify one", async () => {
@@ -53,7 +50,7 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			stdout: buildNdjson({ sessionId: "sess-no-model", model: "" }),
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		expect(calls[0]?.args).not.toContain("--model");
 	});
 
@@ -65,7 +62,7 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			spawnFn,
 			model: "claude-3-5-sonnet",
 		});
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		expect(calls[0]?.args).toContain("--model");
 		const idx = calls[0]?.args.indexOf("--model") ?? -1;
 		expect(calls[0]?.args[idx + 1]).toBe("claude-3-5-sonnet");
@@ -79,7 +76,7 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			spawnFn,
 			model: "ctor-model",
 		});
-		await adapter.createSession({ model: "config-model" });
+		await adapter.createSession({ model: "config-model", cwd: null });
 		const idx = calls[0]?.args.indexOf("--model") ?? -1;
 		expect(calls[0]?.args[idx + 1]).toBe("config-model");
 	});
@@ -89,7 +86,7 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			stdout: loadFixture("cc-stream.success.ndjson"),
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({ initialQuery: "Say hi." });
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const turns = await adapter.getTurns(ref);
 		expect(turns.length).toBeGreaterThan(0);
 		expect(turns[0]?.role).toBe("user");
@@ -101,9 +98,9 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			exitCode: 0,
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		await expect(adapter.createSession({})).rejects.toThrow(
-			/unparseable stream-json/,
-		);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/unparseable stream-json/);
 	});
 
 	it("rejects with a not-logged-in message when stderr indicates login required", async () => {
@@ -113,7 +110,9 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			exitCode: 1,
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		await expect(adapter.createSession({})).rejects.toThrow(/not logged in/i);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/not logged in/i);
 	});
 
 	it("rejects with an API key error when stderr matches API key patterns", async () => {
@@ -124,7 +123,9 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			exitCode: 1,
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		await expect(adapter.createSession({})).rejects.toThrow(/API key/i);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/API key/i);
 	});
 
 	it("rejects on timeout", async () => {
@@ -138,9 +139,9 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			spawnFn,
 			createSessionTimeoutMs: 100,
 		});
-		await expect(adapter.createSession({})).rejects.toThrow(
-			/createSession timed out after 100ms/,
-		);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/createSession timed out after 100ms/);
 	});
 
 	it("does NOT pass --resume on a fresh createSession", async () => {
@@ -148,7 +149,7 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			stdout: buildNdjson({ sessionId: "sess-fresh" }),
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		expect(calls[0]?.args).not.toContain("--resume");
 	});
 
@@ -158,7 +159,7 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			exitCode: 0,
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		expect(ref.meta.subtype).toBe("error_max_turns");
 		const turns = await adapter.getTurns(ref);
 		expect(turns.length).toBeGreaterThan(0);
@@ -171,20 +172,10 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 		}));
 		const adapter = createClaudeCodeAdapter({ spawnFn });
 		const [a, b] = await Promise.all([
-			adapter.createSession({}),
-			adapter.createSession({}),
+			adapter.createSession({ model: null, cwd: null }),
+			adapter.createSession({ model: null, cwd: null }),
 		]);
 		expect(a.nativeId).not.toBe(b.nativeId);
-	});
-
-	it("argv passes unicode/quotes verbatim (no shell interpolation)", async () => {
-		const tricky = 'line1\nline2 中文 🍊 "quoted" \\back';
-		const { calls, spawnFn } = fakeSpawn({
-			stdout: buildNdjson({ sessionId: "sess-unicode", userText: tricky }),
-		});
-		const adapter = createClaudeCodeAdapter({ spawnFn });
-		await adapter.createSession({ initialQuery: tricky });
-		expect(calls[0]?.args[1]).toBe(tricky);
 	});
 
 	it("uses options.cwd when provided", async () => {
@@ -192,7 +183,7 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			stdout: buildNdjson({ sessionId: "sess-cwd" }),
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn, cwd: "/tmp/xx" });
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		expect(calls[0]?.cwd).toBe("/tmp/xx");
 	});
 
@@ -201,7 +192,7 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			stdout: buildNdjson({ sessionId: "sess-maxt" }),
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn, maxTurns: 7 });
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		const idx = calls[0]?.args.indexOf("--max-turns") ?? -1;
 		expect(calls[0]?.args[idx + 1]).toBe("7");
 	});
@@ -213,8 +204,8 @@ describe("createClaudeCodeAdapter().createSession()", () => {
 			exitCode: 2,
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		await expect(adapter.createSession({})).rejects.toThrow(
-			/exited with code 2/,
-		);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/exited with code 2/);
 	});
 });

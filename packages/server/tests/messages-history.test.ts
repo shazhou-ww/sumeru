@@ -9,7 +9,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentResponse, NativeSessionRef, Turn } from "@sumeru/core";
+import type { NativeSessionRef, SendEvent, Turn } from "@sumeru/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	type GatewayConfig,
@@ -36,7 +36,7 @@ type TestCtx = {
 	server: StartedServer;
 	baseUrl: string;
 	setRespond: (
-		fn: (content: string, ref: NativeSessionRef) => Promise<AgentResponse>,
+		fn: (content: string, ref: NativeSessionRef) => AsyncIterable<SendEvent>,
 	) => void;
 };
 
@@ -299,24 +299,30 @@ describe("GET /gateways/:name/sessions/:id/messages", () => {
 
 	it("multi-turn assistant response is preserved in order", async () => {
 		const sessionId = await createSession(ctx.baseUrl);
-		ctx.setRespond(async (_content, _ref) => {
-			const turns: Turn[] = [
-				{
-					index: 1,
-					role: "assistant",
-					content: "first",
-					timestamp: new Date().toISOString(),
-					toolCalls: null,
-				},
-				{
-					index: 2,
-					role: "assistant",
-					content: "second",
-					timestamp: new Date().toISOString(),
-					toolCalls: null,
-				},
-			];
-			return { turns, tokens: null, durationMs: 1 };
+		ctx.setRespond((_content, _ref) => {
+			async function* generate(): AsyncGenerator<SendEvent> {
+				const turns: Turn[] = [
+					{
+						index: 1,
+						role: "assistant",
+						content: "first",
+						timestamp: new Date().toISOString(),
+						toolCalls: null,
+					},
+					{
+						index: 2,
+						role: "assistant",
+						content: "second",
+						timestamp: new Date().toISOString(),
+						toolCalls: null,
+					},
+				];
+				for (const turn of turns) {
+					yield { type: "turn", turn };
+				}
+				yield { type: "done", durationMs: 1, tokens: null };
+			}
+			return generate();
 		});
 		await sendMessage(ctx.baseUrl, sessionId, "hello");
 		const res = await fetch(

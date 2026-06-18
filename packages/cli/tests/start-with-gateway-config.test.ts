@@ -11,7 +11,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Adapter, AdapterCapabilities } from "@sumeru/core";
+import type { Adapter, SendEvent, SessionConfig } from "@sumeru/core";
 import { loadConfig } from "@sumeru/server";
 import { describe, expect, it } from "vitest";
 import {
@@ -24,12 +24,18 @@ function fixtureDir(): string {
 }
 
 function fakeAdapter(name: string): Adapter {
-	const caps: AdapterCapabilities = { resume: true, streaming: false };
 	return {
 		name,
-		capabilities: caps,
-		createSession: async () => ({ nativeId: "x", meta: {} }),
-		send: async () => ({ turns: [], tokens: null, durationMs: 0 }),
+		createSession: async (_config: SessionConfig) => ({
+			nativeId: "x",
+			meta: {},
+		}),
+		send(_ref, _content): AsyncIterable<SendEvent> {
+			async function* generate(): AsyncGenerator<SendEvent> {
+				yield { type: "done", durationMs: 0, tokens: null };
+			}
+			return generate();
+		},
 		close: async () => {},
 		getTurns: async () => [],
 	};

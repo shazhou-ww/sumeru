@@ -5,12 +5,12 @@
  * fallback for older or alternate hermes builds.
  *
  * Design notes:
- *   - createSession spawns `hermes chat -q "<initialQuery>" --pass-session-id --quiet`
- *     and parses the printed session id line. Hermes v0.15.1 prints the line to
- *     **stderr**, older versions to stdout; the adapter merges both streams and
- *     accepts either `session_id: <id>` (new) or `Session: <id>` (legacy).
- *   - send uses `hermes chat -q "<content>" --resume <id>` and returns the
- *     **delta** turns recorded since the call started (per-nativeId mutex).
+ *   - createSession spawns `hermes chat -q "ping" --pass-session-id --quiet`
+ *     and parses the printed session id line. Accepts `SessionConfig` with
+ *     `model` and `cwd` fields.
+ *   - send is an async generator that spawns `hermes chat -q "<content>"
+ *     --resume <id>`, waits for exit, reads delta turns, then yields each
+ *     turn as `{ type: "turn", turn }` followed by `{ type: "done", ... }`.
  *   - close is a logical close — adds the nativeId to a per-instance Set;
  *     no DB mutation, no process spawn.
  *   - getTurns reads `<sessionsDir>/<nativeId>.jsonl` first; on absence falls
@@ -21,8 +21,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
 	Adapter,
-	AgentResponse,
 	NativeSessionRef,
+	SendEvent,
+	SessionConfig,
 	TokenUsage,
 	Turn,
 } from "@sumeru/core";
@@ -43,19 +44,6 @@ const DEFAULT_SEND_TIMEOUT_MS = 5 * 60_000;
 
 const SESSION_ID_RE = /^[0-9]{8}_[0-9]{6}_[0-9a-f]+$/;
 const SESSION_LINE_RE = /^(?:Session:|session_id:)\s+(\S+)\s*$/m;
-
-const ALLOWED_CONFIG_KEYS = [
-	"model",
-	"provider",
-	"toolsets",
-	"skills",
-	"worktree",
-	"acceptHooks",
-	"yolo",
-	"maxTurns",
-	"ignoreUserConfig",
-	"ignoreRules",
-] as const;
 
 export function createHermesAdapter(
 	options: Partial<HermesAdapterOptions> = {},
@@ -123,24 +111,21 @@ export function createHermesAdapter(
 	}
 
 	async function createSession(
-		config: Record<string, unknown>,
+		config: SessionConfig,
 	): Promise<NativeSessionRef> {
-		const initialQuery =
-			typeof config.initialQuery === "string" && config.initialQuery.length > 0
-				? config.initialQuery
-				: "ping";
-		const args = ["chat", "-q", initialQuery, "--pass-session-id", "--quiet"];
+		const args = ["chat", "-q", "ping", "--pass-session-id", "--quiet"];
 		args.push("--source", sourceTag);
-		for (const key of ALLOWED_CONFIG_KEYS) {
-			const value = config[key];
-			if (value === undefined || value === null) continue;
-			pushFlag(args, key, value);
+		if (config.model !== null) {
+			args.push("--model", config.model);
 		}
+
+		const spawnCwd = config.cwd ?? undefined;
 
 		const result = await spawnFn({
 			command: hermesBin,
 			args,
 			timeoutMs: createSessionTimeoutMs,
+			...(spawnCwd !== undefined ? { cwd: spawnCwd } : {}),
 		}).catch((err) => {
 			const detail = err instanceof Error ? err.message : String(err);
 			throw new Error(
@@ -180,17 +165,17 @@ export function createHermesAdapter(
 
 		const meta: Record<string, unknown> = {
 			sourceTag,
-			cwd: process.cwd(),
-			model: typeof config.model === "string" ? config.model : null,
+			cwd: config.cwd ?? process.cwd(),
+			model: config.model,
 			createdAt: new Date().toISOString(),
 		};
 		return { nativeId, meta };
 	}
 
-	async function send(
+	function send(
 		ref: NativeSessionRef,
 		content: string,
-	): Promise<AgentResponse> {
+	): AsyncIterable<SendEvent> {
 		assertRef(ref);
 		if (closedRefs.has(ref.nativeId)) {
 			throw new Error(`hermes session ${ref.nativeId} is closed`);
@@ -199,64 +184,102 @@ export function createHermesAdapter(
 			throw new Error("send: content must be a non-empty string");
 		}
 
-		return withRefLock(ref.nativeId, async () => {
-			if (closedRefs.has(ref.nativeId)) {
-				throw new Error(`hermes session ${ref.nativeId} is closed`);
-			}
-			const before = await readAllTurns(ref.nativeId).catch(() => []);
-			const highWater =
-				before.length === 0
-					? -1
-					: before.reduce((m, t) => (t.index > m ? t.index : m), -1);
+		const nativeId = ref.nativeId;
 
-			const args = [
-				"chat",
-				"-q",
-				content,
-				"--resume",
-				ref.nativeId,
-				"--pass-session-id",
-				"--quiet",
-				"--source",
-				sourceTag,
-			];
+		async function* generate(): AsyncGenerator<SendEvent> {
+			const events: SendEvent[] = await withRefLock(nativeId, async () => {
+				if (closedRefs.has(nativeId)) {
+					return [
+						{
+							type: "error" as const,
+							error: new Error(`hermes session ${nativeId} is closed`),
+						},
+					];
+				}
+				const before = await readAllTurns(nativeId).catch(() => []);
+				const highWater =
+					before.length === 0
+						? -1
+						: before.reduce((m, t) => (t.index > m ? t.index : m), -1);
 
-			const startedAt = Date.now();
-			const result = await spawnFn({
-				command: hermesBin,
-				args,
-				timeoutMs: sendTimeoutMs,
+				const args = [
+					"chat",
+					"-q",
+					content,
+					"--resume",
+					nativeId,
+					"--pass-session-id",
+					"--quiet",
+					"--source",
+					sourceTag,
+				];
+
+				const startedAt = Date.now();
+				let result: Awaited<ReturnType<SpawnFn>>;
+				try {
+					result = await spawnFn({
+						command: hermesBin,
+						args,
+						timeoutMs: sendTimeoutMs,
+					});
+				} catch (err) {
+					const detail = err instanceof Error ? err.message : String(err);
+					return [
+						{
+							type: "error" as const,
+							error: new Error(`hermes exited with spawn failure: ${detail}`),
+						},
+					];
+				}
+
+				if (result.timedOut) {
+					return [
+						{
+							type: "error" as const,
+							error: new Error(`send timed out after ${sendTimeoutMs}ms`),
+						},
+					];
+				}
+				if (result.exitCode !== 0) {
+					const tail = tail500(result.stderr || result.stdout);
+					const stderrLower = (result.stderr ?? "").toLowerCase();
+					let msg: string;
+					if (
+						stderrLower.includes("not found") ||
+						stderrLower.includes("no such session")
+					) {
+						msg = `hermes session ${nativeId} not found: ${tail}`;
+					} else {
+						msg = `hermes exited with code ${result.exitCode ?? "(none)"}: ${tail}`;
+					}
+					return [{ type: "error" as const, error: new Error(msg) }];
+				}
+
+				const after = await readAllTurns(nativeId);
+				const delta = after.filter((t) => t.index > highWater);
+				const filtered = includeSystemTurns
+					? delta
+					: delta.filter((t) => t.role !== "system");
+				const tokens = aggregateTokens(filtered);
+
+				const result_events: SendEvent[] = [];
+				for (const turn of filtered) {
+					result_events.push({ type: "turn", turn });
+				}
+				result_events.push({
+					type: "done",
+					durationMs: Date.now() - startedAt,
+					tokens,
+				});
+				return result_events;
 			});
 
-			if (result.timedOut) {
-				throw new Error(`send timed out after ${sendTimeoutMs}ms`);
+			for (const event of events) {
+				yield event;
 			}
-			if (result.exitCode !== 0) {
-				const tail = tail500(result.stderr || result.stdout);
-				const stderrLower = (result.stderr ?? "").toLowerCase();
-				if (
-					stderrLower.includes("not found") ||
-					stderrLower.includes("no such session")
-				) {
-					throw new Error(`hermes session ${ref.nativeId} not found: ${tail}`);
-				}
-				throw new Error(
-					`hermes exited with code ${result.exitCode ?? "(none)"}: ${tail}`,
-				);
-			}
+		}
 
-			const after = await readAllTurns(ref.nativeId);
-			const delta = after.filter((t) => t.index > highWater);
-			const filtered = includeSystemTurns
-				? delta
-				: delta.filter((t) => t.role !== "system");
-			const tokens = aggregateTokens(filtered);
-			return {
-				turns: filtered,
-				tokens,
-				durationMs: Date.now() - startedAt,
-			};
-		});
+		return generate();
 	}
 
 	async function close(ref: NativeSessionRef): Promise<void> {
@@ -274,7 +297,6 @@ export function createHermesAdapter(
 
 	return {
 		name: "hermes",
-		capabilities: { resume: true, streaming: false },
 		createSession,
 		send,
 		close,
@@ -292,25 +314,6 @@ function assertRef(ref: NativeSessionRef | null | undefined): void {
 	) {
 		throw new Error("close: invalid NativeSessionRef");
 	}
-}
-
-function pushFlag(args: string[], key: string, value: unknown): void {
-	const flag = `--${kebab(key)}`;
-	if (typeof value === "boolean") {
-		if (value) args.push(flag);
-		return;
-	}
-	if (Array.isArray(value)) {
-		for (const v of value) {
-			args.push(flag, String(v));
-		}
-		return;
-	}
-	args.push(flag, String(value));
-}
-
-function kebab(name: string): string {
-	return name.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
 }
 
 function tail500(s: string): string {

@@ -8,7 +8,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentResponse, NativeSessionRef, Turn } from "@sumeru/core";
+import type { NativeSessionRef, SendEvent, Turn } from "@sumeru/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { GatewayConfig, StartedServer } from "../src/index.js";
 import { startServer } from "../src/index.js";
@@ -67,26 +67,28 @@ function makeRespondingAdapter(name: string) {
 	return {
 		stub: makeStubAdapter({
 			name,
-			respond: async (
+			respond(
 				content: string,
 				_ref: NativeSessionRef,
-			): Promise<AgentResponse> => {
-				const reply = responses.get(content) ?? `echo: ${content}`;
-				const turns: Turn[] = [
-					{
+			): AsyncIterable<SendEvent> {
+				async function* generate(): AsyncGenerator<SendEvent> {
+					const reply = responses.get(content) ?? `echo: ${content}`;
+					const turn: Turn = {
 						index: 1,
 						role: "assistant",
 						content: reply,
 						toolCalls: null,
 						tokens: null,
 						timestamp: new Date().toISOString(),
-					},
-				];
-				return {
-					turns,
-					tokens: { input: 1, output: 2 },
-					durationMs: 1,
-				};
+					};
+					yield { type: "turn", turn };
+					yield {
+						type: "done",
+						durationMs: 1,
+						tokens: { input: 1, output: 2 },
+					};
+				}
+				return generate();
 			},
 		}),
 		setReply(forContent: string, reply: string): void {

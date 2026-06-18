@@ -4,9 +4,37 @@
  * `config:` blob, and that the default `sendTimeoutMs` is now 30 minutes.
  */
 
+import type { SendEvent } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createClaudeCodeAdapter } from "../src/index.js";
 import { buildNdjson, fakeSpawn } from "./test-utils.js";
+
+/** Drain the iterable to force the full stream to execute. */
+async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
+	for await (const _ of iter) {
+		// consume all events
+	}
+}
+
+/** Collect all events from an AsyncIterable<SendEvent>. */
+async function collectEvents(
+	iter: AsyncIterable<SendEvent>,
+): Promise<SendEvent[]> {
+	const events: SendEvent[] = [];
+	for await (const event of iter) {
+		events.push(event);
+	}
+	return events;
+}
+
+/** Extract the error event from collected events. */
+function extractError(
+	events: SendEvent[],
+): Extract<SendEvent, { type: "error" }> | undefined {
+	return events.find(
+		(e): e is Extract<SendEvent, { type: "error" }> => e.type === "error",
+	);
+}
 
 describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue #32)", () => {
 	it("uses operator-supplied timeouts and maxTurns for both createSession and send", async () => {
@@ -29,8 +57,8 @@ describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue 
 			maxTurns: 120,
 			spawnFn,
 		});
-		const ref = await adapter.createSession({ initialQuery: "hi" });
-		await adapter.send(ref, "hello");
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		await drain(adapter.send(ref, "hello"));
 
 		expect(calls.length).toBe(2);
 		// createSession spawn carries the operator's createSessionTimeoutMs.
@@ -59,8 +87,8 @@ describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue 
 			};
 		});
 		const adapter = createClaudeCodeAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
-		await adapter.send(ref, "hi");
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		await drain(adapter.send(ref, "hi"));
 
 		expect(calls.length).toBe(2);
 		expect(calls[0]?.timeoutMs).toBe(5 * 60_000);
@@ -68,7 +96,7 @@ describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue 
 		expect(calls[1]?.timeoutMs).toBe(30 * 60_000);
 	});
 
-	it("send timeout error message reports the operator-configured value", async () => {
+	it("send timeout yields error event with the operator-configured value", async () => {
 		let phase = 0;
 		const { spawnFn } = fakeSpawn(() => {
 			if (phase++ === 0) {
@@ -80,10 +108,11 @@ describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue 
 			spawnFn,
 			sendTimeoutMs: 1_800_000,
 		});
-		const ref = await adapter.createSession({});
-		await expect(adapter.send(ref, "x")).rejects.toThrow(
-			/send timed out after 1800000ms/,
-		);
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		const events = await collectEvents(adapter.send(ref, "x"));
+		const error = extractError(events);
+		expect(error).toBeDefined();
+		expect(error?.error.message).toMatch(/send timed out after 1800000ms/);
 	});
 
 	it("createSession timeout error message reports the operator-configured value", async () => {
@@ -97,8 +126,8 @@ describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue 
 			spawnFn,
 			createSessionTimeoutMs: 300_000,
 		});
-		await expect(adapter.createSession({})).rejects.toThrow(
-			/createSession timed out after 300000ms/,
-		);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/createSession timed out after 300000ms/);
 	});
 });

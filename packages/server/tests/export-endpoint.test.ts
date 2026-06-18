@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { createMemoryStore, importBundle, loadBundleStore } from "@ocas/core";
-import type { AgentResponse, NativeSessionRef, Turn } from "@sumeru/core";
+import type { NativeSessionRef, SendEvent, Turn } from "@sumeru/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { GatewayConfig, StartedServer } from "../src/index.js";
 import { startServer } from "../src/index.js";
@@ -48,41 +48,40 @@ type ErrorBody = {
 function makeMultiTurnAdapter(name: string): StubAdapterControl {
 	return makeStubAdapter({
 		name,
-		respond: async (
-			content: string,
-			_ref: NativeSessionRef,
-		): Promise<AgentResponse> => {
-			const turns: Turn[] = [
-				{
-					index: 1,
-					role: "assistant",
-					content: `thinking about: ${content}`,
-					toolCalls: null,
-					tokens: null,
-					timestamp: new Date().toISOString(),
-				},
-				{
-					index: 2,
-					role: "assistant",
-					content: `working on: ${content}`,
-					toolCalls: null,
-					tokens: null,
-					timestamp: new Date().toISOString(),
-				},
-				{
-					index: 3,
-					role: "assistant",
-					content: `done with: ${content}`,
-					toolCalls: null,
-					tokens: null,
-					timestamp: new Date().toISOString(),
-				},
-			];
-			return {
-				turns,
-				tokens: { input: 1, output: 6 },
-				durationMs: 1,
-			};
+		respond(content: string, _ref: NativeSessionRef): AsyncIterable<SendEvent> {
+			async function* generate(): AsyncGenerator<SendEvent> {
+				const turns: Turn[] = [
+					{
+						index: 1,
+						role: "assistant",
+						content: `thinking about: ${content}`,
+						toolCalls: null,
+						tokens: null,
+						timestamp: new Date().toISOString(),
+					},
+					{
+						index: 2,
+						role: "assistant",
+						content: `working on: ${content}`,
+						toolCalls: null,
+						tokens: null,
+						timestamp: new Date().toISOString(),
+					},
+					{
+						index: 3,
+						role: "assistant",
+						content: `done with: ${content}`,
+						toolCalls: null,
+						tokens: null,
+						timestamp: new Date().toISOString(),
+					},
+				];
+				for (const turn of turns) {
+					yield { type: "turn", turn };
+				}
+				yield { type: "done", durationMs: 1, tokens: { input: 1, output: 6 } };
+			}
+			return generate();
 		},
 	});
 }
@@ -641,10 +640,7 @@ describe("@sumeru/server — export endpoint (no-adapter scenarios)", () => {
 		const stub = makeStubAdapter({ name: "hermes" });
 		const wrapped = {
 			...stub.adapter,
-			async send(
-				ref: NativeSessionRef,
-				content: string,
-			): Promise<AgentResponse> {
+			send(ref: NativeSessionRef, content: string): AsyncIterable<SendEvent> {
 				sendCount += 1;
 				return stub.adapter.send(ref, content);
 			},

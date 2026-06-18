@@ -2,8 +2,8 @@
  * Public types for `@sumeru/adapter-cursor-agent`.
  *
  * The adapter contract lives in `@sumeru/core` (`Adapter`, `NativeSessionRef`,
- * `AgentResponse`, `Turn`, `ToolCall`, `TokenUsage`). This module only declares
- * package-local options, the parser's intermediate shape, and the
+ * `SendEvent`, `SessionConfig`, `Turn`, `ToolCall`, `TokenUsage`). This module
+ * only declares package-local options, the parser's intermediate shape, and the
  * `child_process.spawn` test seam.
  */
 

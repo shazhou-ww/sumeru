@@ -425,33 +425,35 @@ describe("@sumeru/server — POST /gateways/:name/sessions/:id/messages (SSE)", 
 		// Configure a tiny ring buffer (size 1) so events are evicted quickly.
 		const tinyRingStub = makeStubAdapter({
 			name: "hermes",
-			respond: async (content) => ({
-				turns: [
+			respond: async function* (content) {
+				const turns = [
 					{
 						index: 1,
-						role: "assistant",
+						role: "assistant" as const,
 						content: `r:${content}`,
 						timestamp: new Date().toISOString(),
 						toolCalls: null,
 					},
 					{
 						index: 2,
-						role: "assistant",
+						role: "assistant" as const,
 						content: "another",
 						timestamp: new Date().toISOString(),
 						toolCalls: null,
 					},
 					{
 						index: 3,
-						role: "assistant",
+						role: "assistant" as const,
 						content: "third",
 						timestamp: new Date().toISOString(),
 						toolCalls: null,
 					},
-				],
-				tokens: null,
-				durationMs: 0,
-			}),
+				];
+				for (const turn of turns) {
+					yield { type: "turn" as const, turn };
+				}
+				yield { type: "done" as const, durationMs: 0, tokens: null };
+			},
 		});
 		const ctx = await startTest(tinyRingStub, { sseBufferSize: 2 });
 		server = ctx.server;
@@ -521,7 +523,7 @@ describe("@sumeru/server — POST /gateways/:name/sessions/:id/messages (SSE)", 
 		expect(res.status).toBe(200);
 		expect(res.body).not.toBeNull();
 
-		const reader = res.body!.getReader();
+		const reader = res.body?.getReader();
 		const decoder = new TextDecoder();
 		let accumulated = "";
 		let heartbeatsSeen = 0;

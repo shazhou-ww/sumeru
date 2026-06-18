@@ -1,3 +1,4 @@
+import type { SendEvent } from "@sumeru/core";
 import { describe, expect, it, vi } from "vitest";
 import type { SpawnFn, TurnsReader } from "../src/index.js";
 import { createHermesAdapter } from "../src/index.js";
@@ -38,7 +39,7 @@ describe("@sumeru/adapter-hermes — close", () => {
 		});
 		const ref = { nativeId: NATIVE, meta: {} };
 		await adapter.close(ref);
-		await expect(adapter.send(ref, "x")).rejects.toThrow(/is closed/);
+		expect(() => adapter.send(ref, "x")).toThrow(/is closed/);
 	});
 
 	it("close → getTurns still works", async () => {
@@ -96,8 +97,14 @@ describe("@sumeru/adapter-hermes — close", () => {
 			spawnFn: noopSpawn,
 			turnsReader: turnsFixture,
 		});
-		// a2 does NOT consider it closed: send proceeds and returns delta turns
-		const result = await a2.send(ref, "again");
-		expect(Array.isArray(result.turns)).toBe(true);
+		// a2 does NOT consider it closed: send proceeds and returns events
+		const events: SendEvent[] = [];
+		for await (const event of a2.send(ref, "again")) {
+			events.push(event);
+		}
+		const hasTurnOrDone = events.some(
+			(e) => e.type === "turn" || e.type === "done",
+		);
+		expect(hasTurnOrDone).toBe(true);
 	});
 });

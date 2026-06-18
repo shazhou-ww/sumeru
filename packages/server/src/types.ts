@@ -34,8 +34,8 @@ export type Envelope<T> = {
  */
 export type SessionStatus = "idle" | "active" | "closed";
 
-/** Opaque adapter-specific config blob — Sumeru does not validate or normalize. */
-export type SessionConfig = Record<string, unknown>;
+/** Opaque user-supplied config blob stored with the session. */
+export type UserSessionConfig = Record<string, unknown>;
 
 /** Full session shape returned by POST 201 and GET /gateways/:name/sessions/:id. */
 export type Session = {
@@ -43,7 +43,7 @@ export type Session = {
 	gateway: string;
 	status: SessionStatus;
 	createdAt: string;
-	config: SessionConfig;
+	config: UserSessionConfig;
 	/**
 	 * Hash of the @sumeru/session-meta node written at create time. Internal
 	 * — never serialized into HTTP envelopes.
@@ -66,7 +66,7 @@ export type SessionWire = {
 	gateway: string;
 	status: SessionStatus;
 	createdAt: string;
-	config: SessionConfig;
+	config: UserSessionConfig;
 };
 
 /** Compact list entry — `config` is omitted to keep listings small. */

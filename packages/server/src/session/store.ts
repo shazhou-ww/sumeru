@@ -4,9 +4,9 @@ import { recordPayload } from "../ocas/index.js";
 import type {
 	OcasConfig,
 	Session,
-	SessionConfig,
 	SessionStatus,
 	SessionWire,
+	UserSessionConfig,
 } from "../types.js";
 import { generateSessionId } from "./id.js";
 
@@ -47,7 +47,7 @@ export type SessionStore = {
 	create: (
 		gateway: string,
 		adapter: string,
-		config: SessionConfig,
+		config: UserSessionConfig,
 		nativeRef: NativeSessionRef | null,
 		resolvedCwd: string | null,
 	) => Session;
@@ -194,7 +194,7 @@ export function createSessionStore(ocas: OcasConfig): SessionStore {
 	function recoverConfig(
 		sessionId: string,
 		metaHash: Hash | null,
-	): SessionConfig {
+	): UserSessionConfig {
 		if (metaHash === null) {
 			console.warn(
 				`[sumeru] session ${sessionId} has no meta_hash; config falls back to {}`,
@@ -213,13 +213,13 @@ export function createSessionStore(ocas: OcasConfig): SessionStore {
 		if (config === undefined || config === null || typeof config !== "object") {
 			return {};
 		}
-		return config as SessionConfig;
+		return config as UserSessionConfig;
 	}
 
 	function create(
 		gateway: string,
 		adapter: string,
-		config: SessionConfig,
+		config: UserSessionConfig,
 		nativeRef: NativeSessionRef | null,
 		resolvedCwd: string | null,
 	): Session {

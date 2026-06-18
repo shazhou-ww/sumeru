@@ -2,7 +2,7 @@
  * Public types for `@sumeru/adapter-hermes`.
  *
  * Most of the adapter contract lives in `@sumeru/core` (`Adapter`,
- * `NativeSessionRef`, `AgentResponse`). This module only declares package-
+ * `NativeSessionRef`, `SendEvent`). This module only declares package-
  * local options and the SQLite row mapping pinned by the adapter.
  */
 

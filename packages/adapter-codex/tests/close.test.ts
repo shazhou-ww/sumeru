@@ -1,6 +1,14 @@
+import type { SendEvent } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createCodexAdapter } from "../src/index.js";
 import { buildJsonl, fakeSpawn } from "./test-utils.js";
+
+/** Drain the iterable (consume all events, discard results). */
+async function _drain(iter: AsyncIterable<SendEvent>): Promise<void> {
+	for await (const _ of iter) {
+		// discard
+	}
+}
 
 describe("createCodexAdapter().close()", () => {
 	it("close(ref) resolves without error", async () => {
@@ -8,21 +16,21 @@ describe("createCodexAdapter().close()", () => {
 			stdout: buildJsonl({ sessionId: "sess-close" }),
 		});
 		const adapter = createCodexAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		await expect(adapter.close(ref)).resolves.toBeUndefined();
 	});
 
-	it("send(ref, content) after close(ref) throws 'session is closed'", async () => {
+	it("send(ref, content) after close(ref) throws synchronously", async () => {
 		const { spawnFn } = fakeSpawn({
 			stdout: buildJsonl({ sessionId: "sess-close-send" }),
 		});
 		const adapter = createCodexAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		await adapter.close(ref);
 
-		await expect(adapter.send(ref, "hi")).rejects.toThrow(/is closed/);
+		expect(() => adapter.send(ref, "hi")).toThrow(/is closed/);
 	});
 
 	it("getTurns(ref) after close(ref) returns the cached history", async () => {
@@ -30,7 +38,7 @@ describe("createCodexAdapter().close()", () => {
 			stdout: buildJsonl({ sessionId: "sess-close-turns" }),
 		});
 		const adapter = createCodexAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		const turnsBefore = await adapter.getTurns(ref);
 		await adapter.close(ref);
@@ -45,7 +53,7 @@ describe("createCodexAdapter().close()", () => {
 			stdout: buildJsonl({ sessionId: "sess-close-twice" }),
 		});
 		const adapter = createCodexAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		await adapter.close(ref);
 		await expect(adapter.close(ref)).resolves.toBeUndefined();

@@ -1,12 +1,20 @@
+import type { SendEvent } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createCursorAgentAdapter } from "../src/adapter.js";
 import { buildNdjson, fakeSpawn } from "./test-utils.js";
+
+/** Drain the iterable to force the full stream to execute. */
+async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
+	for await (const _ of iter) {
+		// consume all events
+	}
+}
 
 describe("getTurns", () => {
 	it("returns turns after createSession", async () => {
 		const { spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		const ref = await adapter.createSession({ initialQuery: "Say hi." });
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const turns = await adapter.getTurns(ref);
 		expect(turns.length).toBeGreaterThan(0);
 		expect(turns.some((t) => t.role === "assistant")).toBe(true);
@@ -25,9 +33,9 @@ describe("getTurns", () => {
 			};
 		});
 		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
-		const ref = await adapter.createSession({});
-		await adapter.send(ref, "msg 1");
-		await adapter.send(ref, "msg 2");
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		await drain(adapter.send(ref, "msg 1"));
+		await drain(adapter.send(ref, "msg 2"));
 		const turns = await adapter.getTurns(ref);
 		// createSession produces 2 turns (user+assistant), each send produces 2 more
 		expect(turns.length).toBe(6);
@@ -36,7 +44,7 @@ describe("getTurns", () => {
 	it("returns a defensive copy (mutations don't affect internal cache)", async () => {
 		const { spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const turns1 = await adapter.getTurns(ref);
 		const originalLength = turns1.length;
 		// Mutate the returned array
@@ -67,7 +75,7 @@ describe("getTurns", () => {
 	it("works after close (close does not evict cache)", async () => {
 		const { spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const beforeClose = await adapter.getTurns(ref);
 		await adapter.close(ref);
 		const afterClose = await adapter.getTurns(ref);
@@ -101,7 +109,6 @@ describe("getTurns", () => {
 	it("per-instance isolation — two adapters have independent caches", async () => {
 		const sessionId1 = "iso-session-1";
 		const sessionId2 = "iso-session-2";
-		const _callCount = 0;
 		const spawn1 = fakeSpawn(() => ({
 			stdout: buildNdjson({
 				sessionId: sessionId1,
@@ -116,12 +123,41 @@ describe("getTurns", () => {
 		}));
 		const adapter1 = createCursorAgentAdapter({ spawnFn: spawn1.spawnFn });
 		const adapter2 = createCursorAgentAdapter({ spawnFn: spawn2.spawnFn });
-		const ref1 = await adapter1.createSession({});
-		const ref2 = await adapter2.createSession({});
+		const ref1 = await adapter1.createSession({ model: null, cwd: null });
+		const ref2 = await adapter2.createSession({ model: null, cwd: null });
 		// Each adapter should only see its own session
 		const turns1 = await adapter1.getTurns(ref2);
 		expect(turns1).toEqual([]);
 		const turns2 = await adapter2.getTurns(ref1);
 		expect(turns2).toEqual([]);
+	});
+
+	it("returns the union after createSession + 2 sends, with strictly monotonic indices", async () => {
+		let phase = 0;
+		const { spawnFn } = fakeSpawn(() => {
+			if (phase++ === 0)
+				return { stdout: buildNdjson({ sessionId: "sess-monotonic" }) };
+			return {
+				stdout: buildNdjson({
+					sessionId: "sess-monotonic",
+					userText: "x",
+					assistantText: "y",
+				}),
+			};
+		});
+		const adapter = createCursorAgentAdapter({ spawnFn });
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		await drain(adapter.send(ref, "x"));
+		await drain(adapter.send(ref, "y"));
+		const turns = await adapter.getTurns(ref);
+		// Indices must be strictly monotonic.
+		for (let i = 1; i < turns.length; i++) {
+			const a = turns[i - 1];
+			const b = turns[i];
+			expect(b !== undefined && a !== undefined && b.index > a.index).toBe(
+				true,
+			);
+		}
+		expect(turns[0]?.index).toBe(0);
 	});
 });

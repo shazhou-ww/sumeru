@@ -1,9 +1,9 @@
 import { describe, expectTypeOf, it } from "vitest";
 import type {
 	Adapter,
-	AdapterCapabilities,
-	AgentResponse,
 	NativeSessionRef,
+	SendEvent,
+	SessionConfig,
 	TokenUsage,
 	Turn,
 } from "../src/index.js";
@@ -20,16 +20,18 @@ describe("@sumeru/core — Adapter type surface", () => {
 
 		const adapter: Adapter = {
 			name: "hermes",
-			capabilities: { resume: true, streaming: false },
-			createSession: async (_config) => ({
+			createSession: async (_config: SessionConfig) => ({
 				nativeId: "20260613_000000_deadbe",
 				meta: {},
 			}),
-			send: async (_ref, _content) => ({
-				turns: [fakeTurn],
-				tokens: null,
-				durationMs: 0,
-			}),
+			async *send(_ref, _content) {
+				yield { type: "turn" as const, turn: fakeTurn };
+				yield {
+					type: "done" as const,
+					durationMs: 0,
+					tokens: null,
+				};
+			},
 			close: async (_ref) => {
 				/* no-op */
 			},
@@ -39,14 +41,40 @@ describe("@sumeru/core — Adapter type surface", () => {
 		expectTypeOf(adapter).toEqualTypeOf<Adapter>();
 	});
 
-	it("capability fields are bare booleans (no optional, no null)", () => {
-		expectTypeOf<AdapterCapabilities["resume"]>().toEqualTypeOf<boolean>();
-		expectTypeOf<AdapterCapabilities["streaming"]>().toEqualTypeOf<boolean>();
+	it("SessionConfig has model and cwd as string | null", () => {
+		expectTypeOf<SessionConfig["model"]>().toEqualTypeOf<string | null>();
+		expectTypeOf<SessionConfig["cwd"]>().toEqualTypeOf<string | null>();
 	});
 
-	it("AgentResponse uses T | null for absent tokens (not optional)", () => {
-		expectTypeOf<AgentResponse["tokens"]>().toEqualTypeOf<TokenUsage | null>();
-		expectTypeOf<AgentResponse["durationMs"]>().toEqualTypeOf<number>();
+	it("SendEvent is a discriminated union on type", () => {
+		const turnEvt: SendEvent = {
+			type: "turn",
+			turn: {
+				index: 0,
+				role: "assistant",
+				content: "hi",
+				timestamp: "2026-06-13T00:00:00.000Z",
+				toolCalls: null,
+			},
+		};
+		const doneEvt: SendEvent = {
+			type: "done",
+			durationMs: 100,
+			tokens: null,
+		};
+		const errorEvt: SendEvent = {
+			type: "error",
+			error: new Error("boom"),
+		};
+		expectTypeOf(turnEvt).toMatchTypeOf<SendEvent>();
+		expectTypeOf(doneEvt).toMatchTypeOf<SendEvent>();
+		expectTypeOf(errorEvt).toMatchTypeOf<SendEvent>();
+	});
+
+	it("SendEvent done tokens uses T | null (not optional)", () => {
+		type DoneEvent = Extract<SendEvent, { type: "done" }>;
+		expectTypeOf<DoneEvent["tokens"]>().toEqualTypeOf<TokenUsage | null>();
+		expectTypeOf<DoneEvent["durationMs"]>().toEqualTypeOf<number>();
 	});
 
 	it("NativeSessionRef carries nativeId + open-ended meta", () => {
@@ -56,22 +84,36 @@ describe("@sumeru/core — Adapter type surface", () => {
 		>();
 	});
 
-	it("rejects shapes that omit required fields", () => {
-		// @ts-expect-error — missing capabilities
+	it("rejects an Adapter whose send returns Promise<AgentResponse>", () => {
+		// @ts-expect-error — send must return AsyncIterable<SendEvent>, not Promise
 		const _bad1: Adapter = {
 			name: "x",
-			createSession: async () => ({ nativeId: "x", meta: {} }),
-			send: async () => ({ turns: [], tokens: null, durationMs: 0 }),
+			createSession: async (_config: SessionConfig) => ({
+				nativeId: "x",
+				meta: {},
+			}),
+			send: async (_ref, _content) => ({
+				turns: [],
+				tokens: null,
+				durationMs: 0,
+			}),
 			close: async () => {},
 			getTurns: async () => [],
 		};
+	});
 
-		// @ts-expect-error — non-Promise return on send
+	it("rejects an Adapter that has a capabilities field but not the new shape", () => {
+		// @ts-expect-error — capabilities field is not part of the Adapter type
 		const _bad2: Adapter = {
 			name: "x",
 			capabilities: { resume: false, streaming: false },
-			createSession: async () => ({ nativeId: "x", meta: {} }),
-			send: () => ({ turns: [], tokens: null, durationMs: 0 }),
+			createSession: async (_config: SessionConfig) => ({
+				nativeId: "x",
+				meta: {},
+			}),
+			async *send() {
+				yield { type: "done" as const, durationMs: 0, tokens: null };
+			},
 			close: async () => {},
 			getTurns: async () => [],
 		};

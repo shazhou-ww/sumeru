@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Adapter, Turn } from "@sumeru/core";
+import type { Adapter, SessionConfig, Turn } from "@sumeru/core";
 import {
 	envelope,
 	errorEnvelope,
@@ -30,9 +30,9 @@ import type {
 	OcasConfig,
 	ServerConfig,
 	Session,
-	SessionConfig,
 	SessionListEntry,
 	TurnValue,
+	UserSessionConfig,
 } from "./types.js";
 
 const HASH_RE = /^[0-9A-HJKMNP-TV-Z]{13}$/;
@@ -898,7 +898,7 @@ async function readJsonBody(req: IncomingMessage): Promise<ReadBodyResult> {
 }
 
 type ConfigResult =
-	| { ok: true; value: SessionConfig }
+	| { ok: true; value: UserSessionConfig }
 	| { ok: false; error: string; message: string };
 
 function extractConfig(body: Record<string, unknown>): ConfigResult {
@@ -916,7 +916,7 @@ function extractConfig(body: Record<string, unknown>): ConfigResult {
 			message: "Field 'config' must be a JSON object when provided",
 		};
 	}
-	return { ok: true, value: raw as SessionConfig };
+	return { ok: true, value: raw as UserSessionConfig };
 }
 
 /**
@@ -925,17 +925,16 @@ function extractConfig(body: Record<string, unknown>): ConfigResult {
  * The user-supplied `cwd` (if any) is replaced with the server-resolved
  * absolute path. When `resolvedCwd` is `null` (no cwd hint), the `cwd` key is
  * removed entirely so adapters can fall back to their constructor / process
- * default. All other keys round-trip untouched.
+ * default. Extracts `model` and `cwd` into the core `SessionConfig` shape.
  */
 function buildForwardedConfig(
-	original: SessionConfig,
+	original: UserSessionConfig,
 	resolvedCwd: string | null,
 ): SessionConfig {
-	const out: Record<string, unknown> = { ...original };
-	if (resolvedCwd === null) {
-		delete out.cwd;
-	} else {
-		out.cwd = resolvedCwd;
-	}
-	return out as SessionConfig;
+	const model =
+		typeof original.model === "string" && original.model.length > 0
+			? original.model
+			: null;
+	const cwd = resolvedCwd;
+	return { model, cwd };
 }

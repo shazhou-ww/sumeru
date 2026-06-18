@@ -31,6 +31,7 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
 		const ref = await adapter.createSession({
 			model: "anthropic/claude-haiku-4",
+			cwd: null,
 		});
 		expect(ref.nativeId).toBe(VALID_SESSION);
 		expect(ref.meta.sourceTag).toBe("sumeru");
@@ -43,7 +44,7 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 	it("model is null when config omits it", async () => {
 		const spawnFn = makeSpawn(`Session: ${VALID_SESSION}\n`);
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		expect(ref.meta.model).toBeNull();
 	});
 
@@ -65,7 +66,7 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 			turnsReader: emptyTurns,
 			sourceTag: "sumeru-test",
 		});
-		await adapter.createSession({});
+		await adapter.createSession({ model: null, cwd: null });
 		expect(captured.args).toContain("--source");
 		const idx = captured.args.indexOf("--source");
 		expect(captured.args[idx + 1]).toBe("sumeru-test");
@@ -74,17 +75,17 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 	it("rejects when stdout has no Session line", async () => {
 		const spawnFn = makeSpawn("nothing useful here\n");
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
-		await expect(adapter.createSession({})).rejects.toThrow(
-			/failed to parse Hermes session id/,
-		);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/failed to parse Hermes session id/);
 	});
 
 	it("rejects on non-zero exit", async () => {
 		const spawnFn = makeSpawn("", { exitCode: 7, stderr: "boom" });
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
-		await expect(adapter.createSession({})).rejects.toThrow(
-			/hermes exited with code 7/,
-		);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/hermes exited with code 7/);
 	});
 
 	it("rejects on timeout", async () => {
@@ -94,9 +95,9 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 			turnsReader: emptyTurns,
 			createSessionTimeoutMs: 25,
 		});
-		await expect(adapter.createSession({})).rejects.toThrow(
-			/createSession timed out after 25ms/,
-		);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/createSession timed out after 25ms/);
 	});
 
 	it("rejects when spawn itself throws (bad bin)", async () => {
@@ -108,7 +109,9 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 			turnsReader: emptyTurns,
 			hermesBin: "/nonexistent/hermes-bin",
 		});
-		await expect(adapter.createSession({})).rejects.toThrow(/hermes/);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/hermes/);
 	});
 
 	it("does not leak token-shaped fields into meta", async () => {
@@ -116,7 +119,7 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
 		const ref = await adapter.createSession({
 			model: "anthropic/claude-haiku-4",
-			authToken: "should-not-leak",
+			cwd: null,
 		});
 		expect(Object.keys(ref.meta).sort()).toEqual([
 			"createdAt",
@@ -142,8 +145,8 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 		};
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
 		const [a, b] = await Promise.all([
-			adapter.createSession({}),
-			adapter.createSession({}),
+			adapter.createSession({ model: null, cwd: null }),
+			adapter.createSession({ model: null, cwd: null }),
 		]);
 		expect(a.nativeId).not.toBe(b.nativeId);
 	});
@@ -159,7 +162,7 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 			durationMs: 0,
 		});
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		expect(ref.nativeId).toBe(VALID_SESSION);
 	});
 
@@ -167,7 +170,7 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 	it("still parses legacy 'Session: <id>' from stdout", async () => {
 		const spawnFn = makeSpawn(`Session: ${VALID_SESSION}\n`);
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		expect(ref.nativeId).toBe(VALID_SESSION);
 	});
 
@@ -175,7 +178,7 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 	it("parses 'session_id: <id>' from stdout (future channel-shift)", async () => {
 		const spawnFn = makeSpawn(`session_id: ${VALID_SESSION}\n`);
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		expect(ref.nativeId).toBe(VALID_SESSION);
 	});
 
@@ -190,7 +193,7 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 			durationMs: 0,
 		});
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		expect(ref.nativeId).toBe(VALID_SESSION);
 	});
 
@@ -204,9 +207,9 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 			durationMs: 0,
 		});
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
-		await expect(adapter.createSession({})).rejects.toThrow(
-			/expected YYYYMMDD_HHMMSS_<hex>/,
-		);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/expected YYYYMMDD_HHMMSS_<hex>/);
 	});
 
 	it("includes both streams in the parse-failure error message", async () => {
@@ -219,12 +222,12 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 			durationMs: 0,
 		});
 		const adapter = createHermesAdapter({ spawnFn, turnsReader: emptyTurns });
-		await expect(adapter.createSession({})).rejects.toThrow(
-			/stderr-only-noise/,
-		);
-		await expect(adapter.createSession({})).rejects.toThrow(
-			/stdout-only-noise/,
-		);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/stderr-only-noise/);
+		await expect(
+			adapter.createSession({ model: null, cwd: null }),
+		).rejects.toThrow(/stdout-only-noise/);
 	});
 
 	// Opt-in integration: spawn the real `hermes` binary and verify createSession.
@@ -235,6 +238,7 @@ describe("@sumeru/adapter-hermes — createSession", () => {
 			const adapter = createHermesAdapter({});
 			const ref = await adapter.createSession({
 				model: "anthropic/claude-haiku-4",
+				cwd: null,
 			});
 			expect(ref.nativeId).toMatch(/^[0-9]{8}_[0-9]{6}_[0-9a-f]+$/);
 			expect(ref.meta.sourceTag).toBe("sumeru");

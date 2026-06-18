@@ -11,12 +11,14 @@
  * `adapter-hermes`, which reads from `~/.hermes/state.db` / JSONL.)
  *
  * The factory:
- *   - createSession spawns `claude -p <initialQuery> --output-format stream-json
+ *   - createSession spawns `claude -p "ping" --output-format stream-json
  *     --verbose --dangerously-skip-permissions --max-turns <n>` and parses the
- *     `system` line for the CC session id.
- *   - send spawns `claude -p <content> --resume <id> ...` and rewrites the
- *     per-run turn indices CC produces so they are globally monotonic across
- *     the whole `nativeId` lifetime.
+ *     `system` line for the CC session id. Accepts `SessionConfig` with
+ *     `model` and `cwd` fields; always uses a fixed "ping" prompt.
+ *   - send is an async generator that spawns `claude -p <content> --resume
+ *     <id> ...`, rewrites the per-run turn indices CC produces so they are
+ *     globally monotonic across the whole `nativeId` lifetime, and yields
+ *     `SendEvent`s (`turn`, `done`, or `error`).
  *   - close is a logical close — adds the nativeId to a per-instance Set; no
  *     CC-side notification, no cache eviction.
  *   - getTurns returns a defensive copy of the in-memory cache.
@@ -24,8 +26,9 @@
 
 import type {
 	Adapter,
-	AgentResponse,
 	NativeSessionRef,
+	SendEvent,
+	SessionConfig,
 	TokenUsage,
 	Turn,
 } from "@sumeru/core";
@@ -163,20 +166,17 @@ export function createClaudeCodeAdapter(
 	}
 
 	async function createSession(
-		config: Record<string, unknown>,
+		config: SessionConfig,
 	): Promise<NativeSessionRef> {
-		const initialQuery =
-			typeof config.initialQuery === "string" && config.initialQuery.length > 0
-				? config.initialQuery
-				: "ping";
 		const model =
-			typeof config.model === "string" && config.model.length > 0
+			config.model !== null && config.model.length > 0
 				? config.model
 				: defaultModel;
-		const spawnCwd = resolveCwd();
+		const spawnCwd =
+			config.cwd !== null && config.cwd.length > 0 ? config.cwd : resolveCwd();
 
 		const { result, parsed } = await runClaude(
-			initialQuery,
+			"ping",
 			null,
 			model,
 			createSessionTimeoutMs,
@@ -211,10 +211,11 @@ export function createClaudeCodeAdapter(
 		return { nativeId: parsed.sessionId, meta };
 	}
 
-	async function send(
+	function send(
 		ref: NativeSessionRef,
 		content: string,
-	): Promise<AgentResponse> {
+	): AsyncIterable<SendEvent> {
+		// Synchronous pre-checks — throw before returning the iterable.
 		assertRef(ref, "send");
 		if (closedRefs.has(ref.nativeId)) {
 			throw new Error(`claude code session ${ref.nativeId} is closed`);
@@ -223,51 +224,102 @@ export function createClaudeCodeAdapter(
 			throw new Error("send: content must be a non-empty string");
 		}
 
-		return withRefLock(ref.nativeId, async () => {
-			const before = turnsCache.get(ref.nativeId) ?? [];
-			const highWater =
-				before.length === 0
-					? -1
-					: before.reduce((m, t) => (t.index > m ? t.index : m), -1);
+		const nativeId = ref.nativeId;
 
-			const refModel =
-				typeof ref.meta.model === "string" && ref.meta.model.length > 0
-					? ref.meta.model
-					: defaultModel;
-			const refCwd =
-				typeof ref.meta.cwd === "string" && ref.meta.cwd.length > 0
-					? ref.meta.cwd
-					: resolveCwd();
+		async function* generate(): AsyncGenerator<SendEvent> {
+			const events: SendEvent[] = await withRefLock(nativeId, async () => {
+				// Re-check closed state inside the lock — another send may have
+				// closed the session while we were queued.
+				if (closedRefs.has(nativeId)) {
+					return [
+						{
+							type: "error" as const,
+							error: new Error(`claude code session ${nativeId} is closed`),
+						},
+					];
+				}
 
-			const startedAt = Date.now();
-			const { result, parsed } = await runClaude(
-				content,
-				ref.nativeId,
-				refModel,
-				sendTimeoutMs,
-				refCwd,
-			);
+				const before = turnsCache.get(nativeId) ?? [];
+				const highWater =
+					before.length === 0
+						? -1
+						: before.reduce((m, t) => (t.index > m ? t.index : m), -1);
 
-			if (result.timedOut) {
-				throw new Error(`send timed out after ${sendTimeoutMs}ms`);
+				const refModel =
+					typeof ref.meta.model === "string" && ref.meta.model.length > 0
+						? ref.meta.model
+						: defaultModel;
+				const refCwd =
+					typeof ref.meta.cwd === "string" && ref.meta.cwd.length > 0
+						? ref.meta.cwd
+						: resolveCwd();
+
+				const startedAt = Date.now();
+				let spawnOutput: {
+					result: SpawnResult;
+					parsed: ClaudeCodeParsedResult | null;
+				};
+				try {
+					spawnOutput = await runClaude(
+						content,
+						nativeId,
+						refModel,
+						sendTimeoutMs,
+						refCwd,
+					);
+				} catch (err) {
+					return [
+						{
+							type: "error" as const,
+							error: err instanceof Error ? err : new Error(String(err)),
+						},
+					];
+				}
+
+				const { result, parsed } = spawnOutput;
+
+				if (result.timedOut) {
+					return [
+						{
+							type: "error" as const,
+							error: new Error(`send timed out after ${sendTimeoutMs}ms`),
+						},
+					];
+				}
+
+				if (parsed === null) {
+					return [
+						{
+							type: "error" as const,
+							error: makeUnparseableOrExitError(result, claudeBin, nativeId),
+						},
+					];
+				}
+
+				// Rewrite indices to be globally monotonic across the nativeId's history.
+				const delta = rewriteIndices(parsed.turns, highWater);
+				const existing = turnsCache.get(nativeId) ?? [];
+				turnsCache.set(nativeId, [...existing, ...delta]);
+
+				const tokens = deriveTokens(parsed);
+				const resultEvents: SendEvent[] = [];
+				for (const turn of delta) {
+					resultEvents.push({ type: "turn", turn });
+				}
+				resultEvents.push({
+					type: "done",
+					durationMs: Date.now() - startedAt,
+					tokens,
+				});
+				return resultEvents;
+			});
+
+			for (const event of events) {
+				yield event;
 			}
+		}
 
-			if (parsed === null) {
-				throw makeUnparseableOrExitError(result, claudeBin, ref.nativeId);
-			}
-
-			// Rewrite indices to be globally monotonic across the nativeId's history.
-			const delta = rewriteIndices(parsed.turns, highWater);
-			const existing = turnsCache.get(ref.nativeId) ?? [];
-			turnsCache.set(ref.nativeId, [...existing, ...delta]);
-
-			const tokens = deriveTokens(parsed);
-			return {
-				turns: delta,
-				tokens,
-				durationMs: Date.now() - startedAt,
-			};
-		});
+		return generate();
 	}
 
 	async function close(ref: NativeSessionRef): Promise<void> {
@@ -284,7 +336,6 @@ export function createClaudeCodeAdapter(
 
 	return {
 		name: "claude-code",
-		capabilities: { resume: true, streaming: false },
 		createSession,
 		send,
 		close,

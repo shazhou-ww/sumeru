@@ -1,6 +1,50 @@
+import type { SendEvent, Turn } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createCursorAgentAdapter } from "../src/adapter.js";
 import { buildNdjson, fakeSpawn } from "./test-utils.js";
+
+/** Collect all events from an AsyncIterable<SendEvent>. */
+async function collectEvents(
+	iter: AsyncIterable<SendEvent>,
+): Promise<SendEvent[]> {
+	const events: SendEvent[] = [];
+	for await (const event of iter) {
+		events.push(event);
+	}
+	return events;
+}
+
+/** Extract turns from collected events. */
+function extractTurns(events: SendEvent[]): Turn[] {
+	return events
+		.filter((e): e is Extract<SendEvent, { type: "turn" }> => e.type === "turn")
+		.map((e) => e.turn);
+}
+
+/** Extract the done event from collected events. */
+function extractDone(
+	events: SendEvent[],
+): Extract<SendEvent, { type: "done" }> | undefined {
+	return events.find(
+		(e): e is Extract<SendEvent, { type: "done" }> => e.type === "done",
+	);
+}
+
+/** Extract the error event from collected events. */
+function extractError(
+	events: SendEvent[],
+): Extract<SendEvent, { type: "error" }> | undefined {
+	return events.find(
+		(e): e is Extract<SendEvent, { type: "error" }> => e.type === "error",
+	);
+}
+
+/** Drain the iterable to force the full stream to execute. */
+async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
+	for await (const _ of iter) {
+		// consume all events
+	}
+}
 
 describe("send", () => {
 	async function setupAdapterWithSession(
@@ -33,28 +77,33 @@ describe("send", () => {
 			};
 		});
 		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		return { adapter, ref, calls, sessionId };
 	}
 
-	it("returns AgentResponse with new turns", async () => {
+	it("yields turn events with new turns", async () => {
 		const { adapter, ref } = await setupAdapterWithSession();
-		const response = await adapter.send(ref, "What files exist?");
-		expect(response.turns.length).toBeGreaterThan(0);
-		expect(response.durationMs).toBeGreaterThanOrEqual(0);
+		const events = await collectEvents(adapter.send(ref, "What files exist?"));
+		const turns = extractTurns(events);
+		expect(turns.length).toBeGreaterThan(0);
+		const done = extractDone(events);
+		expect(done).toBeDefined();
+		expect(done?.durationMs).toBeGreaterThanOrEqual(0);
 	});
 
 	it("returns token usage from result line", async () => {
 		const { adapter, ref } = await setupAdapterWithSession();
-		const response = await adapter.send(ref, "hello");
-		expect(response.tokens).not.toBeNull();
-		expect(response.tokens?.input).toBe(100);
-		expect(response.tokens?.output).toBe(50);
+		const events = await collectEvents(adapter.send(ref, "hello"));
+		const done = extractDone(events);
+		expect(done).toBeDefined();
+		expect(done?.tokens).not.toBeNull();
+		expect(done?.tokens?.input).toBe(100);
+		expect(done?.tokens?.output).toBe(50);
 	});
 
 	it("includes --resume flag with the nativeId", async () => {
 		const { adapter, ref, calls, sessionId } = await setupAdapterWithSession();
-		await adapter.send(ref, "follow-up");
+		await drain(adapter.send(ref, "follow-up"));
 		const sendCall = calls[1];
 		expect(sendCall).toBeDefined();
 		expect(sendCall?.args).toContain("--resume");
@@ -64,8 +113,8 @@ describe("send", () => {
 
 	it("rewrites turn indices to be globally monotonic", async () => {
 		const { adapter, ref } = await setupAdapterWithSession();
-		await adapter.send(ref, "message 1");
-		await adapter.send(ref, "message 2");
+		await drain(adapter.send(ref, "message 1"));
+		await drain(adapter.send(ref, "message 2"));
 		const allTurns = await adapter.getTurns(ref);
 		for (let i = 1; i < allTurns.length; i++) {
 			expect(allTurns[i]?.index).toBeGreaterThan(allTurns[i - 1]?.index);
@@ -76,57 +125,43 @@ describe("send", () => {
 		const { adapter, ref } = await setupAdapterWithSession();
 		const initialTurns = await adapter.getTurns(ref);
 		const initialCount = initialTurns.length;
-		await adapter.send(ref, "message 1");
+		await drain(adapter.send(ref, "message 1"));
 		const afterFirst = await adapter.getTurns(ref);
 		expect(afterFirst.length).toBeGreaterThan(initialCount);
-		await adapter.send(ref, "message 2");
+		await drain(adapter.send(ref, "message 2"));
 		const afterSecond = await adapter.getTurns(ref);
 		expect(afterSecond.length).toBeGreaterThan(afterFirst.length);
 	});
 
 	it("serializes concurrent sends on the same ref (mutex)", async () => {
-		const order: number[] = [];
-		let resolveFirst: (() => void) | null = null;
+		let inflight = 0;
+		let maxInflight = 0;
 		const { spawnFn } = fakeSpawn(async (_args, idx) => {
 			if (idx === 0) {
 				return {
 					stdout: buildNdjson({ sessionId: "mutex-test" }),
 				};
 			}
-			if (idx === 1) {
-				// First send — delay it
-				await new Promise<void>((r) => {
-					resolveFirst = r;
-				});
-				order.push(1);
-				return {
-					stdout: buildNdjson({
-						sessionId: "mutex-test",
-						assistantText: "first",
-					}),
-				};
-			}
-			order.push(2);
+			inflight++;
+			maxInflight = Math.max(maxInflight, inflight);
+			await new Promise<void>((r) => setTimeout(r, 20));
+			inflight--;
 			return {
 				stdout: buildNdjson({
 					sessionId: "mutex-test",
-					assistantText: "second",
+					userText: "x",
+					assistantText: "y",
 				}),
 			};
 		});
 		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
-		const ref = await adapter.createSession({});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 
-		const p1 = adapter.send(ref, "first");
-		const p2 = adapter.send(ref, "second");
-
-		// Let first resolve
-		await new Promise((r) => setTimeout(r, 10));
-		resolveFirst?.();
-
-		await Promise.all([p1, p2]);
-		// Second should have waited for first to complete
-		expect(order).toEqual([1, 2]);
+		await Promise.all([
+			drain(adapter.send(ref, "first")),
+			drain(adapter.send(ref, "second")),
+		]);
+		expect(maxInflight).toBe(1);
 	});
 
 	it("allows concurrent sends on different refs", async () => {
@@ -139,47 +174,47 @@ describe("send", () => {
 			};
 		});
 		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
-		const ref1 = await adapter.createSession({});
-		const ref2 = await adapter.createSession({});
+		const ref1 = await adapter.createSession({ model: null, cwd: null });
+		const ref2 = await adapter.createSession({ model: null, cwd: null });
 		// Both sends should complete (no deadlock)
 		await Promise.all([
-			adapter.send(ref1, "hello"),
-			adapter.send(ref2, "world"),
+			drain(adapter.send(ref1, "hello")),
+			drain(adapter.send(ref2, "world")),
 		]);
 		// 2 createSession + 2 send = 4 total calls
 		expect(callCount).toBe(4);
 	});
 
-	it("rejects on a closed ref", async () => {
+	it("throws synchronously on a closed ref", async () => {
 		const { adapter, ref } = await setupAdapterWithSession();
 		await adapter.close(ref);
-		await expect(adapter.send(ref, "anything")).rejects.toThrow(/is closed/);
+		expect(() => adapter.send(ref, "anything")).toThrow(/is closed/);
 	});
 
-	it("rejects on null ref", async () => {
+	it("throws synchronously on null ref", async () => {
 		const { spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		await expect(adapter.send(null as never, "anything")).rejects.toThrow(
+		expect(() => adapter.send(null as never, "anything")).toThrow(
 			/invalid NativeSessionRef/,
 		);
 	});
 
-	it("rejects on empty nativeId ref", async () => {
+	it("throws synchronously on empty nativeId ref", async () => {
 		const { spawnFn } = fakeSpawn({});
 		const adapter = createCursorAgentAdapter({ spawnFn });
-		await expect(
-			adapter.send({ nativeId: "", meta: {} }, "anything"),
-		).rejects.toThrow(/invalid NativeSessionRef/);
+		expect(() => adapter.send({ nativeId: "", meta: {} }, "anything")).toThrow(
+			/invalid NativeSessionRef/,
+		);
 	});
 
-	it("rejects on empty content", async () => {
+	it("throws synchronously on empty content", async () => {
 		const { adapter, ref } = await setupAdapterWithSession();
-		await expect(adapter.send(ref, "")).rejects.toThrow(
+		expect(() => adapter.send(ref, "")).toThrow(
 			/content must be a non-empty string/,
 		);
 	});
 
-	it("rejects with timeout error", async () => {
+	it("yields error event on timeout", async () => {
 		const sessionId = "timeout-session";
 		const { spawnFn } = fakeSpawn((_args, idx) => {
 			if (idx === 0) {
@@ -187,12 +222,19 @@ describe("send", () => {
 			}
 			return { stdout: "", timedOut: true };
 		});
-		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
-		const ref = await adapter.createSession({});
-		await expect(adapter.send(ref, "hello")).rejects.toThrow(/timed out/);
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			cwd: "/workspace",
+			sendTimeoutMs: 100,
+		});
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		const events = await collectEvents(adapter.send(ref, "hello"));
+		const error = extractError(events);
+		expect(error).toBeDefined();
+		expect(error?.error.message).toMatch(/send timed out after 100ms/);
 	});
 
-	it("rejects with session-not-found error", async () => {
+	it("yields error event on session-not-found", async () => {
 		const sessionId = "notfound-session";
 		const { spawnFn } = fakeSpawn((_args, idx) => {
 			if (idx === 0) {
@@ -205,11 +247,14 @@ describe("send", () => {
 			};
 		});
 		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
-		const ref = await adapter.createSession({});
-		await expect(adapter.send(ref, "hello")).rejects.toThrow(/not found/);
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		const events = await collectEvents(adapter.send(ref, "hello"));
+		const error = extractError(events);
+		expect(error).toBeDefined();
+		expect(error?.error.message).toMatch(/not found/);
 	});
 
-	it("rejects with unparseable error when stdout is garbage", async () => {
+	it("yields error event when stdout is garbage (unparseable)", async () => {
 		const sessionId = "unparse-session";
 		const { spawnFn } = fakeSpawn((_args, idx) => {
 			if (idx === 0) {
@@ -218,7 +263,32 @@ describe("send", () => {
 			return { stdout: "not json at all\n" };
 		});
 		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
-		const ref = await adapter.createSession({});
-		await expect(adapter.send(ref, "hello")).rejects.toThrow(/unparseable/);
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		const events = await collectEvents(adapter.send(ref, "hello"));
+		const error = extractError(events);
+		expect(error).toBeDefined();
+		expect(error?.error.message).toMatch(/unparseable/);
+	});
+
+	it("returns durationMs measured from spawn start to exit (wall-clock)", async () => {
+		const { spawnFn } = fakeSpawn(async (_args, ci) => {
+			if (ci === 0) {
+				return { stdout: buildNdjson({ sessionId: "sess-dur" }) };
+			}
+			await new Promise<void>((r) => setTimeout(r, 30));
+			return {
+				stdout: buildNdjson({
+					sessionId: "sess-dur",
+					userText: "x",
+					assistantText: "y",
+				}),
+			};
+		});
+		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
+		const ref = await adapter.createSession({ model: null, cwd: null });
+		const events = await collectEvents(adapter.send(ref, "x"));
+		const done = extractDone(events);
+		expect(done).toBeDefined();
+		expect(done?.durationMs).toBeGreaterThanOrEqual(20);
 	});
 });
