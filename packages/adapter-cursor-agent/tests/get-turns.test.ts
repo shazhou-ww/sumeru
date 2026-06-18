@@ -1,7 +1,7 @@
 import type { SendEvent } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createCursorAgentAdapter } from "../src/adapter.js";
-import { buildNdjson, fakeSpawn } from "./test-utils.js";
+import { buildNdjson, fakeSpawn, fakeStreamingSpawn } from "./test-utils.js";
 
 /** Drain the iterable to force the full stream to execute. */
 async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
@@ -22,17 +22,17 @@ describe("getTurns", () => {
 
 	it("returns accumulated turns after multiple sends", async () => {
 		const sessionId = "get-turns-session";
-		let callIdx = 0;
-		const { spawnFn } = fakeSpawn((_args, _idx) => {
-			callIdx++;
-			return {
-				stdout: buildNdjson({
-					sessionId,
-					assistantText: `response ${callIdx}`,
-				}),
-			};
+		const { spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId, assistantText: "response 1" }),
 		});
-		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildNdjson({ sessionId, assistantText: "response 2" }),
+		});
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			cwd: "/workspace",
+		});
 		const ref = await adapter.createSession({ model: null, cwd: null });
 		await drain(adapter.send(ref, "msg 1"));
 		await drain(adapter.send(ref, "msg 2"));
@@ -133,19 +133,17 @@ describe("getTurns", () => {
 	});
 
 	it("returns the union after createSession + 2 sends, with strictly monotonic indices", async () => {
-		let phase = 0;
-		const { spawnFn } = fakeSpawn(() => {
-			if (phase++ === 0)
-				return { stdout: buildNdjson({ sessionId: "sess-monotonic" }) };
-			return {
-				stdout: buildNdjson({
-					sessionId: "sess-monotonic",
-					userText: "x",
-					assistantText: "y",
-				}),
-			};
+		const { spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-monotonic" }),
 		});
-		const adapter = createCursorAgentAdapter({ spawnFn });
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildNdjson({
+				sessionId: "sess-monotonic",
+				userText: "x",
+				assistantText: "y",
+			}),
+		});
+		const adapter = createCursorAgentAdapter({ spawnFn, streamingSpawnFn });
 		const ref = await adapter.createSession({ model: null, cwd: null });
 		await drain(adapter.send(ref, "x"));
 		await drain(adapter.send(ref, "y"));

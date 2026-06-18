@@ -8,12 +8,19 @@
  */
 
 export { createCodexAdapter } from "./adapter.js";
-export { parseCodexJson } from "./stream-parser.js";
+export {
+	parseCodexJson,
+	parseCodexJsonIncremental,
+} from "./stream-parser.js";
 export type {
 	CodexAdapterOptions,
 	CodexParsedResult,
 	CodexResultSubtype,
 	SpawnArgs,
+	SpawnExitInfo,
 	SpawnFn,
 	SpawnResult,
+	SpawnStreamResult,
+	StreamingSpawnFn,
+	StreamParseEvent,
 } from "./types.js";

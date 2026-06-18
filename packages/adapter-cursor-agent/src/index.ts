@@ -8,12 +8,19 @@
  */
 
 export { createCursorAgentAdapter } from "./adapter.js";
-export { parseStreamJson } from "./stream-parser.js";
+export {
+	parseStreamJson,
+	parseStreamJsonIncremental,
+} from "./stream-parser.js";
 export type {
 	CursorAgentAdapterOptions,
 	CursorAgentParsedResult,
 	CursorAgentResultSubtype,
 	SpawnArgs,
+	SpawnExitInfo,
 	SpawnFn,
 	SpawnResult,
+	SpawnStreamResult,
+	StreamingSpawnFn,
+	StreamParseEvent,
 } from "./types.js";

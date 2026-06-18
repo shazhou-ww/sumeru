@@ -1,7 +1,7 @@
 import type { SendEvent } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createCodexAdapter } from "../src/index.js";
-import { buildJsonl, fakeSpawn } from "./test-utils.js";
+import { buildJsonl, fakeSpawn, fakeStreamingSpawn } from "./test-utils.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -16,24 +16,7 @@ async function collectEvents(
 	return events;
 }
 
-/** Extract only the turn events from the stream. */
-async function _extractTurns(iter: AsyncIterable<SendEvent>) {
-	const events = await collectEvents(iter);
-	return events
-		.filter((e): e is Extract<SendEvent, { type: "turn" }> => e.type === "turn")
-		.map((e) => e.turn);
-}
-
-/** Extract the done event from the stream (expects exactly one). */
-async function extractDone(iter: AsyncIterable<SendEvent>) {
-	const events = await collectEvents(iter);
-	const done = events.find(
-		(e): e is Extract<SendEvent, { type: "done" }> => e.type === "done",
-	);
-	return done ?? null;
-}
-
-/** Extract the error event from the stream (expects exactly one). */
+/** Extract the error event from the stream. */
 async function extractError(iter: AsyncIterable<SendEvent>) {
 	const events = await collectEvents(iter);
 	const err = events.find(
@@ -54,34 +37,28 @@ async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
 describe("createCodexAdapter().send()", () => {
 	it("spawns codex with resume and yields delta turns + done", async () => {
 		const sessionId = "sess-send-test";
-		let callCount = 0;
-		const { calls, spawnFn } = fakeSpawn(() => {
-			callCount++;
-			if (callCount === 1) {
-				// createSession
-				return { stdout: buildJsonl({ sessionId, userText: "init" }) };
-			}
-			// send
-			return {
-				stdout: buildJsonl({
-					sessionId,
-					userText: "follow-up",
-					assistantText: "continued",
-				}),
-			};
+		const { spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId, userText: "init" }),
+		});
+		const { calls, streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildJsonl({
+				sessionId,
+				userText: "follow-up",
+				assistantText: "continued",
+			}),
 		});
 
-		const adapter = createCodexAdapter({ spawnFn });
+		const adapter = createCodexAdapter({ spawnFn, streamingSpawnFn });
 		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		const events = await collectEvents(adapter.send(ref, "follow-up"));
 
-		expect(calls.length).toBe(2);
+		expect(calls.length).toBe(1);
 		// Check the send call uses resume
-		expect(calls[1]?.args[0]).toBe("exec");
-		expect(calls[1]?.args[1]).toBe("resume");
-		expect(calls[1]?.args[2]).toBe(sessionId);
-		expect(calls[1]?.args[3]).toBe("follow-up");
+		expect(calls[0]?.args[0]).toBe("exec");
+		expect(calls[0]?.args[1]).toBe("resume");
+		expect(calls[0]?.args[2]).toBe(sessionId);
+		expect(calls[0]?.args[3]).toBe("follow-up");
 
 		const turns = events.filter((e) => e.type === "turn");
 		const done = events.find((e) => e.type === "done");
@@ -95,19 +72,18 @@ describe("createCodexAdapter().send()", () => {
 
 	it("yields turn events followed by a done event", async () => {
 		const sessionId = "sess-events-order";
-		let callCount = 0;
-		const { spawnFn } = fakeSpawn(() => {
-			callCount++;
-			return {
-				stdout: buildJsonl({
-					sessionId,
-					userText: `msg-${callCount}`,
-					assistantText: `reply-${callCount}`,
-				}),
-			};
+		const { spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId }),
+		});
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildJsonl({
+				sessionId,
+				userText: "hello",
+				assistantText: "reply",
+			}),
 		});
 
-		const adapter = createCodexAdapter({ spawnFn });
+		const adapter = createCodexAdapter({ spawnFn, streamingSpawnFn });
 		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		const events = await collectEvents(adapter.send(ref, "hello"));
@@ -156,13 +132,19 @@ describe("createCodexAdapter().send()", () => {
 	});
 
 	it("yields error event on send timeout", async () => {
-		const { spawnFn } = fakeSpawn((_args, idx) => {
-			if (idx === 0) {
-				return { stdout: buildJsonl({ sessionId: "sess-timeout" }) };
-			}
-			return { stdout: "", timedOut: true, exitCode: null };
+		const { spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId: "sess-timeout" }),
 		});
-		const adapter = createCodexAdapter({ spawnFn, sendTimeoutMs: 50 });
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: "",
+			timedOut: true,
+			exitCode: null,
+		});
+		const adapter = createCodexAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			sendTimeoutMs: 50,
+		});
 		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		const err = await extractError(adapter.send(ref, "hi"));
@@ -170,36 +152,37 @@ describe("createCodexAdapter().send()", () => {
 		expect(err?.error.message).toMatch(/send timed out/);
 	});
 
-	it("yields error event on unparseable output", async () => {
-		const { spawnFn } = fakeSpawn((_args, idx) => {
-			if (idx === 0) {
-				return { stdout: buildJsonl({ sessionId: "sess-unparse" }) };
-			}
-			return { stdout: "not json at all", exitCode: 0 };
+	it("yields done event when stdout has no turns (empty output)", async () => {
+		const { spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId: "sess-unparse" }),
 		});
-		const adapter = createCodexAdapter({ spawnFn });
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: "not json at all",
+			exitCode: 0,
+		});
+		const adapter = createCodexAdapter({ spawnFn, streamingSpawnFn });
 		const ref = await adapter.createSession({ model: null, cwd: null });
 
-		const err = await extractError(adapter.send(ref, "hi"));
-		expect(err).not.toBeNull();
-		expect(err?.error.message).toMatch(/unparseable/);
+		const events = await collectEvents(adapter.send(ref, "hi"));
+		// With streaming, malformed lines are skipped, no error on exit code 0
+		const done = events.find((e) => e.type === "done");
+		expect(done).toBeDefined();
 	});
 
 	it("rewrites turn indices to be globally monotonic", async () => {
 		const sessionId = "sess-indices";
-		let callCount = 0;
-		const { spawnFn } = fakeSpawn(() => {
-			callCount++;
-			return {
-				stdout: buildJsonl({
-					sessionId,
-					userText: `msg-${callCount}`,
-					assistantText: `reply-${callCount}`,
-				}),
-			};
+		const { spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId }),
+		});
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildJsonl({
+				sessionId,
+				userText: "msg-2",
+				assistantText: "reply-2",
+			}),
 		});
 
-		const adapter = createCodexAdapter({ spawnFn });
+		const adapter = createCodexAdapter({ spawnFn, streamingSpawnFn });
 		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		const initialTurns = await adapter.getTurns(ref);
@@ -224,68 +207,53 @@ describe("createCodexAdapter().send()", () => {
 
 	it("serializes concurrent sends on the same session", async () => {
 		const sessionId = "sess-mutex";
-		let callCount = 0;
-		const order: number[] = [];
-		const { spawnFn } = fakeSpawn(async () => {
-			const myCall = ++callCount;
-			// First call is createSession
-			if (myCall === 1) {
-				return { stdout: buildJsonl({ sessionId }) };
-			}
-			// Add small delay to test serialization
-			await new Promise((r) => setTimeout(r, 10));
-			order.push(myCall);
+		const { spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId }),
+		});
+		let inflight = 0;
+		let maxInflight = 0;
+		const { streamingSpawnFn } = fakeStreamingSpawn(async () => {
+			inflight++;
+			maxInflight = Math.max(maxInflight, inflight);
+			await new Promise<void>((r) => setTimeout(r, 10));
+			inflight--;
 			return {
-				stdout: buildJsonl({
-					sessionId,
-					userText: `call-${myCall}`,
-					assistantText: `reply-${myCall}`,
-				}),
+				stdout: buildJsonl({ sessionId, assistantText: "reply" }),
 			};
 		});
 
-		const adapter = createCodexAdapter({ spawnFn });
+		const adapter = createCodexAdapter({ spawnFn, streamingSpawnFn });
 		const ref = await adapter.createSession({ model: null, cwd: null });
 
-		// Fire two sends concurrently
-		const [events1, events2] = await Promise.all([
-			collectEvents(adapter.send(ref, "first")),
-			collectEvents(adapter.send(ref, "second")),
+		await Promise.all([
+			drain(adapter.send(ref, "first")),
+			drain(adapter.send(ref, "second")),
 		]);
 
-		// Both should complete with turn events
-		const turns1 = events1.filter((e) => e.type === "turn");
-		const turns2 = events2.filter((e) => e.type === "turn");
-		expect(turns1.length).toBeGreaterThan(0);
-		expect(turns2.length).toBeGreaterThan(0);
-
-		// The sends should have been serialized (order should be [2, 3])
-		expect(order.length).toBe(2);
-		expect(order[0]).toBeLessThan(order[1] ?? 0);
+		expect(maxInflight).toBe(1);
 	});
 
 	it("returns tokens from parsed result in done event", async () => {
 		const sessionId = "sess-tokens";
-		let callCount = 0;
-		const { spawnFn } = fakeSpawn(() => {
-			callCount++;
-			return {
-				stdout: buildJsonl({
-					sessionId,
-					userText: `msg-${callCount}`,
-					usage: {
-						input_tokens: 50 * callCount,
-						output_tokens: 25 * callCount,
-					},
-				}),
-			};
+		const { spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId }),
+		});
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildJsonl({
+				sessionId,
+				userText: "hi",
+				usage: { input_tokens: 100, output_tokens: 50 },
+			}),
 		});
 
-		const adapter = createCodexAdapter({ spawnFn });
+		const adapter = createCodexAdapter({ spawnFn, streamingSpawnFn });
 		const ref = await adapter.createSession({ model: null, cwd: null });
-		const done = await extractDone(adapter.send(ref, "hi"));
+		const events = await collectEvents(adapter.send(ref, "hi"));
+		const done = events.find(
+			(e): e is Extract<SendEvent, { type: "done" }> => e.type === "done",
+		);
 
-		expect(done).not.toBeNull();
+		expect(done).toBeDefined();
 		expect(done?.tokens).not.toBeNull();
 		expect(done?.tokens?.input).toBe(100);
 		expect(done?.tokens?.output).toBe(50);

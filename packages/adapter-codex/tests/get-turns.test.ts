@@ -1,7 +1,7 @@
 import type { SendEvent } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createCodexAdapter } from "../src/index.js";
-import { buildJsonl, fakeSpawn } from "./test-utils.js";
+import { buildJsonl, fakeSpawn, fakeStreamingSpawn } from "./test-utils.js";
 
 /** Drain the iterable (consume all events, discard results). */
 async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
@@ -25,19 +25,18 @@ describe("createCodexAdapter().getTurns()", () => {
 
 	it("after send, getTurns returns initial + delta turns", async () => {
 		const sessionId = "sess-get-turns-send";
-		let callCount = 0;
-		const { spawnFn } = fakeSpawn(() => {
-			callCount++;
-			return {
-				stdout: buildJsonl({
-					sessionId,
-					userText: `msg-${callCount}`,
-					assistantText: `reply-${callCount}`,
-				}),
-			};
+		const { spawnFn } = fakeSpawn({
+			stdout: buildJsonl({ sessionId }),
+		});
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildJsonl({
+				sessionId,
+				userText: "second message",
+				assistantText: "reply-2",
+			}),
 		});
 
-		const adapter = createCodexAdapter({ spawnFn });
+		const adapter = createCodexAdapter({ spawnFn, streamingSpawnFn });
 		const ref = await adapter.createSession({ model: null, cwd: null });
 
 		const initialTurns = await adapter.getTurns(ref);

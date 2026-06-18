@@ -1,7 +1,7 @@
 import type { NativeSessionRef, SendEvent } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createClaudeCodeAdapter } from "../src/index.js";
-import { buildNdjson, fakeSpawn } from "./test-utils.js";
+import { buildNdjson, fakeSpawn, fakeStreamingSpawn } from "./test-utils.js";
 
 /** Drain the iterable to force the full stream to execute. */
 async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
@@ -32,19 +32,17 @@ describe("createClaudeCodeAdapter().getTurns()", () => {
 	});
 
 	it("returns the union after createSession + 2 sends, with strictly monotonic indices", async () => {
-		let phase = 0;
-		const { spawnFn } = fakeSpawn(() => {
-			if (phase++ === 0)
-				return { stdout: buildNdjson({ sessionId: "sess-monotonic" }) };
-			return {
-				stdout: buildNdjson({
-					sessionId: "sess-monotonic",
-					userText: "x",
-					assistantText: "y",
-				}),
-			};
+		const { spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-monotonic" }),
 		});
-		const adapter = createClaudeCodeAdapter({ spawnFn });
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildNdjson({
+				sessionId: "sess-monotonic",
+				userText: "x",
+				assistantText: "y",
+			}),
+		});
+		const adapter = createClaudeCodeAdapter({ spawnFn, streamingSpawnFn });
 		const ref = await adapter.createSession({ model: null, cwd: null });
 		await drain(adapter.send(ref, "x"));
 		await drain(adapter.send(ref, "y"));

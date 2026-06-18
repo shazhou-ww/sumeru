@@ -9,6 +9,30 @@
 
 import type { Turn } from "@sumeru/core";
 
+/** Post-exit metadata from a streaming spawn. */
+export type SpawnExitInfo = {
+	exitCode: number | null;
+	signal: NodeJS.Signals | null;
+	timedOut: boolean;
+	durationMs: number;
+	stderr: string;
+};
+
+/** Return value of `StreamingSpawnFn` — lines + exit promise. */
+export type SpawnStreamResult = {
+	lines: AsyncIterable<string>;
+	waitForExit(): Promise<SpawnExitInfo>;
+};
+
+/** Streaming spawn test seam — returns synchronously with incremental stdout access. */
+export type StreamingSpawnFn = (args: SpawnArgs) => SpawnStreamResult;
+
+/** Events yielded by the incremental stream parser. */
+export type StreamParseEvent =
+	| { type: "turn"; turn: Turn }
+	| { type: "meta"; sessionId: string; model: string }
+	| { type: "result"; resultLine: Record<string, unknown> };
+
 /**
  * Optional configuration for `createCodexAdapter`. Every field accepts
  * `null` (or absence) to fall through to the defaults — no optional `?:`
@@ -34,6 +58,11 @@ export type CodexAdapterOptions = {
 	 * real `codex` binary.
 	 */
 	spawnFn: SpawnFn | null;
+	/**
+	 * Test-only override for the streaming spawn used in `send()`. Inject a
+	 * mock to control line timing in tests without spawning a real process.
+	 */
+	streamingSpawnFn: StreamingSpawnFn | null;
 	/**
 	 * Whether to pass `--dangerously-bypass-approvals-and-sandbox` to Codex.
 	 * Defaults to `true` for unattended Sumeru/uwf runs (parallel to
