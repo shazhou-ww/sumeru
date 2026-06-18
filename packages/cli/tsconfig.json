@@ -11,6 +11,7 @@
     { "path": "../server" },
     { "path": "../adapter-hermes" },
     { "path": "../adapter-claude-code" },
-    { "path": "../adapter-codex" }
+    { "path": "../adapter-codex" },
+    { "path": "../adapter-cursor-agent" }
   ]
 }
