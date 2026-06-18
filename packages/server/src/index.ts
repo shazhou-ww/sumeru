@@ -16,7 +16,9 @@ export {
 	openSumeruOcas,
 	recordPayload,
 	SUMERU_SESSION_META_SCHEMA,
+	SUMERU_SESSION_META_SCHEMA_HASH,
 	SUMERU_TURN_SCHEMA,
+	SUMERU_TURN_SCHEMA_HASH,
 	type SumeruOcas,
 	validatePayload,
 } from "./ocas/index.js";
