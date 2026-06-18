@@ -40,12 +40,22 @@ export async function startServer(config: StartConfig): Promise<StartedServer> {
 	const ocas = openSumeruOcas(ocasDir);
 	console.log(`[sumeru] ocas store: ${ocasDir}`);
 
+	const adapters = config.adapters ?? {};
+	for (const [gatewayName, gatewayCfg] of Object.entries(config.gateways)) {
+		const adapterPkg = `@sumeru/adapter-${gatewayCfg.adapter}`;
+		const status =
+			gatewayName in adapters ? "ready" : "unavailable: not registered";
+		console.log(
+			`[sumeru] gateway ${gatewayName} -> adapter ${adapterPkg} (${status})`,
+		);
+	}
+
 	const handler = createHandler({
 		name: config.name,
 		version: config.version,
 		gateways: config.gateways,
 		workspaceRoot: config.workspaceRoot,
-		adapters: config.adapters ?? {},
+		adapters,
 		sseHeartbeatMs: config.sseHeartbeatMs ?? 15_000,
 		sseBufferSize: config.sseBufferSize ?? 1024,
 		sseRetentionMs: config.sseRetentionMs ?? 30_000,
