@@ -56,6 +56,9 @@ importers:
       '@sumeru/adapter-codex':
         specifier: workspace:^
         version: link:../adapter-codex
+      '@sumeru/adapter-cursor-agent':
+        specifier: workspace:^
+        version: link:../adapter-cursor-agent
       '@sumeru/adapter-hermes':
         specifier: workspace:^
         version: link:../adapter-hermes

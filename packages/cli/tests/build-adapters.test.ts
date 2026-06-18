@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type AdapterFactoryMap,
 	buildAdapters,
+	DEFAULT_ADAPTER_FACTORIES,
 } from "../src/build-adapters.js";
 
 function fakeAdapter(name: string): Adapter {
@@ -165,5 +166,61 @@ describe("buildAdapters — gateway config forwarding (issue #32)", () => {
 		const { factories } = makeRecorder();
 		const adapters = buildAdapters({}, factories);
 		expect(adapters).toEqual({});
+	});
+});
+
+describe("buildAdapters — cursor-agent factory (issue #56)", () => {
+	it("forwards a populated config blob verbatim to the cursor-agent factory", () => {
+		const calls: Array<{ adapter: string; opts: Record<string, unknown> }> = [];
+		const factories: AdapterFactoryMap = {
+			"cursor-agent": (opts) => {
+				calls.push({ adapter: "cursor-agent", opts });
+				return fakeAdapter("cursor-agent");
+			},
+		};
+		const gateways: Record<string, GatewayConfig> = {
+			"cursor-agent": {
+				adapter: "cursor-agent",
+				capabilities: { resume: true, streaming: true },
+				config: {
+					model: "gpt-5",
+					cursorAgentBin: "/usr/local/bin/cursor-agent",
+					cwd: "/tmp/project",
+					createSessionTimeoutMs: 300_000,
+					sendTimeoutMs: 1_800_000,
+					permissionMode: "yolo",
+					sandbox: "disabled",
+				},
+			},
+		};
+		const adapters = buildAdapters(gateways, factories);
+		expect(Object.keys(adapters)).toEqual(["cursor-agent"]);
+		expect(calls).toEqual([
+			{
+				adapter: "cursor-agent",
+				opts: {
+					model: "gpt-5",
+					cursorAgentBin: "/usr/local/bin/cursor-agent",
+					cwd: "/tmp/project",
+					createSessionTimeoutMs: 300_000,
+					sendTimeoutMs: 1_800_000,
+					permissionMode: "yolo",
+					sandbox: "disabled",
+				},
+			},
+		]);
+	});
+
+	it("DEFAULT_ADAPTER_FACTORIES wires cursor-agent to a real adapter instance", () => {
+		const gateways: Record<string, GatewayConfig> = {
+			"cursor-agent": {
+				adapter: "cursor-agent",
+				capabilities: { resume: true, streaming: true },
+				config: null,
+			},
+		};
+		const adapters = buildAdapters(gateways, DEFAULT_ADAPTER_FACTORIES);
+		expect(Object.keys(adapters)).toEqual(["cursor-agent"]);
+		expect(adapters["cursor-agent"]?.name).toBe("cursor-agent");
 	});
 });
