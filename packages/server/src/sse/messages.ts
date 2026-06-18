@@ -145,6 +145,7 @@ export async function handleMessageEndpoint(
 			sessionId,
 			lastEventIdValue,
 			bufferStore,
+			config,
 		);
 		return;
 	}
@@ -190,6 +191,17 @@ export async function handleMessageEndpoint(
 	if (isResumeWithBody && lastEventIdValue !== null) {
 		const buf = bufferStore.getLatestForSession(gatewayName, sessionId);
 		if (buf === null) {
+			if (bufferStore.wasRecentlyExpired(gatewayName, sessionId)) {
+				writeJson(
+					res,
+					410,
+					errorEnvelope(
+						"stream_expired",
+						`SSE stream for session ${sessionId} has expired (retained ${Math.round(config.sseRetentionMs / 1000)}s after completion)`,
+					),
+				);
+				return;
+			}
 			writeJson(
 				res,
 				404,
@@ -507,9 +519,21 @@ async function handleResumeOnly(
 	sessionId: string,
 	since: number,
 	bufferStore: SseBufferStore,
+	config: ServerConfig,
 ): Promise<void> {
 	const buf = bufferStore.getLatestForSession(gatewayName, sessionId);
 	if (buf === null) {
+		if (bufferStore.wasRecentlyExpired(gatewayName, sessionId)) {
+			writeJson(
+				res,
+				410,
+				errorEnvelope(
+					"stream_expired",
+					`SSE stream for session ${sessionId} has expired (retained ${Math.round(config.sseRetentionMs / 1000)}s after completion)`,
+				),
+			);
+			return;
+		}
 		writeJson(
 			res,
 			404,
