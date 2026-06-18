@@ -7,6 +7,7 @@ tags: [deploy, systemd, service, operations]
 ## Given
 - The Sumeru repository contains a `deploy/` directory.
 - The file `deploy/sumeru.service` exists and is a valid systemd unit file.
+- The file `deploy/sumeru.env.example` exists as a non-secret template for adapter credentials.
 - The target host has Node.js 22 installed at `/usr/bin/node`.
 - The Sumeru repository is cloned to `$HOME/repos/sumeru` on the target host.
 - The CLI has been built: `packages/cli/dist/cli.js` exists.
@@ -24,6 +25,8 @@ tags: [deploy, systemd, service, operations]
 - The `sumeru.service` unit file contains a `[Service]` section with:
   - `Type=simple`
   - `WorkingDirectory=%h/repos/sumeru` (where `%h` expands to the user's home directory)
+  - `Environment=PATH=%h/.local/share/npm/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin` — so CLI-based adapters (claude-code / codex / cursor-agent) can `spawn` their external binary instead of failing with `ENOENT`.
+  - `EnvironmentFile=-%h/.config/sumeru/env` — supplies adapter credentials (e.g. `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL`) that the service env does not otherwise inherit. The leading `-` makes the file optional so hermes-only nodes still start.
   - `ExecStart=/usr/bin/node packages/cli/dist/cli.js start --port 7900 --config sumeru.yaml`
   - `Restart=always`
   - `RestartSec=5`
@@ -43,3 +46,7 @@ tags: [deploy, systemd, service, operations]
 - The unit file is a **template** stored in the repo; actual deployment (copying to `~/.config/systemd/user/`, enabling) is done by the operator, not by any CLI command.
 - The `%h` specifier is a systemd special that expands to the user's home directory at runtime.
 - This decoupling is the primary goal of issue #40: gateway restarts no longer kill Sumeru as collateral.
+- **Environment inheritance (issue #48):** systemd user services do not inherit the login shell environment. Two things must be declared explicitly or CLI-based adapters break:
+  - **PATH** — without `Environment=PATH=...` including `%h/.local/share/npm/bin`, `spawn('claude')` fails with `ENOENT` (the binary is invisible).
+  - **Credentials** — without `EnvironmentFile=`, `claude` runs but returns `Not logged in` because `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` are absent.
+  - Credentials live in `~/.config/sumeru/env` (chmod 600, never committed). Only the placeholder `deploy/sumeru.env.example` is in the repo. The `EnvironmentFile=-` leading dash keeps the file optional so hermes-only nodes start without it.

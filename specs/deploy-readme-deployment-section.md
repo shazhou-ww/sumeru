@@ -7,6 +7,7 @@ tags: [docs, deploy, readme, systemd]
 ## Given
 - The Sumeru repository contains a `README.md` at the root.
 - The `deploy/sumeru.service` unit template exists (see `deploy-systemd-service-unit.md`).
+- The `deploy/sumeru.env.example` credentials template exists.
 
 ## When
 - A user reads `README.md` looking for deployment instructions.
@@ -22,11 +23,19 @@ tags: [docs, deploy, readme, systemd]
    cp deploy/sumeru.service ~/.config/systemd/user/
    # or: ln -s $(pwd)/deploy/sumeru.service ~/.config/systemd/user/
    ```
-2. Reload systemd:
+2. Configure adapter credentials (only for nodes using a CLI adapter such as claude-code / codex / cursor-agent):
+   ```bash
+   mkdir -p ~/.config/sumeru
+   cp deploy/sumeru.env.example ~/.config/sumeru/env
+   chmod 600 ~/.config/sumeru/env
+   $EDITOR ~/.config/sumeru/env   # fill in real ANTHROPIC_API_KEY etc.
+   ```
+   hermes-only nodes may skip this step (the unit marks `EnvironmentFile` optional).
+3. Reload systemd:
    ```bash
    systemctl --user daemon-reload
    ```
-3. Enable and start the service:
+4. Enable and start the service:
    ```bash
    systemctl --user enable --now sumeru
    ```
@@ -54,3 +63,4 @@ systemctl --user status sumeru
 - The README should maintain its existing style (Chinese headings if the rest is in Chinese, consistent formatting).
 - Installation commands use `--user` flag throughout since this is a user service, not a system service.
 - The symlink option is mentioned as an alternative for development workflows where the unit file may be updated.
+- The credentials step (issue #48) is conditional: required for CLI-based adapters (claude-code / codex / cursor-agent), skippable for hermes-only nodes. Secrets go in `~/.config/sumeru/env` (chmod 600, never committed); only the placeholder `deploy/sumeru.env.example` lives in the repo.
