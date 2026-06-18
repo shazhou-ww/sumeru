@@ -180,12 +180,27 @@ cp deploy/sumeru.service ~/.config/systemd/user/
 # 或使用符号链接（开发时方便更新）:
 # ln -s $(pwd)/deploy/sumeru.service ~/.config/systemd/user/
 
-# 2. 重载 systemd
+# 2. 配置 adapter 认证（仅当用 claude-code / codex / cursor-agent 等 CLI adapter）
+#    systemd user service 不继承 login shell 环境，凭证必须显式提供。
+mkdir -p ~/.config/sumeru
+cp deploy/sumeru.env.example ~/.config/sumeru/env
+chmod 600 ~/.config/sumeru/env          # 仅 owner 可读，保护密钥
+$EDITOR ~/.config/sumeru/env            # 填入真实 ANTHROPIC_API_KEY 等
+#    只用 hermes adapter 的节点可跳过这步（unit 里 EnvironmentFile 标了可选）。
+
+# 3. 重载 systemd
 systemctl --user daemon-reload
 
-# 3. 启用并启动服务
+# 4. 启用并启动服务
 systemctl --user enable --now sumeru
 ```
+
+> **PATH 与认证**：CLI-based adapter（claude-code / codex / cursor-agent）会 spawn
+> 外部二进制并需要 API key，但 systemd user service **不继承 login shell 环境**。
+> unit 模板已用 `Environment=PATH=...` 声明 npm/local bin（否则 `spawn claude` →
+> `ENOENT`），并用 `EnvironmentFile=` 读取上面那个 0600 env 文件提供认证（否则
+> claude 回 `Not logged in`）。凭证只放在 `~/.config/sumeru/env`，**不进 git**；
+> repo 里只有占位的 `deploy/sumeru.env.example`。
 
 ### 查看日志
 

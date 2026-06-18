@@ -5,6 +5,17 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%h/repos/sumeru
+# CLI-based adapters (claude-code / codex / cursor-agent) spawn external
+# binaries. systemd user services do NOT inherit the login shell PATH, so the
+# npm global bin and ~/.local/bin must be declared here or spawn() → ENOENT.
+Environment=PATH=%h/.local/share/npm/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# Adapter auth (e.g. ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL for claude-code)
+# also does not survive into the service env. Keep credentials out of this unit
+# file and out of git — put them in a 0600 env file. See deploy/sumeru.env.example.
+# Leading "-" makes it optional: nodes that only use the hermes adapter (no
+# external auth) can run without this file; nodes using CLI adapters must create
+# it or claude-code will return "Not logged in".
+EnvironmentFile=-%h/.config/sumeru/env
 ExecStart=/usr/bin/node packages/cli/dist/cli.js start --port 7900 --config sumeru.yaml
 Restart=always
 RestartSec=5
