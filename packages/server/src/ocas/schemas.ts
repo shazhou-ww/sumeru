@@ -6,7 +6,7 @@
  * the hash. Treat these definitions as immutable.
  */
 
-import type { JSONSchema } from "@ocas/core";
+import type { Hash, JSONSchema } from "@ocas/core";
 
 /**
  * `@sumeru/session-meta` — per-session metadata snapshot, written once at
@@ -38,6 +38,13 @@ export const SUMERU_SESSION_META_SCHEMA: JSONSchema = {
 		},
 	},
 };
+
+/**
+ * Pre-computed hash of `SUMERU_SESSION_META_SCHEMA`. Hardcoded to avoid
+ * requiring WASM init (`initHasher()`) at import time. A test asserts this
+ * stays in sync with `computeSelfHashSync(SUMERU_SESSION_META_SCHEMA)`.
+ */
+export const SUMERU_SESSION_META_SCHEMA_HASH: Hash = "5C30THA7BZ814";
 
 /**
  * `@sumeru/turn` — one turn in a session. Used for both user and assistant
@@ -98,3 +105,10 @@ export const SUMERU_TURN_SCHEMA: JSONSchema = {
 		},
 	},
 };
+
+/**
+ * Pre-computed hash of `SUMERU_TURN_SCHEMA`. Hardcoded to avoid requiring
+ * WASM init (`initHasher()`) at import time. A test asserts this stays in
+ * sync with `computeSelfHashSync(SUMERU_TURN_SCHEMA)`.
+ */
+export const SUMERU_TURN_SCHEMA_HASH: Hash = "718S3WF704TZ6";
