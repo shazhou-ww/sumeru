@@ -75,16 +75,14 @@ export function createHermesAdapter(
 		const next = new Promise<void>((resolve) => {
 			release = resolve;
 		});
-		sendLocks.set(
-			nativeId,
-			prev.then(() => next),
-		);
+		const chain = prev.then(() => next);
+		sendLocks.set(nativeId, chain);
 		try {
 			await prev;
 			return await fn();
 		} finally {
 			release();
-			if (sendLocks.get(nativeId) === prev.then(() => next)) {
+			if (sendLocks.get(nativeId) === chain) {
 				sendLocks.delete(nativeId);
 			}
 		}
