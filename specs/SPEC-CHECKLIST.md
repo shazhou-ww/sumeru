@@ -7,7 +7,7 @@
 ```
 specs/
 ├── SPEC-CHECKLIST.md          ← 本文件
-├── architecture/              (4)  总体架构、核心接口、脚手架
+├── architecture/              (5)  总体架构、核心接口、脚手架、Docker 模式
 ├── adapter-hermes/            (7)  Hermes adapter
 ├── adapter-claude-code/       (9)  Claude Code adapter
 ├── adapter-cursor-agent/      (7)  Cursor Agent adapter
@@ -17,12 +17,12 @@ specs/
 ├── server-ocas/               (5)  ocas 记录
 ├── server-search/             (3)  搜索 & 导出
 ├── server-config/             (8)  配置加载 & 网关端点
-├── cli/                       (5)  CLI 启动生命周期
+├── cli/                       (6)  CLI 启动生命周期 + 场景实验
 ├── deploy/                    (3)  部署 & CI
 └── e2e/                       (1)  端到端验收
 ```
 
-共 **72** 个 spec 文件。
+共 **74** 个 spec 文件。
 
 ---
 
@@ -33,6 +33,7 @@ specs/
 | 场景 | Specs | 数量 |
 |---|---|---|
 | 启动实例 | `cli/*` + `server-config/*` + `deploy/*` | 16 |
+| Docker 模式 / 场景实验 | `architecture/docker-mode.md` + `cli/sumeru-run-scene.md` | 2 |
 | 创建/管理 Session | `server-session/*` | 9 |
 | 发消息 SSE 流 | `server-sse/*` | 3 |
 | ocas 全量记录 | `server-ocas/*` | 5 |
@@ -53,8 +54,6 @@ specs/
 
 | 场景 | 说明 |
 |---|---|
-| Docker 模式 | architecture 描述了容器隔离实验，零 spec |
-| `sumeru run` 场景实验 | scene 定义→容器→执行→导出→销毁，零 spec |
 | `sumeru prompt` 子命令 | Issue #47 待做 |
 | `sumeru status` / `sumeru stop` | architecture 提到但无 spec |
 | SSE error 事件格式 | architecture 提到 `event: error`，无独立定义 |
@@ -153,8 +152,8 @@ specs/
 
 ### 需要新写 spec
 
-- [ ] `docker-mode` — Docker 隔离模式架构 spec
-- [ ] `sumeru-run-scene` — 场景实验 CLI spec
+- [x] `docker-mode` — Docker 隔离模式架构 spec ✅ `specs/architecture/docker-mode.md`
+- [x] `sumeru-run-scene` — 场景实验 CLI spec ✅ `specs/cli/sumeru-run-scene.md`
 - [ ] `sumeru-prompt` — Issue #47，对标 uwf prompt
 - [ ] `cli-status` — `sumeru status` 命令
 - [ ] `cli-stop` — `sumeru stop` 命令
