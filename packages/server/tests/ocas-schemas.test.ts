@@ -126,6 +126,48 @@ describe("ocas turn schema — payload validation", () => {
 		).toThrow(SchemaValidationError);
 	});
 
+	it("accepts a turn with null output, durationMs, and exitCode in tool calls", () => {
+		const ocas = openSumeruOcas(tmpOcasDir());
+		expect(() =>
+			validatePayload(ocas.store, ocas.turnSchemaHash, {
+				index: 1,
+				role: "assistant",
+				content: "ok",
+				timestamp: "2024-01-01T00:00:01.000Z",
+				toolCalls: [
+					{
+						tool: "bash",
+						input: { cmd: "echo hi" },
+						output: null,
+						durationMs: null,
+						exitCode: null,
+					},
+				],
+			}),
+		).not.toThrow();
+	});
+
+	it("rejects durationMs = -1 (minimum 0 violated when non-null)", () => {
+		const ocas = openSumeruOcas(tmpOcasDir());
+		expect(() =>
+			validatePayload(ocas.store, ocas.turnSchemaHash, {
+				index: 1,
+				role: "assistant",
+				content: "ok",
+				timestamp: "2024-01-01T00:00:01.000Z",
+				toolCalls: [
+					{
+						tool: "bash",
+						input: { cmd: "ls" },
+						output: "files",
+						durationMs: -1,
+						exitCode: 0,
+					},
+				],
+			}),
+		).toThrow(SchemaValidationError);
+	});
+
 	it("rejects tokens.input = -1 (minimum 0 violated)", () => {
 		const ocas = openSumeruOcas(tmpOcasDir());
 		expect(() =>
