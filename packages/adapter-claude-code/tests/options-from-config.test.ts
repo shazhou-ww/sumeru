@@ -7,7 +7,7 @@
 import type { SendEvent } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createClaudeCodeAdapter } from "../src/index.js";
-import { buildNdjson, fakeSpawn } from "./test-utils.js";
+import { buildNdjson, fakeSpawn, fakeStreamingSpawn } from "./test-utils.js";
 
 /** Drain the iterable to force the full stream to execute. */
 async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
@@ -38,74 +38,74 @@ function extractError(
 
 describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue #32)", () => {
 	it("uses operator-supplied timeouts and maxTurns for both createSession and send", async () => {
-		let phase = 0;
-		const { calls, spawnFn } = fakeSpawn(() => {
-			if (phase++ === 0) {
-				return { stdout: buildNdjson({ sessionId: "sess-config" }) };
-			}
-			return {
-				stdout: buildNdjson({
-					sessionId: "sess-config",
-					userText: "hello",
-					assistantText: "world",
-				}),
-			};
+		const { calls: spawnCalls, spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-config" }),
+		});
+		const { calls: streamCalls, streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildNdjson({
+				sessionId: "sess-config",
+				userText: "hello",
+				assistantText: "world",
+			}),
 		});
 		const adapter = createClaudeCodeAdapter({
 			sendTimeoutMs: 1_800_000,
 			createSessionTimeoutMs: 300_000,
 			maxTurns: 120,
 			spawnFn,
+			streamingSpawnFn,
 		});
 		const ref = await adapter.createSession({ model: null, cwd: null });
 		await drain(adapter.send(ref, "hello"));
 
-		expect(calls.length).toBe(2);
+		expect(spawnCalls.length).toBe(1);
+		expect(streamCalls.length).toBe(1);
 		// createSession spawn carries the operator's createSessionTimeoutMs.
-		expect(calls[0]?.timeoutMs).toBe(300_000);
+		expect(spawnCalls[0]?.timeoutMs).toBe(300_000);
 		// send spawn carries the operator's sendTimeoutMs.
-		expect(calls[1]?.timeoutMs).toBe(1_800_000);
+		expect(streamCalls[0]?.timeoutMs).toBe(1_800_000);
 		// --max-turns is the operator's value.
-		const maxTurnsIdx = calls[0]?.args.indexOf("--max-turns") ?? -1;
-		expect(calls[0]?.args[maxTurnsIdx + 1]).toBe("120");
-		const maxTurnsIdx2 = calls[1]?.args.indexOf("--max-turns") ?? -1;
-		expect(calls[1]?.args[maxTurnsIdx2 + 1]).toBe("120");
+		const maxTurnsIdx = spawnCalls[0]?.args.indexOf("--max-turns") ?? -1;
+		expect(spawnCalls[0]?.args[maxTurnsIdx + 1]).toBe("120");
+		const maxTurnsIdx2 = streamCalls[0]?.args.indexOf("--max-turns") ?? -1;
+		expect(streamCalls[0]?.args[maxTurnsIdx2 + 1]).toBe("120");
 	});
 
 	it("default factory uses 30-min sendTimeout and 5-min createTimeout", async () => {
-		let phase = 0;
-		const { calls, spawnFn } = fakeSpawn(() => {
-			if (phase++ === 0) {
-				return { stdout: buildNdjson({ sessionId: "sess-default" }) };
-			}
-			return {
-				stdout: buildNdjson({
-					sessionId: "sess-default",
-					userText: "hi",
-					assistantText: "ok",
-				}),
-			};
+		const { calls: spawnCalls, spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-default" }),
 		});
-		const adapter = createClaudeCodeAdapter({ spawnFn });
+		const { calls: streamCalls, streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildNdjson({
+				sessionId: "sess-default",
+				userText: "hi",
+				assistantText: "ok",
+			}),
+		});
+		const adapter = createClaudeCodeAdapter({ spawnFn, streamingSpawnFn });
 		const ref = await adapter.createSession({ model: null, cwd: null });
 		await drain(adapter.send(ref, "hi"));
 
-		expect(calls.length).toBe(2);
-		expect(calls[0]?.timeoutMs).toBe(5 * 60_000);
+		expect(spawnCalls.length).toBe(1);
+		expect(streamCalls.length).toBe(1);
+		expect(spawnCalls[0]?.timeoutMs).toBe(5 * 60_000);
 		// 30 min — the new default introduced by issue #32 (was 10 min).
-		expect(calls[1]?.timeoutMs).toBe(30 * 60_000);
+		expect(streamCalls[0]?.timeoutMs).toBe(30 * 60_000);
 	});
 
 	it("send timeout yields error event with the operator-configured value", async () => {
-		let phase = 0;
-		const { spawnFn } = fakeSpawn(() => {
-			if (phase++ === 0) {
-				return { stdout: buildNdjson({ sessionId: "sess-timeout-msg" }) };
-			}
-			return { stdout: "", stderr: "", exitCode: null, timedOut: true };
+		const { spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-timeout-msg" }),
+		});
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: "",
+			stderr: "",
+			exitCode: null,
+			timedOut: true,
 		});
 		const adapter = createClaudeCodeAdapter({
 			spawnFn,
+			streamingSpawnFn,
 			sendTimeoutMs: 1_800_000,
 		});
 		const ref = await adapter.createSession({ model: null, cwd: null });

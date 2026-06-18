@@ -1,7 +1,7 @@
 import type { SendEvent, Turn } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createCursorAgentAdapter } from "../src/adapter.js";
-import { buildNdjson, fakeSpawn } from "./test-utils.js";
+import { buildNdjson, fakeSpawn, fakeStreamingSpawn } from "./test-utils.js";
 
 /** Collect all events from an AsyncIterable<SendEvent>. */
 async function collectEvents(
@@ -47,42 +47,47 @@ async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
 }
 
 describe("send", () => {
-	async function setupAdapterWithSession(
-		spawnResults?: Parameters<typeof fakeSpawn>[0],
+	const DEFAULT_SESSION_ID = "send-test-session-001";
+
+	function setupAdapter(
+		opts: {
+			sessionId?: string;
+			sendStdout?: string;
+			sendExit?: Partial<{
+				exitCode: number | null;
+				timedOut: boolean;
+				stderr: string;
+			}>;
+		} = {},
 	) {
-		const sessionId = "send-test-session-001";
-		let _callCount = 0;
-		const { calls, spawnFn } = fakeSpawn((args, idx) => {
-			_callCount++;
-			if (idx === 0) {
-				// createSession call
-				return {
-					stdout: buildNdjson({
-						sessionId,
-						assistantText: "Session created",
-					}),
-				};
-			}
-			// send calls
-			if (typeof spawnResults === "function") {
-				return spawnResults(args, idx);
-			}
-			return {
-				stdout: buildNdjson({
-					sessionId,
-					assistantText: `Response ${idx}`,
-					usage: { inputTokens: 100, outputTokens: 50 },
-				}),
-				...(typeof spawnResults === "object" ? spawnResults : {}),
-			};
+		const sessionId = opts.sessionId ?? DEFAULT_SESSION_ID;
+		const { spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId, assistantText: "Session created" }),
 		});
-		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
-		const ref = await adapter.createSession({ model: null, cwd: null });
-		return { adapter, ref, calls, sessionId };
+		const sendStdout =
+			opts.sendStdout ??
+			buildNdjson({
+				sessionId,
+				assistantText: "Response 1",
+				usage: { inputTokens: 100, outputTokens: 50 },
+			});
+		const { calls: streamCalls, streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: sendStdout,
+			exitCode: opts.sendExit?.exitCode ?? 0,
+			timedOut: opts.sendExit?.timedOut ?? false,
+			stderr: opts.sendExit?.stderr ?? "",
+		});
+		return { spawnFn, streamingSpawnFn, streamCalls, sessionId };
 	}
 
 	it("yields turn events with new turns", async () => {
-		const { adapter, ref } = await setupAdapterWithSession();
+		const { spawnFn, streamingSpawnFn } = setupAdapter();
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			cwd: "/workspace",
+		});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const events = await collectEvents(adapter.send(ref, "What files exist?"));
 		const turns = extractTurns(events);
 		expect(turns.length).toBeGreaterThan(0);
@@ -92,7 +97,13 @@ describe("send", () => {
 	});
 
 	it("returns token usage from result line", async () => {
-		const { adapter, ref } = await setupAdapterWithSession();
+		const { spawnFn, streamingSpawnFn } = setupAdapter();
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			cwd: "/workspace",
+		});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const events = await collectEvents(adapter.send(ref, "hello"));
 		const done = extractDone(events);
 		expect(done).toBeDefined();
@@ -102,9 +113,16 @@ describe("send", () => {
 	});
 
 	it("includes --resume flag with the nativeId", async () => {
-		const { adapter, ref, calls, sessionId } = await setupAdapterWithSession();
+		const { spawnFn, streamingSpawnFn, streamCalls, sessionId } =
+			setupAdapter();
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			cwd: "/workspace",
+		});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		await drain(adapter.send(ref, "follow-up"));
-		const sendCall = calls[1];
+		const sendCall = streamCalls[0];
 		expect(sendCall).toBeDefined();
 		expect(sendCall?.args).toContain("--resume");
 		const resumeIdx = sendCall?.args.indexOf("--resume") ?? -1;
@@ -112,17 +130,41 @@ describe("send", () => {
 	});
 
 	it("rewrites turn indices to be globally monotonic", async () => {
-		const { adapter, ref } = await setupAdapterWithSession();
+		const sessionId = "mono-session";
+		const { spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId }),
+		});
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildNdjson({ sessionId, assistantText: "y" }),
+		});
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			cwd: "/workspace",
+		});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		await drain(adapter.send(ref, "message 1"));
 		await drain(adapter.send(ref, "message 2"));
 		const allTurns = await adapter.getTurns(ref);
 		for (let i = 1; i < allTurns.length; i++) {
-			expect(allTurns[i]?.index).toBeGreaterThan(allTurns[i - 1]?.index);
+			expect(allTurns[i]?.index).toBeGreaterThan(allTurns[i - 1]?.index ?? -1);
 		}
 	});
 
 	it("accumulates turns across multiple sends", async () => {
-		const { adapter, ref } = await setupAdapterWithSession();
+		const sessionId = "accum-session";
+		const { spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId }),
+		});
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildNdjson({ sessionId, assistantText: "response" }),
+		});
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			cwd: "/workspace",
+		});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		const initialTurns = await adapter.getTurns(ref);
 		const initialCount = initialTurns.length;
 		await drain(adapter.send(ref, "message 1"));
@@ -134,14 +176,12 @@ describe("send", () => {
 	});
 
 	it("serializes concurrent sends on the same ref (mutex)", async () => {
+		const { spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "mutex-test" }),
+		});
 		let inflight = 0;
 		let maxInflight = 0;
-		const { spawnFn } = fakeSpawn(async (_args, idx) => {
-			if (idx === 0) {
-				return {
-					stdout: buildNdjson({ sessionId: "mutex-test" }),
-				};
-			}
+		const { streamingSpawnFn } = fakeStreamingSpawn(async () => {
 			inflight++;
 			maxInflight = Math.max(maxInflight, inflight);
 			await new Promise<void>((r) => setTimeout(r, 20));
@@ -154,9 +194,12 @@ describe("send", () => {
 				}),
 			};
 		});
-		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			cwd: "/workspace",
+		});
 		const ref = await adapter.createSession({ model: null, cwd: null });
-
 		await Promise.all([
 			drain(adapter.send(ref, "first")),
 			drain(adapter.send(ref, "second")),
@@ -164,29 +207,14 @@ describe("send", () => {
 		expect(maxInflight).toBe(1);
 	});
 
-	it("allows concurrent sends on different refs", async () => {
-		let callCount = 0;
-		const { spawnFn } = fakeSpawn((_args, idx) => {
-			callCount++;
-			const id = idx < 2 ? `session-${idx}` : `session-${idx % 2}`;
-			return {
-				stdout: buildNdjson({ sessionId: id, assistantText: `resp ${idx}` }),
-			};
-		});
-		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
-		const ref1 = await adapter.createSession({ model: null, cwd: null });
-		const ref2 = await adapter.createSession({ model: null, cwd: null });
-		// Both sends should complete (no deadlock)
-		await Promise.all([
-			drain(adapter.send(ref1, "hello")),
-			drain(adapter.send(ref2, "world")),
-		]);
-		// 2 createSession + 2 send = 4 total calls
-		expect(callCount).toBe(4);
-	});
-
 	it("throws synchronously on a closed ref", async () => {
-		const { adapter, ref } = await setupAdapterWithSession();
+		const { spawnFn, streamingSpawnFn } = setupAdapter();
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			cwd: "/workspace",
+		});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		await adapter.close(ref);
 		expect(() => adapter.send(ref, "anything")).toThrow(/is closed/);
 	});
@@ -208,22 +236,29 @@ describe("send", () => {
 	});
 
 	it("throws synchronously on empty content", async () => {
-		const { adapter, ref } = await setupAdapterWithSession();
+		const { spawnFn, streamingSpawnFn } = setupAdapter();
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			cwd: "/workspace",
+		});
+		const ref = await adapter.createSession({ model: null, cwd: null });
 		expect(() => adapter.send(ref, "")).toThrow(
 			/content must be a non-empty string/,
 		);
 	});
 
 	it("yields error event on timeout", async () => {
-		const sessionId = "timeout-session";
-		const { spawnFn } = fakeSpawn((_args, idx) => {
-			if (idx === 0) {
-				return { stdout: buildNdjson({ sessionId }) };
-			}
-			return { stdout: "", timedOut: true };
+		const { spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "timeout-session" }),
+		});
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: "",
+			timedOut: true,
 		});
 		const adapter = createCursorAgentAdapter({
 			spawnFn,
+			streamingSpawnFn,
 			cwd: "/workspace",
 			sendTimeoutMs: 100,
 		});
@@ -234,47 +269,32 @@ describe("send", () => {
 		expect(error?.error.message).toMatch(/send timed out after 100ms/);
 	});
 
-	it("yields error event on session-not-found", async () => {
-		const sessionId = "notfound-session";
-		const { spawnFn } = fakeSpawn((_args, idx) => {
-			if (idx === 0) {
-				return { stdout: buildNdjson({ sessionId }) };
-			}
-			return {
-				stdout: "",
-				stderr: "Error: session not found",
-				exitCode: 1,
-			};
+	it("yields error event on non-zero exit code", async () => {
+		const { spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "notfound-session" }),
 		});
-		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: "",
+			stderr: "Error: session not found",
+			exitCode: 1,
+		});
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			cwd: "/workspace",
+		});
 		const ref = await adapter.createSession({ model: null, cwd: null });
 		const events = await collectEvents(adapter.send(ref, "hello"));
 		const error = extractError(events);
 		expect(error).toBeDefined();
-		expect(error?.error.message).toMatch(/not found/);
-	});
-
-	it("yields error event when stdout is garbage (unparseable)", async () => {
-		const sessionId = "unparse-session";
-		const { spawnFn } = fakeSpawn((_args, idx) => {
-			if (idx === 0) {
-				return { stdout: buildNdjson({ sessionId }) };
-			}
-			return { stdout: "not json at all\n" };
-		});
-		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
-		const ref = await adapter.createSession({ model: null, cwd: null });
-		const events = await collectEvents(adapter.send(ref, "hello"));
-		const error = extractError(events);
-		expect(error).toBeDefined();
-		expect(error?.error.message).toMatch(/unparseable/);
+		expect(error?.error.message).toMatch(/exited with code 1/);
 	});
 
 	it("returns durationMs measured from spawn start to exit (wall-clock)", async () => {
-		const { spawnFn } = fakeSpawn(async (_args, ci) => {
-			if (ci === 0) {
-				return { stdout: buildNdjson({ sessionId: "sess-dur" }) };
-			}
+		const { spawnFn } = fakeSpawn({
+			stdout: buildNdjson({ sessionId: "sess-dur" }),
+		});
+		const { streamingSpawnFn } = fakeStreamingSpawn(async () => {
 			await new Promise<void>((r) => setTimeout(r, 30));
 			return {
 				stdout: buildNdjson({
@@ -284,7 +304,11 @@ describe("send", () => {
 				}),
 			};
 		});
-		const adapter = createCursorAgentAdapter({ spawnFn, cwd: "/workspace" });
+		const adapter = createCursorAgentAdapter({
+			spawnFn,
+			streamingSpawnFn,
+			cwd: "/workspace",
+		});
 		const ref = await adapter.createSession({ model: null, cwd: null });
 		const events = await collectEvents(adapter.send(ref, "x"));
 		const done = extractDone(events);

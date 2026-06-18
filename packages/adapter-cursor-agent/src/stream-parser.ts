@@ -24,6 +24,7 @@ import type { ToolCall, Turn } from "@sumeru/core";
 import type {
 	CursorAgentParsedResult,
 	CursorAgentResultSubtype,
+	StreamParseEvent,
 } from "./types.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -367,4 +368,60 @@ export function parseStreamJson(
 		processLine(line, state);
 	}
 	return assembleResult(state);
+}
+
+/**
+ * Incremental async-generator parser for cursor-agent NDJSON output.
+ *
+ * Yields `StreamParseEvent` as each line is consumed:
+ *   - `{ type: "meta" }` after the first `system` line sets session + model.
+ *   - `{ type: "turn" }` for each new Turn added (assistant, user, or
+ *     assistant created by a `tool_call` started event).
+ *   - `{ type: "result" }` when the `result` line is encountered.
+ *
+ * `tool_call` started events that MUTATE an existing turn's toolCalls array
+ * do NOT yield a new event (reference sharing). `tool_call` completed events
+ * fill in `ToolCall.output` on previously-yielded Turn objects — no new event.
+ */
+export async function* parseStreamJsonIncremental(
+	lines: AsyncIterable<string>,
+): AsyncGenerator<StreamParseEvent> {
+	const state: ParseState = {
+		turns: [],
+		pendingToolCalls: new Map(),
+		resultLine: null,
+		model: "",
+		sessionId: "",
+		turnIndex: 0,
+		now: new Date().toISOString(),
+	};
+
+	let metaYielded = false;
+
+	for await (const line of lines) {
+		const turnsBefore = state.turns.length;
+		const hadResult = state.resultLine !== null;
+		const hadSession = state.sessionId !== "";
+
+		processLine(line, state);
+
+		// Yield meta event once session info is available
+		if (!metaYielded && !hadSession && state.sessionId !== "") {
+			metaYielded = true;
+			yield { type: "meta", sessionId: state.sessionId, model: state.model };
+		}
+
+		// Yield new turns (only newly created turns, not mutated ones)
+		for (let i = turnsBefore; i < state.turns.length; i++) {
+			const turn = state.turns[i];
+			if (turn !== undefined) {
+				yield { type: "turn", turn };
+			}
+		}
+
+		// Yield result event
+		if (!hadResult && state.resultLine !== null) {
+			yield { type: "result", resultLine: state.resultLine };
+		}
+	}
 }

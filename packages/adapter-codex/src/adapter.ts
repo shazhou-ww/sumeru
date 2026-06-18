@@ -31,13 +31,16 @@ import type {
 	TokenUsage,
 	Turn,
 } from "@sumeru/core";
-import { defaultSpawn } from "./spawn.js";
-import { parseCodexJson } from "./stream-parser.js";
+import { defaultSpawn, defaultStreamingSpawn } from "./spawn.js";
+import { parseCodexJson, parseCodexJsonIncremental } from "./stream-parser.js";
 import type {
 	CodexAdapterOptions,
 	CodexParsedResult,
+	SpawnExitInfo,
 	SpawnFn,
 	SpawnResult,
+	SpawnStreamResult,
+	StreamingSpawnFn,
 } from "./types.js";
 
 const DEFAULT_CODEX_BIN = "codex";
@@ -70,6 +73,8 @@ export function createCodexAdapter(
 		options.createSessionTimeoutMs ?? DEFAULT_CREATE_TIMEOUT_MS;
 	const sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
 	const spawnFn: SpawnFn = options.spawnFn ?? defaultSpawn;
+	const streamingSpawnFn: StreamingSpawnFn =
+		options.streamingSpawnFn ?? defaultStreamingSpawn;
 	const dangerouslyBypassApprovals = options.dangerouslyBypassApprovals ?? true;
 	const skipGitRepoCheck = options.skipGitRepoCheck ?? true;
 
@@ -118,28 +123,6 @@ export function createCodexAdapter(
 		}
 
 		return args;
-	}
-
-	async function withRefLock<T>(
-		nativeId: string,
-		fn: () => Promise<T>,
-	): Promise<T> {
-		const prev = sendLocks.get(nativeId) ?? Promise.resolve();
-		let release: () => void = () => {};
-		const next = new Promise<void>((resolve) => {
-			release = resolve;
-		});
-		const chain = prev.then(() => next);
-		sendLocks.set(nativeId, chain);
-		try {
-			await prev;
-			return await fn();
-		} finally {
-			release();
-			if (sendLocks.get(nativeId) === chain) {
-				sendLocks.delete(nativeId);
-			}
-		}
 	}
 
 	async function runCodex(
@@ -220,93 +203,148 @@ export function createCodexAdapter(
 		const nativeId = ref.nativeId;
 
 		async function* generate(): AsyncGenerator<SendEvent> {
-			const events: SendEvent[] = await withRefLock(nativeId, async () => {
-				if (closedRefs.has(nativeId)) {
-					return [
-						{
-							type: "error" as const,
-							error: new Error(`codex session ${nativeId} is closed`),
-						},
-					];
-				}
-
-				const before = turnsCache.get(nativeId) ?? [];
-				const highWater =
-					before.length === 0
-						? -1
-						: before.reduce((m, t) => (t.index > m ? t.index : m), -1);
-
-				const refModel =
-					typeof ref.meta.model === "string" && ref.meta.model.length > 0
-						? ref.meta.model
-						: defaultModel;
-				const refCwd =
-					typeof ref.meta.cwd === "string" && ref.meta.cwd.length > 0
-						? ref.meta.cwd
-						: resolveCwd();
-
-				const startedAt = Date.now();
-				let result: SpawnResult;
-				let parsed: CodexParsedResult | null;
-				try {
-					({ result, parsed } = await runCodex(
-						content,
-						nativeId,
-						refModel,
-						sendTimeoutMs,
-						refCwd,
-					));
-				} catch (err) {
-					return [
-						{
-							type: "error" as const,
-							error: err instanceof Error ? err : new Error(String(err)),
-						},
-					];
-				}
-
-				if (result.timedOut) {
-					return [
-						{
-							type: "error" as const,
-							error: new Error(`send timed out after ${sendTimeoutMs}ms`),
-						},
-					];
-				}
-
-				if (parsed === null) {
-					return [
-						{
-							type: "error" as const,
-							error: makeUnparseableOrExitError(result, codexBin, nativeId),
-						},
-					];
-				}
-
-				// Rewrite indices to be globally monotonic across the nativeId's history.
-				const delta = rewriteIndices(parsed.turns, highWater);
-				const existing = turnsCache.get(nativeId) ?? [];
-				turnsCache.set(nativeId, [...existing, ...delta]);
-
-				const tokens = deriveTokens(parsed);
-				const out: SendEvent[] = [];
-				for (const turn of delta) {
-					out.push({ type: "turn", turn });
-				}
-				out.push({
-					type: "done",
-					durationMs: Date.now() - startedAt,
-					tokens,
-				});
-				return out;
+			// Acquire the lock — it stays held until this generator finishes.
+			const prev = sendLocks.get(nativeId) ?? Promise.resolve();
+			let release: () => void = () => {};
+			const next = new Promise<void>((resolve) => {
+				release = resolve;
 			});
+			const chain = prev.then(() => next);
+			sendLocks.set(nativeId, chain);
 
-			for (const event of events) {
-				yield event;
+			try {
+				await prev;
+				yield* streamSend(nativeId, ref, content);
+			} finally {
+				release();
+				if (sendLocks.get(nativeId) === chain) {
+					sendLocks.delete(nativeId);
+				}
 			}
 		}
 
 		return generate();
+	}
+
+	async function* streamSend(
+		nativeId: string,
+		ref: NativeSessionRef,
+		content: string,
+	): AsyncGenerator<SendEvent> {
+		if (closedRefs.has(nativeId)) {
+			yield {
+				type: "error" as const,
+				error: new Error(`codex session ${nativeId} is closed`),
+			};
+			return;
+		}
+
+		const before = turnsCache.get(nativeId) ?? [];
+		const highWater =
+			before.length === 0
+				? -1
+				: before.reduce((m, t) => (t.index > m ? t.index : m), -1);
+		let nextIndex = highWater + 1;
+
+		const refModel =
+			typeof ref.meta.model === "string" && ref.meta.model.length > 0
+				? ref.meta.model
+				: defaultModel;
+		const refCwd =
+			typeof ref.meta.cwd === "string" && ref.meta.cwd.length > 0
+				? ref.meta.cwd
+				: resolveCwd();
+
+		const args = buildArgs(content, nativeId, refModel, refCwd);
+		const startedAt = Date.now();
+
+		let streamResult: SpawnStreamResult;
+		try {
+			streamResult = streamingSpawnFn({
+				command: codexBin,
+				args,
+				timeoutMs: sendTimeoutMs,
+				cwd: refCwd,
+			});
+		} catch (err) {
+			const detail = err instanceof Error ? err.message : String(err);
+			yield {
+				type: "error" as const,
+				error: new Error(
+					`codex adapter failed to spawn '${codexBin}': ${detail}`,
+				),
+			};
+			return;
+		}
+
+		let resultLine: Record<string, unknown> | null = null;
+
+		try {
+			for await (const event of parseCodexJsonIncremental(streamResult.lines)) {
+				if (event.type === "turn") {
+					const turn = event.turn;
+					turn.index = nextIndex++;
+					const existing = turnsCache.get(nativeId) ?? [];
+					turnsCache.set(nativeId, [...existing, turn]);
+					yield { type: "turn", turn };
+				} else if (event.type === "result") {
+					resultLine = event.resultLine;
+				}
+			}
+		} catch (err) {
+			yield {
+				type: "error" as const,
+				error:
+					err instanceof Error
+						? err
+						: new Error(`stream read error: ${String(err)}`),
+			};
+			return;
+		}
+
+		let exitInfo: SpawnExitInfo;
+		try {
+			exitInfo = await streamResult.waitForExit();
+		} catch (err) {
+			yield {
+				type: "error" as const,
+				error:
+					err instanceof Error
+						? err
+						: new Error(`process exit error: ${String(err)}`),
+			};
+			return;
+		}
+
+		if (exitInfo.timedOut) {
+			yield {
+				type: "error" as const,
+				error: new Error(`send timed out after ${sendTimeoutMs}ms`),
+			};
+			return;
+		}
+
+		if (exitInfo.exitCode !== null && exitInfo.exitCode !== 0) {
+			const stderrTrimmed = exitInfo.stderr.trim();
+			const snippet =
+				stderrTrimmed === ""
+					? ""
+					: `: ${tail(stderrTrimmed, STDERR_TRUNCATE_LIMIT)}`;
+			yield {
+				type: "error" as const,
+				error: new Error(
+					`codex exited with code ${String(exitInfo.exitCode)}${snippet}`,
+				),
+			};
+			return;
+		}
+
+		const tokens = deriveTokensFromResultLine(resultLine);
+		yield {
+			type: "done",
+			durationMs: Date.now() - startedAt,
+			tokens,
+		};
 	}
 
 	async function close(ref: NativeSessionRef): Promise<void> {
@@ -353,12 +391,26 @@ function rewriteIndices(turns: Turn[], highWater: number): Turn[] {
 	}));
 }
 
-function deriveTokens(parsed: CodexParsedResult): TokenUsage | null {
-	const input = parsed.usage.inputTokens;
-	const output = parsed.usage.outputTokens;
-	if (input === 0 && output === 0 && parsed.subtype === "incomplete") {
-		return null;
-	}
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function safeNumber(v: unknown, fallback = 0): number {
+	return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+
+function deriveTokensFromResultLine(
+	resultLine: Record<string, unknown> | null,
+): TokenUsage | null {
+	if (resultLine === null) return null;
+	const usage = isRecord(resultLine.usage) ? resultLine.usage : resultLine;
+	const input = safeNumber(
+		usage.input_tokens ?? usage.inputTokens ?? usage.prompt_tokens,
+	);
+	const output = safeNumber(
+		usage.output_tokens ?? usage.outputTokens ?? usage.completion_tokens,
+	);
+	if (input === 0 && output === 0) return null;
 	return { input, output };
 }
 
