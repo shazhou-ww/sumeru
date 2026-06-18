@@ -1,7 +1,8 @@
 ---
 scenario: "Creating a session writes a @sumeru/session-meta node to ocas; closing flips a status pointer; in-memory session record carries the meta hash"
 feature: server-ocas
-tags: [ocas, session, session-meta, create, close, recording, phase-4]
+tags: [ocas, session, session-meta, create, close, recording, phase-4, phase-6]
+supersedes: "Phase-6 (`server-session-resolve-cwd.md`) added `resolvedCwd` as a 6th required field in the meta payload. The schema hash changed accordingly."
 ---
 
 ## Given
@@ -34,7 +35,7 @@ tags: [ocas, session, session-meta, create, close, recording, phase-4]
 - **Request 1 — create empty config** —
   - HTTP `201` with the same `@sumeru/session` envelope as Phase 2 (no new fields).
   - Inside the server, BEFORE the 201 response is written:
-    1. The `Session.id`, `gateway`, `adapter` (resolved from `config.gateways[gateway].adapter`), `createdAt`, and `config` are assembled.
+    1. The `Session.id`, `gateway`, `adapter` (resolved from `config.gateways[gateway].adapter`), `createdAt`, `config`, and `resolvedCwd` are assembled.
     2. `store.put(SUMERU_SESSION_META_SCHEMA_HASH, payload)` is called once, where `payload` is:
        ```json
        {
@@ -42,13 +43,15 @@ tags: [ocas, session, session-meta, create, close, recording, phase-4]
          "gateway": "hermes",
          "adapter": "hermes",
          "createdAt": "<ISO-8601>",
-         "config": {}
+         "config": {},
+         "resolvedCwd": null
        }
        ```
+       `resolvedCwd` is `null` when no `config.cwd` was supplied, or the resolved absolute path string otherwise (see `server-session-resolve-cwd.md` for resolution rules).
     3. The returned hash is stored on `Session.metaHash`.
     4. ONLY AFTER the put succeeds is the session inserted into the in-memory map and the 201 written.
   - If `store.put` throws (e.g. validation error against the registered schema, disk full), the server returns `500 ocas_write_failed` with `value.message: "Failed to record session meta: <cause-truncated-to-500>"`. The session is NOT added to the in-memory store. (`Session` is recorded BEFORE the response — atomicity matters.)
-- **Request 2 — rich config** — Same flow. The `config` field of the meta payload is the full opaque blob `{ "model": "sonnet-4.5" }`, byte-identical to what the client sent. The hash differs from Request 1's because `config` differs.
+- **Request 2 — rich config** — Same flow. The `config` field of the meta payload is the full opaque blob `{ "model": "sonnet-4.5" }`, byte-identical to what the client sent. `resolvedCwd` is `null` (no cwd in this request). The hash differs from Request 1's because `config` differs.
 - **Request 3 — close** —
   - HTTP `204` (Phase 2 semantics, unchanged).
   - On close, the server writes a SEPARATE node: `store.put(SUMERU_SESSION_STATUS_SCHEMA_HASH, { sessionId, status: "closed", at: <iso> })`.
@@ -65,7 +68,8 @@ tags: [ocas, session, session-meta, create, close, recording, phase-4]
       "gateway": "hermes",
       "adapter": "hermes",
       "createdAt": "<ISO-8601>",
-      "config": {}
+      "config": {},
+      "resolvedCwd": null
     }
   }
   ```
@@ -76,7 +80,7 @@ tags: [ocas, session, session-meta, create, close, recording, phase-4]
   This guarantees the meta is only persisted for sessions that actually exist on the adapter side.
 - **Idempotent close** — Calling `DELETE` twice on the same session is still a 204 + 204 (Phase 2 idempotency). Neither call writes to ocas.
 - **`config` round-trip** — A `config` blob containing `{ "weirdField": 42, "nested": { "a": [1, 2, 3] } }` round-trips exactly: `GET /ocas/<metaHash>` returns the same JSON keys/values. (Sumeru does not transform config.)
-- **Schema validation on write** — `store.put` invokes `@ocas/core` validation against `SUMERU_SESSION_META_SCHEMA`. A test passes a hand-crafted invalid meta (e.g. missing `adapter`) directly through an internal helper; the call rejects with `SchemaValidationError`. Production code paths cannot trigger this because they always populate all fields, but the contract is exercised.
+- **Schema validation on write** — `store.put` invokes `@ocas/core` validation against `SUMERU_SESSION_META_SCHEMA`. The schema requires exactly 6 fields: `id`, `gateway`, `adapter`, `createdAt`, `config`, `resolvedCwd` (`additionalProperties: false`). A test passes a hand-crafted invalid meta (e.g. missing `adapter` or missing `resolvedCwd`) directly through an internal helper; the call rejects with `SchemaValidationError`. Production code paths cannot trigger this because they always populate all fields, but the contract is exercised.
 - **Tests** under `packages/server/tests/ocas-session-meta.test.ts`:
   - Create session → `store.listByType(SUMERU_SESSION_META_SCHEMA_HASH).length` increments by exactly 1.
   - The newly-stored node has `payload` equal to the expected meta object (deep-equal).
