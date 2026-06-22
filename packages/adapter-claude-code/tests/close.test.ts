@@ -1,7 +1,7 @@
 import type { NativeSessionRef, SendEvent } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
 import { createClaudeCodeAdapter } from "../src/index.js";
-import { buildNdjson, fakeSpawn } from "./test-utils.js";
+import { buildNdjson, fakeSpawn, fakeStreamingSpawn } from "./test-utils.js";
 
 /** Drain the iterable to force the full stream to execute. */
 async function _drain(iter: AsyncIterable<SendEvent>): Promise<void> {
@@ -126,8 +126,17 @@ describe("createClaudeCodeAdapter().close()", () => {
 		const { spawnFn } = fakeSpawn({
 			stdout: buildNdjson({ sessionId: "sess-multi-instance" }),
 		});
-		const adapter1 = createClaudeCodeAdapter({ spawnFn });
-		const adapter2 = createClaudeCodeAdapter({ spawnFn });
+		// send() drives the streaming spawn path — inject a fake so adapter2's
+		// real send does not shell out to the `claude` binary (which is absent
+		// in CI and would surface as `spawn claude ENOENT`).
+		const { streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: buildNdjson({
+				sessionId: "sess-multi-instance",
+				assistantText: "ok",
+			}),
+		});
+		const adapter1 = createClaudeCodeAdapter({ spawnFn, streamingSpawnFn });
+		const adapter2 = createClaudeCodeAdapter({ spawnFn, streamingSpawnFn });
 		const ref = await adapter1.createSession({ model: null, cwd: null });
 		await adapter1.close(ref);
 		// adapter2 has no closed-ref state for this id, so send is allowed
