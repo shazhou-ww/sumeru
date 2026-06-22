@@ -38,12 +38,11 @@ describe("createCodexAdapter().send()", () => {
 	it("spawns codex with resume and yields delta turns + done", async () => {
 		const sessionId = "sess-send-test";
 		const { spawnFn } = fakeSpawn({
-			stdout: buildJsonl({ sessionId, userText: "init" }),
+			stdout: buildJsonl({ sessionId }),
 		});
 		const { calls, streamingSpawnFn } = fakeStreamingSpawn({
 			stdout: buildJsonl({
 				sessionId,
-				userText: "follow-up",
 				assistantText: "continued",
 			}),
 		});
@@ -78,7 +77,6 @@ describe("createCodexAdapter().send()", () => {
 		const { streamingSpawnFn } = fakeStreamingSpawn({
 			stdout: buildJsonl({
 				sessionId,
-				userText: "hello",
 				assistantText: "reply",
 			}),
 		});
@@ -177,7 +175,6 @@ describe("createCodexAdapter().send()", () => {
 		const { streamingSpawnFn } = fakeStreamingSpawn({
 			stdout: buildJsonl({
 				sessionId,
-				userText: "msg-2",
 				assistantText: "reply-2",
 			}),
 		});
@@ -241,7 +238,6 @@ describe("createCodexAdapter().send()", () => {
 		const { streamingSpawnFn } = fakeStreamingSpawn({
 			stdout: buildJsonl({
 				sessionId,
-				userText: "hi",
 				usage: { input_tokens: 100, output_tokens: 50 },
 			}),
 		});

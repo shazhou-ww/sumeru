@@ -1,6 +1,8 @@
-{"type":"session.start","session_id":"codex-session-002","model":"o3","cwd":"/tmp/work"}
-{"type":"user","role":"user","content":"Continue work."}
-{"type":"assistant","role":"assistant","content":"Continuing from where we left off.","tool_calls":[{"id":"tc_001","type":"function","function":{"name":"shell","arguments":"{\"command\":\"echo hello\"}"}}]}
-{"type":"tool_call_output","tool_call_id":"tc_001","output":"hello"}
-{"type":"assistant","role":"assistant","content":"Done!"}
-{"type":"result","subtype":"success","session_id":"codex-session-002","duration_ms":2500,"stop_reason":"end_turn","usage":{"input_tokens":100,"output_tokens":50}}
+Reading prompt from stdin...
+{"type":"thread.started","thread_id":"019eee31-d98e-7dc1-a198-59e59cd58310"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll remove `hello.txt` and verify it no longer exists in `/tmp/codex-spike`."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'rm -f hello.txt && if [ ! -e hello.txt ]; then echo '\"'hello.txt is gone'; else echo 'hello.txt still exists'; fi\"","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'rm -f hello.txt && if [ ! -e hello.txt ]; then echo '\"'hello.txt is gone'; else echo 'hello.txt still exists'; fi\"","aggregated_output":"hello.txt is gone\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"`hello.txt` deleted successfully and confirmed gone."}}
+{"type":"turn.completed","usage":{"input_tokens":35690,"cached_input_tokens":33664,"output_tokens":199,"reasoning_output_tokens":0}}

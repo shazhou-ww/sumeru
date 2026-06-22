@@ -27,8 +27,9 @@ describe("createCodexAdapter().createSession()", () => {
 			"-m",
 			"o3",
 		]);
-		expect(ref.nativeId).toBe("codex-session-001");
+		expect(ref.nativeId).toBe("019eee31-d98e-7dc1-a198-59e59cd58310");
 		expect(ref.meta.cwd).toBe(process.cwd());
+		// Model comes from config since stream doesn't emit it
 		expect(ref.meta.model).toBe("o3");
 		expect(ref.meta.subtype).toBe("success");
 		expect(typeof ref.meta.createdAt).toBe("string");
@@ -46,7 +47,7 @@ describe("createCodexAdapter().createSession()", () => {
 
 	it("does not pass -m when neither config nor constructor specify one", async () => {
 		const { calls, spawnFn } = fakeSpawn({
-			stdout: buildJsonl({ sessionId: "sess-no-model", model: "" }),
+			stdout: buildJsonl({ sessionId: "sess-no-model" }),
 		});
 		const adapter = createCodexAdapter({ spawnFn });
 		await adapter.createSession({ model: null, cwd: null });
@@ -88,12 +89,13 @@ describe("createCodexAdapter().createSession()", () => {
 		const ref = await adapter.createSession({ model: null, cwd: null });
 		const turns = await adapter.getTurns(ref);
 		expect(turns.length).toBeGreaterThan(0);
-		expect(turns[0]?.role).toBe("user");
+		// All turns from real Codex are assistant (no user events in the stream)
+		expect(turns[0]?.role).toBe("assistant");
 	});
 
 	it("rejects when json output is unparseable (no session / no result)", async () => {
 		const { spawnFn } = fakeSpawn({
-			stdout: loadFixture("codex-stream.malformed.jsonl"),
+			stdout: "not json at all\nalso not json\n",
 			exitCode: 0,
 		});
 		const adapter = createCodexAdapter({ spawnFn });
@@ -137,18 +139,6 @@ describe("createCodexAdapter().createSession()", () => {
 		const adapter = createCodexAdapter({ spawnFn });
 		await adapter.createSession({ model: null, cwd: null });
 		expect(calls[0]?.args).not.toContain("resume");
-	});
-
-	it("error_max_turns at init resolves cleanly with subtype reflected in meta", async () => {
-		const { spawnFn } = fakeSpawn({
-			stdout: loadFixture("codex-stream.max-turns.jsonl"),
-			exitCode: 0,
-		});
-		const adapter = createCodexAdapter({ spawnFn });
-		const ref = await adapter.createSession({ model: null, cwd: null });
-		expect(ref.meta.subtype).toBe("error");
-		const turns = await adapter.getTurns(ref);
-		expect(turns.length).toBeGreaterThan(0);
 	});
 
 	it("two parallel createSession calls return distinct nativeIds", async () => {

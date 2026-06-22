@@ -1,20 +1,21 @@
 /**
  * JSONL parser for Codex CLI's `codex exec --json` output.
  *
- * Codex emits JSONL to stdout. Each line is a JSON object with a `type` field.
- * Based on Codex CLI documentation and expected behavior:
+ * Codex v0.141.0 emits JSONL to stdout. Each line is a JSON object with a `type` field.
+ * The real schema has exactly 5 event types:
  *
- *   - `"session.start"` — first line; carries `session_id` and initial config.
- *   - `"message"` — user or assistant messages with content.
- *   - `"function_call"` / `"tool_call"` — tool invocations.
- *   - `"function_call_output"` / `"tool_call_output"` — tool results.
- *   - `"session.end"` / `"done"` — final event with summary/usage.
+ *   - `"thread.started"` — first JSON line; carries `thread_id` (UUID v7).
+ *   - `"turn.started"` — marks beginning of a turn (no payload fields).
+ *   - `"item.started"` — tool execution begins (item with status: "in_progress").
+ *   - `"item.completed"` — message or tool result finalized.
+ *   - `"turn.completed"` — end of turn; carries `usage` with token counts.
  *
- * NOTE: This parser is based on expected Codex JSONL structure. The exact
- * schema depends on the spike to capture real output. The parser is designed
- * to be tolerant and handle variations.
+ * Item types within `item.completed`:
+ *   - `"agent_message"` — text response from the agent (`item.text`).
+ *   - `"command_execution"` — tool call result (`item.command`, `item.aggregated_output`, `item.exit_code`).
  *
- * See `specs/adapter-codex-spike-jsonl-capture.md` for spike requirements.
+ * NOTE: The first line of stdout is often a non-JSON text line like
+ * "Reading additional input from stdin..." — the parser silently skips it.
  */
 
 import type { ToolCall, Turn } from "@sumeru/core";
@@ -38,8 +39,6 @@ function safeString(v: unknown, fallback = ""): string {
 
 type ParseState = {
 	turns: Turn[];
-	/** Map from tool call id → reference to the ToolCall waiting for its output. */
-	pendingToolCalls: Map<string, ToolCall>;
 	resultLine: Record<string, unknown> | null;
 	model: string;
 	sessionId: string;
@@ -48,221 +47,75 @@ type ParseState = {
 	now: string;
 };
 
-function extractTextContent(message: Record<string, unknown>): string {
-	// Codex may use different content formats
-	const content = message.content;
-	if (typeof content === "string") {
-		return content;
-	}
-	if (Array.isArray(content)) {
-		const texts: string[] = [];
-		for (const item of content) {
-			if (
-				isRecord(item) &&
-				item.type === "text" &&
-				typeof item.text === "string"
-			) {
-				texts.push(item.text);
-			} else if (typeof item === "string") {
-				texts.push(item);
-			}
-		}
-		return texts.join("\n");
-	}
-	return "";
-}
-
-function extractToolCalls(message: Record<string, unknown>): ToolCall[] {
-	const calls: ToolCall[] = [];
-
-	// Check for tool_calls array (OpenAI format)
-	const toolCalls = message.tool_calls;
-	if (Array.isArray(toolCalls)) {
-		for (const tc of toolCalls) {
-			if (!isRecord(tc)) continue;
-			const fn = isRecord(tc.function) ? tc.function : tc;
-			const name = safeString(fn.name ?? tc.name);
-			if (name === "") continue;
-
-			let input: Record<string, unknown>;
-			const args = fn.arguments ?? fn.input ?? tc.arguments ?? tc.input;
-			if (typeof args === "string") {
-				try {
-					const parsed = JSON.parse(args);
-					input = isRecord(parsed) ? parsed : { raw: args };
-				} catch {
-					input = { raw: args };
-				}
-			} else if (isRecord(args)) {
-				input = args;
-			} else {
-				input = {};
-			}
-
-			calls.push({
-				tool: name,
-				input,
-				output: null,
-				durationMs: null,
-				exitCode: null,
-			});
-		}
-	}
-
-	// Also check for function_call (older format)
-	const functionCall = message.function_call;
-	if (isRecord(functionCall) && typeof functionCall.name === "string") {
-		let input: Record<string, unknown>;
-		const args = functionCall.arguments;
-		if (typeof args === "string") {
-			try {
-				const parsed = JSON.parse(args);
-				input = isRecord(parsed) ? parsed : { raw: args };
-			} catch {
-				input = { raw: args };
-			}
-		} else if (isRecord(args)) {
-			input = args;
-		} else {
-			input = {};
-		}
-
-		calls.push({
-			tool: functionCall.name,
-			input,
-			output: null,
-			durationMs: null,
-			exitCode: null,
-		});
-	}
-
-	return calls;
-}
-
-function extractToolCallIds(message: Record<string, unknown>): string[] {
-	const ids: string[] = [];
-	const toolCalls = message.tool_calls;
-	if (Array.isArray(toolCalls)) {
-		for (const tc of toolCalls) {
-			if (isRecord(tc) && typeof tc.id === "string") {
-				ids.push(tc.id);
-			}
-		}
-	}
-	return ids;
-}
-
-function processSessionStart(
+function processThreadStarted(
 	parsed: Record<string, unknown>,
 	state: ParseState,
 ): void {
-	// Look for session_id in various places Codex might put it
-	const sessionId =
-		safeString(parsed.session_id) ||
-		safeString(parsed.sessionId) ||
-		safeString(parsed.id);
-	if (sessionId !== "") {
-		state.sessionId = sessionId;
-	}
-
-	const model = safeString(parsed.model);
-	if (model !== "") {
-		state.model = model;
+	const threadId = safeString(parsed.thread_id);
+	if (threadId !== "") {
+		state.sessionId = threadId;
 	}
 }
 
-function processMessage(
+function processItemCompleted(
 	parsed: Record<string, unknown>,
 	state: ParseState,
 ): void {
-	const role = safeString(parsed.role);
-	const message = isRecord(parsed.message)
-		? parsed.message
-		: isRecord(parsed.content)
-			? { content: parsed.content }
-			: parsed;
+	const item = parsed.item;
+	if (!isRecord(item)) return;
 
-	// Determine the actual role
-	let turnRole: "user" | "assistant" | "system";
-	if (role === "user" || parsed.type === "user") {
-		turnRole = "user";
-	} else if (role === "assistant" || parsed.type === "assistant") {
-		turnRole = "assistant";
-	} else if (role === "system" || parsed.type === "system") {
-		turnRole = "system";
-	} else {
-		// Default to assistant for messages without explicit role
-		turnRole = "assistant";
-	}
+	const itemType = safeString(item.type);
 
-	const textContent = extractTextContent(message);
-	const toolCalls = turnRole === "assistant" ? extractToolCalls(message) : [];
-
-	// Skip empty turns
-	if (textContent === "" && toolCalls.length === 0) {
+	if (itemType === "agent_message") {
+		const text = safeString(item.text);
+		const turn: Turn = {
+			index: state.turnIndex++,
+			role: "assistant",
+			content: text,
+			timestamp: state.now,
+			toolCalls: null,
+			tokens: null,
+			hash: null,
+		};
+		state.turns.push(turn);
 		return;
 	}
 
-	const turn: Turn = {
-		index: state.turnIndex++,
-		role: turnRole,
-		content: textContent,
-		timestamp: state.now,
-		toolCalls: toolCalls.length > 0 ? toolCalls : null,
-		tokens: null,
-		hash: null,
-	};
-	state.turns.push(turn);
+	if (itemType === "command_execution") {
+		// Only produce turns for completed commands (not in_progress from item.started)
+		const status = safeString(item.status);
+		if (status !== "completed") return;
 
-	// Register tool call IDs for later matching with outputs
-	if (turnRole === "assistant") {
-		const ids = extractToolCallIds(message);
-		for (let i = 0; i < ids.length; i++) {
-			const id = ids[i];
-			const call = toolCalls[i];
-			if (id !== undefined && call !== undefined) {
-				state.pendingToolCalls.set(id, call);
-			}
-		}
+		const command = safeString(item.command);
+		const aggregatedOutput = safeString(item.aggregated_output);
+		const exitCode = typeof item.exit_code === "number" ? item.exit_code : null;
+
+		const toolCall: ToolCall = {
+			tool: "command_execution",
+			input: { command },
+			output: aggregatedOutput,
+			durationMs: null,
+			exitCode,
+		};
+
+		const turn: Turn = {
+			index: state.turnIndex++,
+			role: "assistant",
+			content: "",
+			timestamp: state.now,
+			toolCalls: [toolCall],
+			tokens: null,
+			hash: null,
+		};
+		state.turns.push(turn);
 	}
 }
 
-function processToolOutput(
-	parsed: Record<string, unknown>,
-	state: ParseState,
-): void {
-	const toolCallId = safeString(
-		parsed.tool_call_id ?? parsed.function_call_id ?? parsed.id,
-	);
-	const output = safeString(parsed.output ?? parsed.content ?? parsed.result);
-
-	if (toolCallId !== "") {
-		const target = state.pendingToolCalls.get(toolCallId);
-		if (target !== undefined) {
-			target.output = output;
-			state.pendingToolCalls.delete(toolCallId);
-		}
-	}
-}
-
-function processResult(
+function processTurnCompleted(
 	parsed: Record<string, unknown>,
 	state: ParseState,
 ): void {
 	state.resultLine = parsed;
-
-	// Extract session_id from result if not already set
-	const sessionId =
-		safeString(parsed.session_id) || safeString(parsed.sessionId);
-	if (sessionId !== "" && state.sessionId === "") {
-		state.sessionId = sessionId;
-	}
-
-	// Extract model from result if not already set
-	const model = safeString(parsed.model);
-	if (model !== "" && state.model === "") {
-		state.model = model;
-	}
 }
 
 function processLine(line: string, state: ParseState): void {
@@ -280,50 +133,23 @@ function processLine(line: string, state: ParseState): void {
 
 	const type = safeString(parsed.type);
 
-	// Session start events
-	if (
-		type === "session.start" ||
-		type === "session_start" ||
-		type === "init" ||
-		type === "system"
-	) {
-		processSessionStart(parsed, state);
+	if (type === "thread.started") {
+		processThreadStarted(parsed, state);
 		return;
 	}
 
-	// Message events
-	if (type === "message" || type === "user" || type === "assistant") {
-		processMessage(parsed, state);
+	if (type === "item.completed") {
+		processItemCompleted(parsed, state);
 		return;
 	}
 
-	// Tool call output events
-	if (
-		type === "function_call_output" ||
-		type === "tool_call_output" ||
-		type === "tool_output" ||
-		type === "tool_result"
-	) {
-		processToolOutput(parsed, state);
+	if (type === "turn.completed") {
+		processTurnCompleted(parsed, state);
 		return;
 	}
 
-	// Result/done events
-	if (
-		type === "session.end" ||
-		type === "session_end" ||
-		type === "done" ||
-		type === "result" ||
-		type === "complete"
-	) {
-		processResult(parsed, state);
-		return;
-	}
-
-	// If it has a role field, treat as a message
-	if (parsed.role !== undefined) {
-		processMessage(parsed, state);
-	}
+	// turn.started and item.started are no-ops — silently ignored.
+	// Unknown event types and non-JSON lines are silently skipped.
 }
 
 function extractLastAssistantContent(turns: Turn[]): string {
@@ -340,28 +166,12 @@ function extractLastAssistantContent(turns: Turn[]): string {
 	return "";
 }
 
-function coerceSubtype(raw: unknown): CodexResultSubtype {
-	if (raw === "success" || raw === "error" || raw === "incomplete") {
-		return raw;
-	}
-	// Map Codex-specific subtypes
-	if (raw === "completed" || raw === "done" || raw === "end_turn") {
-		return "success";
-	}
-	if (
-		raw === "error_max_turns" ||
-		raw === "error_budget" ||
-		(typeof raw === "string" && raw.startsWith("error"))
-	) {
-		return "error";
-	}
-	return "incomplete";
-}
-
 function assembleResult(state: ParseState): CodexParsedResult | null {
-	// If we have no result line but have a session ID, return an incomplete result
+	// If we have no result line and no session ID, return null
+	if (state.resultLine === null && state.sessionId === "") return null;
+
+	// No turn.completed — incomplete result
 	if (state.resultLine === null) {
-		if (state.sessionId === "") return null;
 		return {
 			type: "result",
 			subtype: "incomplete",
@@ -379,42 +189,25 @@ function assembleResult(state: ParseState): CodexParsedResult | null {
 		};
 	}
 
-	const subtype = state.resultLine.subtype ?? state.resultLine.status;
-	const sessionIdFromResult =
-		safeString(state.resultLine.session_id) ||
-		safeString(state.resultLine.sessionId) ||
-		state.sessionId;
-
-	// Extract usage - check various field names Codex might use
+	// Extract usage from turn.completed
 	const usage = isRecord(state.resultLine.usage)
 		? state.resultLine.usage
 		: state.resultLine;
 
-	const inputTokens = safeNumber(
-		usage.input_tokens ?? usage.inputTokens ?? usage.prompt_tokens,
-	);
-	const outputTokens = safeNumber(
-		usage.output_tokens ?? usage.outputTokens ?? usage.completion_tokens,
-	);
+	const inputTokens = safeNumber(usage.input_tokens);
+	const outputTokens = safeNumber(usage.output_tokens);
+
+	const subtype: CodexResultSubtype = "success";
 
 	return {
-		type: safeString(state.resultLine.type, "result"),
-		subtype: coerceSubtype(subtype),
-		result:
-			typeof state.resultLine.result === "string"
-				? state.resultLine.result
-				: extractLastAssistantContent(state.turns),
-		sessionId: sessionIdFromResult,
+		type: "result",
+		subtype,
+		result: extractLastAssistantContent(state.turns),
+		sessionId: state.sessionId,
 		numTurns: state.turns.length,
-		durationMs: safeNumber(
-			state.resultLine.duration_ms ?? state.resultLine.durationMs,
-		),
+		durationMs: 0,
 		model: state.model,
-		stopReason: safeString(
-			state.resultLine.stop_reason ??
-				state.resultLine.stopReason ??
-				state.resultLine.finish_reason,
-		),
+		stopReason: "turn_completed",
 		usage: {
 			inputTokens,
 			outputTokens,
@@ -439,7 +232,6 @@ export function parseCodexJson(stdout: string): CodexParsedResult | null {
 	const lines = stdout.split("\n");
 	const state: ParseState = {
 		turns: [],
-		pendingToolCalls: new Map(),
 		resultLine: null,
 		model: "",
 		sessionId: "",
@@ -458,19 +250,17 @@ export function parseCodexJson(stdout: string): CodexParsedResult | null {
  * Incremental async-generator parser for Codex JSONL output.
  *
  * Yields `StreamParseEvent` as each line is consumed:
- *   - `{ type: "meta" }` after the first session-start event sets session + model.
- *   - `{ type: "turn" }` for each new Turn added (assistant or user messages).
- *   - `{ type: "result" }` when a session.end / done / result event is encountered.
+ *   - `{ type: "meta" }` after the `thread.started` event sets session id.
+ *   - `{ type: "turn" }` for each new Turn added from `item.completed`.
+ *   - `{ type: "result" }` when `turn.completed` is encountered.
  *
- * Tool output events fill in `ToolCall.output` on previously-yielded Turn
- * objects via reference sharing — no new event for those.
+ * Non-JSON lines, `turn.started`, and `item.started` events are silently skipped.
  */
 export async function* parseCodexJsonIncremental(
 	lines: AsyncIterable<string>,
 ): AsyncGenerator<StreamParseEvent> {
 	const state: ParseState = {
 		turns: [],
-		pendingToolCalls: new Map(),
 		resultLine: null,
 		model: "",
 		sessionId: "",

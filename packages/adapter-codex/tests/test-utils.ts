@@ -166,54 +166,92 @@ export function createMockStreamingSpawn(
 }
 
 /**
- * Build JSONL output with a custom session id and assistant text. Useful when
- * tests need a specific id (e.g. resume with the original id).
+ * Build JSONL output using the real Codex v0.141.0 event schema.
+ * Produces: thread.started → turn.started → item.completed(agent_message) → turn.completed
+ * Optionally includes a command_execution item if `commandExecution` is provided.
  */
 export function buildJsonl(opts: {
 	sessionId: string;
-	model?: string;
-	userText?: string;
 	assistantText?: string;
-	subtype?: string;
+	commandExecution?: {
+		command: string;
+		output: string;
+		exitCode: number;
+	};
 	usage?: {
 		input_tokens?: number;
 		output_tokens?: number;
+		cached_input_tokens?: number;
+		reasoning_output_tokens?: number;
 	};
 }): string {
 	const sessionId = opts.sessionId;
-	const model = opts.model ?? "o3";
-	const userText = opts.userText ?? "hi";
 	const assistantText = opts.assistantText ?? "ok";
-	const subtype = opts.subtype ?? "success";
 	const usage = opts.usage ?? {
 		input_tokens: 10,
 		output_tokens: 5,
+		cached_input_tokens: 0,
+		reasoning_output_tokens: 0,
 	};
 	const lines: string[] = [
 		JSON.stringify({
-			type: "session.start",
-			session_id: sessionId,
-			model,
-			cwd: "/tmp/work",
+			type: "thread.started",
+			thread_id: sessionId,
 		}),
 		JSON.stringify({
-			type: "user",
-			role: "user",
-			content: userText,
+			type: "turn.started",
 		}),
 		JSON.stringify({
-			type: "assistant",
-			role: "assistant",
-			content: assistantText,
-		}),
-		JSON.stringify({
-			type: "result",
-			subtype,
-			session_id: sessionId,
-			duration_ms: 1234,
-			stop_reason: subtype === "error_max_turns" ? "max_turns" : "end_turn",
-			usage,
+			type: "item.completed",
+			item: {
+				id: "item_0",
+				type: "agent_message",
+				text: assistantText,
+			},
 		}),
 	];
+
+	if (opts.commandExecution !== undefined) {
+		const cmd = opts.commandExecution;
+		lines.push(
+			JSON.stringify({
+				type: "item.started",
+				item: {
+					id: "item_1",
+					type: "command_execution",
+					command: cmd.command,
+					aggregated_output: "",
+					exit_code: null,
+					status: "in_progress",
+				},
+			}),
+		);
+		lines.push(
+			JSON.stringify({
+				type: "item.completed",
+				item: {
+					id: "item_1",
+					type: "command_execution",
+					command: cmd.command,
+					aggregated_output: cmd.output,
+					exit_code: cmd.exitCode,
+					status: "completed",
+				},
+			}),
+		);
+	}
+
+	lines.push(
+		JSON.stringify({
+			type: "turn.completed",
+			usage: {
+				input_tokens: usage.input_tokens ?? 10,
+				output_tokens: usage.output_tokens ?? 5,
+				cached_input_tokens: usage.cached_input_tokens ?? 0,
+				reasoning_output_tokens: usage.reasoning_output_tokens ?? 0,
+			},
+		}),
+	);
+
 	return `${lines.join("\n")}\n`;
 }
