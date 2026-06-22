@@ -20,7 +20,7 @@ describe("createCodexAdapter().getTurns()", () => {
 
 		const turns = await adapter.getTurns(ref);
 		expect(turns.length).toBeGreaterThan(0);
-		expect(turns[0]?.role).toBe("user");
+		expect(turns[0]?.role).toBe("assistant");
 	});
 
 	it("after send, getTurns returns initial + delta turns", async () => {
@@ -31,7 +31,6 @@ describe("createCodexAdapter().getTurns()", () => {
 		const { streamingSpawnFn } = fakeStreamingSpawn({
 			stdout: buildJsonl({
 				sessionId,
-				userText: "second message",
 				assistantText: "reply-2",
 			}),
 		});

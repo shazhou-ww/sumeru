@@ -8,9 +8,9 @@ tags: [adapter, codex, streaming, incremental, jsonl, spawn]
 - `@sumeru/adapter-codex` send() currently collects all stdout after process exit, batch-parses via `parseCodexJson(result.stdout)`, then yields all turns at once — fake streaming.
 - `defaultSpawn` in `spawn.ts` returns `Promise<SpawnResult>` where `SpawnResult.stdout` is a complete string available only after the child process exits.
 - `parseCodexJson` in `stream-parser.ts` takes a full `stdout: string`, splits into lines, iterates synchronously via `processLine()`, and returns `CodexParsedResult | null`.
-- Internal functions `processLine()`, `processSessionStart()`, `processMessage()`, `processToolOutput()`, `processResult()` already process lines individually — they just aren't exposed as an incremental interface.
-- Codex emits JSONL lines: `session.start`/`session_start`/`init`/`system` (session_id, model), `message`/`user`/`assistant` (content), `function_call_output`/`tool_call_output`/`tool_output`/`tool_result` (tool output), `session.end`/`done`/`result`/`complete` (usage, duration).
-- The parser handles multiple event type names (tolerance for Codex schema variations).
+- Internal functions `processLine()`, `processThreadStarted()`, `processItemCompleted()`, `processTurnCompleted()` already process lines individually — they just aren't exposed as an incremental interface.
+- Codex v0.141.0 emits JSONL lines: `thread.started` (thread_id), `turn.started` (no fields), `item.started` (command_execution in_progress), `item.completed` (agent_message text or command_execution result), `turn.completed` (usage with input_tokens/output_tokens).
+- The parser handles exactly 5 event types — no tolerance for guessed alternatives needed.
 - `types.ts` defines `SpawnFn`, `SpawnArgs`, `SpawnResult`, `CodexAdapterOptions`.
 - `turnsCache: Map<string, Turn[]>` is only updated after process exit.
 
@@ -64,11 +64,12 @@ The contributor modifies `packages/adapter-codex/src/types.ts`, `spawn.ts`, `str
   - Creates a `ParseState`.
   - Iterates lines. For each line, calls `processLine(line, state)`.
   - After each `processLine` call:
-    - If new turns were added to `state.turns`: yields `{ type: "turn", turn }` for each new turn.
-    - If `state.sessionId` was just set: yields `{ type: "meta", sessionId, model }`.
-    - If `state.resultLine` was just set: yields `{ type: "result", resultLine }`.
-  - `tool_call_output`/`function_call_output` events fill in `ToolCall.output` on already-yielded Turn objects — no new event yielded.
-  - Messages that include both text content and tool_calls in the same event produce a single Turn with both `content` and `toolCalls` populated (same as batch parser behavior).
+    - If `thread.started` set `state.sessionId`: yields `{ type: "meta", sessionId, model: "" }`.
+    - If `item.completed` added new turns to `state.turns`: yields `{ type: "turn", turn }` for each new turn.
+    - If `turn.completed` set `state.resultLine`: yields `{ type: "result", resultLine }`.
+  - `item.started` events (status: "in_progress") do NOT yield any event.
+  - `turn.started` events do NOT yield any event.
+  - Non-JSON lines (e.g., "Reading additional input from stdin...") are silently skipped.
 - The existing `parseCodexJson(stdout: string)` is unchanged.
 
 ### adapter.ts — send() rewrite
@@ -93,7 +94,7 @@ The contributor modifies `packages/adapter-codex/src/types.ts`, `spawn.ts`, `str
 - Each yielded turn is appended to `turnsCache` immediately — `getTurns` returns all turns yielded so far, even mid-stream.
 - After process exit, yields exactly one `{ type: "done", durationMs, tokens }`.
 - On failure mid-stream: yields `{ type: "error", error }`. Already-yielded turns remain in cache.
-- Tool output events fill in `ToolCall.output` on previously-yielded Turn objects via reference sharing — no new event.
+- In the real Codex schema, tool output is inline in `item.completed` events (aggregated_output field) — no separate tool-output events exist. Each `item.completed` with `type: "command_execution"` produces a Turn with the output already populated.
 - The `withRefLock` mechanism continues to serialize concurrent sends.
 - `createSession` unchanged — uses batch spawn + batch parser.
 - `parseCodexJsonIncremental` yields the same turns as `parseCodexJson` for identical input.
