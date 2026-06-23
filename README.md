@@ -248,18 +248,32 @@ gateways:
     capabilities: { resume: true, streaming: true }
 ```
 
-`deploy:` 块**只由 CLI 读、server 忽略**——容器内 server 看到的 config 与本机模式
-字节一致，API 对等契约不破。编排产物（`Dockerfile` / `docker-compose.yaml` /
-`sumeru.env.example`）随 `@sumeru/server` 包发布，由 `materializeDockerAssets(dir)`
-**原样拷贝**到工作目录（零渲染——所有可变量走 compose 原生 `${VAR:-default}`
-插值）。ocas 落 named volume `<name>_sumeru-ocas`：`docker compose down` 不丢数据，
-只有 `down -v` 才清除；多份 config（`alpha.yaml` / `beta.yaml`）= 多个互不干扰的
-工作单元。
+写好 config 后，一条命令拉起容器：
 
-> **Phase 1（本期）** 落地 `deploy:` 块解析、随包发布的模板、以及
-> `materializeDockerAssets` 释放产物；据 `deploy.mode: docker` 由
-> `sumeru start -c <config>` 一键拉起容器的统一入口在后续阶段接入。
-> 设计详见 [specs/architecture/docker-mode.md](specs/architecture/docker-mode.md)。
+```bash
+sumeru start -c alpha.yaml
+```
+
+`sumeru start` 读 `deploy.mode`——`docker` 走 `docker compose -p <name> up -d --build`
+真起容器，`local`/缺省落本机模式（零回归）。`deploy:` 块**只由 CLI 读、server 忽略**
+——容器内 server 看到的 config 与本机模式字节一致，API 对等契约不破。编排产物
+（`Dockerfile` / `docker-compose.yaml` / `sumeru.env.example`）随 `@sumeru/server`
+包发布，由 CLI 在工作目录**原样释放**（零渲染——所有可变量走 compose 原生
+`${VAR:-default}` 插值），所以整条链路无需源码仓库。
+
+两条面向运维的保证：
+
+- **持久化**：ocas 落 named volume `<name>_sumeru-ocas`，`docker compose -p <name> down`
+  （不带 `-v`）**保留数据**，只有 `down -v` 才清除——重启即可召回旧 session。
+- **工作单元隔离**：**一份 config = 一个工作单元**，`name` 即身份（实例名 / compose
+  project / volume 前缀）；多份 config（`alpha.yaml` / `beta.yaml`）= 多个 volume / 端口 /
+  session 互不可见的独立单元，隔离仅源于 config 身份，无需额外编排。
+
+> Docker 模式分三期落地：**Phase 1**（#84）`deploy:` 块解析 + 随包发布的模板 +
+> `materializeDockerAssets`；**Phase 2**（#85）`sumeru start` 按 `deploy.mode` 拉起
+> 容器 + `--emit-assets` + 无 Docker 降级；**Phase 3**（#86）门控集成测试锁死隔离 /
+> 持久化 / 降级三契约。设计详见
+> [specs/architecture/docker-mode.md](specs/architecture/docker-mode.md)。
 
 ## Name
 
