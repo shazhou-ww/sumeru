@@ -226,6 +226,41 @@ systemctl --user status sumeru
 进程树 —— Sumeru 连带阵亡。改为独立 user service 后，Sumeru 有自己的进程树，
 gateway 重启对它毫无影响。
 
+### Docker 模式
+
+Sumeru 以 npm 包分发，Docker 模式**不依赖源码仓库**：`pnpm add -g @sumeru/cli`
+拿到 `sumeru` 命令即可。部署后端写进 `sumeru.yaml` 自身的 `deploy:` 块——
+**一份 config = 一个工作单元**，`name` 即实例名 / compose project / volume 前缀。
+
+```yaml
+name: alpha                  # 工作单元身份
+workspaceRoot: /workspace
+
+deploy:                      # 可选；缺省 = 本机模式（零回归）
+  mode: docker               # docker | local（默认 local）
+  port: 7901                 # 宿主机端口（容器内固定 7900）
+  workspace: ~/units/alpha   # 宿主机目录 → bind-mount 到 /workspace
+  image: sumeru:latest       # 可选镜像 tag
+
+gateways:
+  hermes:
+    adapter: hermes
+    capabilities: { resume: true, streaming: true }
+```
+
+`deploy:` 块**只由 CLI 读、server 忽略**——容器内 server 看到的 config 与本机模式
+字节一致，API 对等契约不破。编排产物（`Dockerfile` / `docker-compose.yaml` /
+`sumeru.env.example`）随 `@sumeru/server` 包发布，由 `materializeDockerAssets(dir)`
+**原样拷贝**到工作目录（零渲染——所有可变量走 compose 原生 `${VAR:-default}`
+插值）。ocas 落 named volume `<name>_sumeru-ocas`：`docker compose down` 不丢数据，
+只有 `down -v` 才清除；多份 config（`alpha.yaml` / `beta.yaml`）= 多个互不干扰的
+工作单元。
+
+> **Phase 1（本期）** 落地 `deploy:` 块解析、随包发布的模板、以及
+> `materializeDockerAssets` 释放产物；据 `deploy.mode: docker` 由
+> `sumeru start -c <config>` 一键拉起容器的统一入口在后续阶段接入。
+> 设计详见 [specs/architecture/docker-mode.md](specs/architecture/docker-mode.md)。
+
 ## Name
 
 > 须弥山 — 佛教宇宙观中的世界中心。一粒芥子里装一座须弥山 — 一个小小的 HTTP 服务里，容纳了整个 agent 世界。

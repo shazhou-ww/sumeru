@@ -1,0 +1,6 @@
+name: alpha
+deploy: [1, 2]
+gateways:
+  hermes:
+    adapter: hermes
+    capabilities: { resume: true, streaming: true }
