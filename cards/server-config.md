@@ -1,214 +1,93 @@
 ---
 id: server-config
-title: "Server Configuration"
+title: "Server Startup and Gateway Wiring"
 sources:
-  - packages/server/src/config.ts
   - packages/server/src/start.ts
+  - packages/server/src/handler.ts
   - packages/server/src/types.ts
+  - packages/server/tests/start-gateway-log.test.ts
   - packages/cli/src/build-adapters.ts
   - README.md
-tags: [architecture, server, configuration]
+tags: [architecture, server, startup, configuration]
 created: 2026-06-15
-updated: 2026-06-17
+updated: 2026-06-23
 ---
 
-# Server Configuration
+# Server Startup and Gateway Wiring
 
-`@sumeru/server` loads its configuration from a `sumeru.yaml` file. The config layer handles YAML parsing, structural validation, and default resolution before the HTTP listener starts.
+This card covers the current startup-time config behavior in `@sumeru/server`, with emphasis on gateway adapter wiring and startup logging.
 
-## sumeru.yaml Schema
+## StartConfig and Defaults
 
-```yaml
-name: my-instance              # required, non-empty string
-workspaceRoot: /path/to/root   # optional, null if absent/empty
-gateways:                      # optional mapping (empty = no gateways)
-  hermes:
-    adapter: hermes            # required, non-empty string
-    config:                    # optional, adapter-specific options
-      timeout: 3600            # forwarded verbatim to adapter factory
-    capabilities:              # required
-      resume: true             # required boolean
-      streaming: false         # required boolean
-  claude-code:
-    adapter: claude-code
-    config:
-      sendTimeoutMs: 3600000   # 1 h (default 30 min)
-      maxTurns: 120            # default 90
-    capabilities:
-      resume: false
-      streaming: true
-```
+`startServer(config: StartConfig)` consumes:
 
-## Type Definitions
+- instance identity: `name`, `version`
+- bind settings: `host`, `port`
+- gateway config map: `gateways`
+- runtime wiring: `adapters` (nullable), `workspaceRoot`
+- SSE knobs: `sseHeartbeatMs`, `sseBufferSize`, `sseRetentionMs` (nullable)
+- storage location override: `ocasDir` (nullable)
 
-### InstanceConfig
+Applied defaults in startup path:
 
-The validated output of `loadConfig()`:
+- `adapters`: `config.adapters ?? {}`
+- `sseHeartbeatMs`: `15_000`
+- `sseBufferSize`: `1024`
+- `sseRetentionMs`: `30_000`
 
-```typescript
-type InstanceConfig = {
-  name: string;
-  workspaceRoot: string | null;
-  gateways: Record<string, GatewayConfig>;
-};
-```
+## OCAS Directory Resolution
 
-### GatewayConfig
+`resolveOcasDir(explicit)` precedence:
 
-Each gateway entry within the config:
+1. explicit `StartConfig.ocasDir` (non-empty)
+2. `SUMERU_OCAS_DIR` env var (non-empty)
+3. `~/.sumeru/ocas`
 
-```typescript
-type GatewayConfig = {
-  adapter: string;                    // adapter name to look up at runtime
-  capabilities: GatewayCapabilities;
-  config: Record<string, unknown> | null;  // adapter-specific options
-};
+Behavior details:
 
-type GatewayCapabilities = {
-  resume: boolean;
-  streaming: boolean;
-};
-```
+- `~/...` is expanded against `os.homedir()`
+- returned path is absolute (`path.resolve`)
+- OCAS store is opened before listener bind; filesystem failures prevent server start
 
-### ServerConfig
+## Gateway Startup Logging (New Behavior)
 
-The runtime configuration passed to `createHandler()` — combines the parsed YAML with runtime state:
+During startup, server logs:
 
-```typescript
-type ServerConfig = {
-  name: string;
-  version: string;
-  gateways: Record<string, GatewayConfig>;
-  workspaceRoot: string | null;
-  adapters: Record<string, Adapter>;   // keyed by adapter name
-  sseHeartbeatMs: number;              // default 15_000
-  sseBufferSize: number;               // default 1024
-  sseRetentionMs: number;              // default 30_000
-  ocas: OcasConfig;
-};
-```
+1. one OCAS line:
+   - `[sumeru] ocas store: <resolvedPath>`
+2. one line per configured gateway, in config declaration order:
+   - `[sumeru] gateway <gatewayName> -> adapter @sumeru/adapter-<adapterName> (ready)`
+   - or `(unavailable: not registered)`
 
-### StartConfig
+Readiness is determined by whether the gateway name has an adapter instance in the `adapters` registry passed to `startServer`.
 
-The external-facing config for `startServer()` — allows nullable fields with defaults:
+`packages/server/tests/start-gateway-log.test.ts` locks this behavior, including ordering and exact log format constraints.
 
-```typescript
-type StartConfig = {
-  port: number;
-  host: string;
-  name: string;
-  version: string;
-  gateways: Record<string, GatewayConfig>;
-  workspaceRoot: string | null;
-  adapters: Record<string, Adapter> | null;   // null → {} (all unavailable)
-  sseHeartbeatMs: number | null;              // null → 15_000
-  sseBufferSize: number | null;               // null → 1024
-  sseRetentionMs: number | null;              // null → 30_000
-  ocasDir: string | null;                     // null → env/default resolution
-};
-```
+## CLI-to-Server Adapter Wiring
 
-## Config Loading (`loadConfig`)
+The CLI constructs the server `adapters` map via `buildAdapters(gateways)`.
 
-```
-loadConfig(path) → Promise<InstanceConfig>
-```
+`buildAdapters` semantics:
 
-Three-phase pipeline:
-1. **Read** — `readFile(path, "utf-8")` with ENOENT → descriptive error
-2. **Parse** — `yaml.parse()` with catch → descriptive error
-3. **Validate** — structural checks with field-level error messages
+- adapter factories include: `hermes`, `claude-code`, `codex`, `cursor-agent`
+- each gateway uses `factory = factories[gw.adapter]`
+- unknown adapters are skipped (no throw)
+- per-gateway `gw.config` is forwarded verbatim (`null` -> `{}`)
+- resulting map is keyed by gateway name
 
-### Validation Rules
+Important nuance: startup logging and `GET /gateways` do not currently use the same lookup key.
 
-| Field | Rule |
-|-------|------|
-| top-level | must be a YAML mapping (non-null object, non-array) |
-| `name` | required, non-empty string |
-| `workspaceRoot` | optional; absent/null/empty string → `null`; non-string → error |
-| `gateways` | optional mapping; absent/null → empty `{}`; non-object → error |
-| `gateways[key].adapter` | required, non-empty string |
-| `gateways[key].config` | optional mapping; absent/null → `null`; non-mapping → error; contents **not validated** |
-| `gateways[key].capabilities` | required mapping |
-| `capabilities.resume` | required boolean (not truthy — strict `typeof === "boolean"`) |
-| `capabilities.streaming` | required boolean |
+- Startup log readiness in `startServer` checks by gateway name (`gatewayName in adapters`).
+- Gateway readiness in handler list/detail checks by adapter name (`adapters[cfg.adapter] !== undefined`).
 
-Unknown keys at any level are silently tolerated for forward-compatibility.
+With `buildAdapters()` producing a gateway-keyed map, these two surfaces can diverge.
 
-### Gateway Config Forwarding (Issue #32)
+## Relevant Types
 
-Each gateway's `config:` block is an **opaque adapter-specific blob** that the server does NOT validate:
+From `packages/server/src/types.ts`:
 
-- **At config load time**: `loadConfig()` accepts any mapping (object), rejects scalars/arrays/etc.
-- **At adapter factory time**: The CLI's `buildAdapters()` forwards `gw.config ?? {}` verbatim to the adapter factory (e.g. `createHermesAdapter(opts)`, `createClaudeCodeAdapter(opts)`)
-- **Adapter validates its own keys**: Each adapter is responsible for validating its own option schema and throwing on unknown/invalid keys
+- `GatewayConfig` keeps adapter name, capabilities, and opaque `config` blob
+- `StartConfig` uses nullable runtime fields for defaults
+- `ServerConfig` carries normalized runtime values into `createHandler`
 
-Example: claude-code adapter's configurable timeouts and limits:
-
-```yaml
-gateways:
-  claude-code:
-    adapter: claude-code
-    config:
-      sendTimeoutMs: 3600000          # 1 h (default 30 min)
-      createSessionTimeoutMs: 300000  # 5 min (default 5 min)
-      maxTurns: 120                   # default 90
-    capabilities:
-      resume: true
-      streaming: true
-```
-
-Omit `config:` entirely (or set to `null` / `{}`) to use adapter's built-in defaults. Unknown keys are passed through to the adapter but silently ignored if the adapter doesn't recognize them.
-
-## workspaceRoot
-
-When set, per-session `config.cwd` values are resolved relative to this path and confined within it (see session CWD resolution). The config layer only validates the type — path resolution happens at session-creation time.
-
-Folding rules:
-- absent / `undefined` / `null` → `null`
-- empty string `""` → `null` (operator did not configure)
-- non-empty string → stored verbatim (no path resolution at config layer)
-
-## Ocas Directory Resolution
-
-`resolveOcasDir(explicit)` determines the CAS store location:
-
-```
-Priority: explicit arg  >  $SUMERU_OCAS_DIR env  >  ~/.sumeru/ocas
-```
-
-- `~/` prefix is expanded via `os.homedir()`
-- Result is always an absolute path (`path.resolve`)
-
-## Server Startup (`startServer`)
-
-```
-startServer(config: StartConfig) → Promise<StartedServer>
-```
-
-Sequence:
-1. Resolve ocas directory and open the CAS store (`openSumeruOcas`)
-2. Build the request handler via `createHandler` with defaults applied:
-   - `adapters`: `config.adapters ?? {}`
-   - `sseHeartbeatMs`: `config.sseHeartbeatMs ?? 15_000`
-   - `sseBufferSize`: `config.sseBufferSize ?? 1024`
-   - `sseRetentionMs`: `config.sseRetentionMs ?? 30_000`
-3. Create a Node.js HTTP server
-4. Listen on `host:port` (port 0 → OS picks a free port)
-5. Return `{ host, port, stop() }` on success
-
-### Error Handling
-
-- Ocas filesystem errors (EACCES, ENOSPC, EROFS) reject the promise — HTTP listener is never started
-- Listen errors (EADDRINUSE, etc.) reject the promise
-- The returned `stop()` function gracefully closes the server
-
-### StartedServer
-
-```typescript
-type StartedServer = {
-  port: number;    // actual bound port (useful when config.port was 0)
-  host: string;
-  stop: () => Promise<void>;
-};
-```
+This keeps adapter-specific option validation in adapter packages, not in server startup code.

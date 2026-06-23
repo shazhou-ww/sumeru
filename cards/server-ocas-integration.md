@@ -1,127 +1,78 @@
 ---
 id: server-ocas-integration
-title: "Ocas Integration"
+title: "Server OCAS Integration"
 sources:
-  - packages/server/src/ocas/store.ts
   - packages/server/src/ocas/schemas.ts
   - packages/server/src/ocas/index.ts
-tags: [architecture, server, ocas, cas, storage]
+  - packages/server/src/index.ts
+  - packages/server/tests/ocas-schema-hash-constants.test.ts
+  - packages/server/tests/ocas-schemas.test.ts
+tags: [architecture, server, ocas, schemas, storage]
 created: 2026-06-15
-updated: 2026-06-15
+updated: 2026-06-23
 ---
 
-# Ocas Integration
+# Server OCAS Integration
 
-The `packages/server/src/ocas/` module wraps the `@ocas/core` and `@ocas/fs` content-addressed store for Sumeru's recording needs. It handles store initialization, schema registration, payload validation, and provides the `recordPayload` function used by both session creation and the SSE message endpoint.
+`@sumeru/server` integrates OCAS by defining byte-stable JSON schemas, registering them at startup, and exporting both schema bodies and schema-hash constants for consumers.
 
-## Store Initialization
+## Exported Schema Contracts
 
-`openSumeruOcas(dir: string)` opens (or creates) the on-disk CAS store:
+`packages/server/src/ocas/schemas.ts` defines:
 
-1. **Create directory** — `mkdirSync(dir, { recursive: true })`
-2. **Open CAS** — `createFsStore(dir)` from `@ocas/fs`
-3. **Open SQLite** — `createSqliteVarStore(dir, cas)` for var/tag stores
-4. **Bootstrap** — `bootstrap(store)` from `@ocas/core` registers the schema-of-schemas (`@ocas/schema`)
-5. **Register Sumeru schemas** — `putSchema(store, schema)` for `@sumeru/turn` and `@sumeru/session-meta`
-6. **Build schema aliases** — hash → human name map for the `/ocas/:hash` endpoint
-7. **Open search index** — `createSearchIndex(join(dir, "_store.db"))` (FTS5 in the same SQLite DB)
+- `SUMERU_SESSION_META_SCHEMA`
+- `SUMERU_TURN_SCHEMA`
 
-Returns a `SumeruOcas` object containing all handles and hashes:
+and now also exports hardcoded hash constants:
 
-```typescript
-type SumeruOcas = {
-  store: Store;
-  turnSchemaHash: Hash;
-  sessionMetaSchemaHash: Hash;
-  metaSchemaHash: Hash;              // @ocas/schema (schema-of-schemas)
-  schemaAliases: Record<Hash, string>;
-  searchIndex: SearchIndex;
-};
-```
+- `SUMERU_SESSION_META_SCHEMA_HASH = "5C30THA7BZ814"`
+- `SUMERU_TURN_SCHEMA_HASH = "718S3WF704TZ6"`
 
-Any failure during initialization throws with a uniform message: `"failed to open ocas store at <dir>: <cause>"`.
+These constants avoid requiring runtime hasher initialization at import sites.
 
-## Registered Schemas
+## Session-Meta Schema Updates
 
-### @sumeru/turn
+`@sumeru/session-meta` requires:
 
-Records a single turn (user or assistant). Fields:
+- `id`, `gateway`, `adapter`, `createdAt`, `config`, `resolvedCwd`
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `index` | integer ≥ 0 | ✓ | Turn sequence number |
-| `role` | `"user" \| "assistant"` | ✓ | No "system" — not recorded |
-| `content` | string | ✓ | Full text content |
-| `timestamp` | string (date-time) | ✓ | ISO 8601 |
-| `toolCalls` | null \| ToolCall[] | ✓ | Each ToolCall has: tool, input, output, durationMs, exitCode |
-| `tokens` | null \| {input, output} | optional | Token usage (omitted when null) |
+Notable constraints:
 
-`additionalProperties: false` — the server strips `hash` (would be circular) before writing.
+- `additionalProperties: false`
+- `resolvedCwd` is required and must be `null` or non-empty string
+- top-level opaque fields are disallowed; adapter-specific data remains inside `config`
 
-### @sumeru/session-meta
+## Turn Schema Shape
 
-Written once at session create. Fields:
+`@sumeru/turn` remains a strict object schema with:
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `id` | string | ✓ | Pattern: `^ses_[0-9A-HJKMNP-TV-Z]{26}$` |
-| `gateway` | string (minLength 1) | ✓ | |
-| `adapter` | string (minLength 1) | ✓ | |
-| `createdAt` | string (date-time) | ✓ | |
-| `config` | object | ✓ | Opaque adapter config blob (verbatim from client) |
-| `resolvedCwd` | null \| string (minLength 1) | ✓ | Server-resolved CWD (null if no cwd hint) |
+- required: `index`, `role`, `content`, `timestamp`, `toolCalls`
+- `role` limited to `user | assistant`
+- nullable tool-call result fields (`output`, `durationMs`, `exitCode`)
+- optional nullable `tokens` object with non-negative integers
 
-`additionalProperties: false` — no extra fields at top level; adapter-specific data lives inside `config`.
+## Public Exports and Re-exports
 
-## Payload Validation
+`packages/server/src/ocas/index.ts` re-exports schema bodies and hash constants, and `packages/server/src/index.ts` re-exports them from the package root. Consumers can import either path.
 
-`@ocas/core`'s `Store.cas.put` does **not** validate payloads — it just hashes and stores. Sumeru enforces validation before writing via its own ajv instance:
+## Hash Constant Verification
 
-```typescript
-function validatePayload(store: Store, schemaHash: Hash, payload: unknown): void
-function recordPayload(store: Store, schemaHash: Hash, payload: unknown): Hash
-```
+`packages/server/tests/ocas-schema-hash-constants.test.ts` validates:
 
-`recordPayload` = validate + put. Throws `SchemaValidationError` on invalid payloads.
+- each hash constant equals `computeSelfHashSync(schemaBody)`
+- both constants match Crockford Base32 hash regex
+- constants are distinct from each other
 
-### Custom Ajv Instance
+This protects against accidental schema-body edits without updating constants.
 
-A local `ajv` (separate from `@ocas/core`'s internal one) with two custom formats:
-- `ocas_ref` — Crockford Base32 hash pattern: `/^[0-9A-HJKMNP-TV-Z]{13}$/`
-- `date-time` — permissive ISO 8601 regex matching `Date.prototype.toISOString()` output
+## Schema Validation Coverage
 
-No dependency on `ajv-formats` — just these two server-produced formats.
+`packages/server/tests/ocas-schemas.test.ts` covers:
 
-## Schema Aliases
+- schema literal required-field expectations
+- deterministic registration hashes across startups
+- valid/invalid payload matrix for turn/session-meta
+- `resolvedCwd` required behavior
+- `recordPayload` storing valid payloads and returning CAS hashes
 
-The `/ocas/:hash` endpoint resolves schema hashes to human-readable type names:
-
-```typescript
-schemaAliases: {
-  [metaSchemaHash]: "@ocas/schema",
-  [turnSchemaHash]: "@sumeru/turn",
-  [sessionMetaSchemaHash]: "@sumeru/session-meta",
-}
-```
-
-When a CAS node's `type` field matches a known schema hash, the HTTP response shows the alias instead (e.g. `"type": "@sumeru/turn"` rather than a raw 13-char hash).
-
-## Schema Immutability
-
-Schema bodies are **byte-stable contracts** — the hash is derived from the schema content. Changing field order, adding properties, or modifying constraints produces a new hash and breaks backward compatibility. These definitions are treated as immutable once deployed.
-
-## How Other Modules Use Ocas
-
-| Caller | Function | Schema |
-|--------|----------|--------|
-| Session store (`create`) | `recordPayload` | `@sumeru/session-meta` |
-| SSE messages (user turn) | `recordPayload` | `@sumeru/turn` |
-| SSE messages (assistant turns) | `recordPayload` | `@sumeru/turn` |
-| `/ocas/:hash` handler | `store.cas.get` | (read-only, any type) |
-
-## Module Exports
-
-`ocas/index.ts` re-exports:
-- `SUMERU_SESSION_META_SCHEMA`, `SUMERU_TURN_SCHEMA` (schema definitions)
-- `openSumeruOcas`, `recordPayload`, `validatePayload`, `getRegisteredSchema`
-- `SumeruOcas` type
+Together these tests lock schema compatibility and runtime OCAS write behavior.

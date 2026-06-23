@@ -1,155 +1,77 @@
 ---
 id: server-search
-title: "FTS5 Search"
+title: "Server Search Index"
 sources:
   - packages/server/src/search/sqlite-index.ts
-  - packages/server/src/search/handler.ts
-  - packages/server/src/search/types.ts
-  - packages/server/src/search/index.ts
+  - packages/server/src/ocas/index.ts
+  - packages/server/tests/rebuild-search-index-walk.test.ts
 tags: [architecture, server, search, fts5, sqlite]
 created: 2026-06-15
-updated: 2026-06-15
+updated: 2026-06-23
 ---
 
-# FTS5 Search
+# Server Search Index
 
-The `packages/server/src/search/` module implements full-text search over session turns using SQLite FTS5. Results are aggregated to session granularity using BM25 scoring.
+Server search uses a SQLite FTS5 index in `<ocasDir>/_store.db` and exposes rebuild operations that now walk OCAS directly.
 
-## HTTP Endpoints
+## Core Tables
 
-| Method | Path | Behavior |
-|--------|------|----------|
-| GET | `/sessions?q=...` | Cross-gateway search (optional `?gateway=` filter) |
-| GET | `/gateways/:name/sessions?q=...` | Per-gateway search (path gateway is authoritative) |
+`createSearchIndex` ensures these tables exist:
 
-Both return `@sumeru/search-result` envelopes. The per-gateway route falls through to the `@sumeru/session-list` listing when `?q=` is absent/empty.
+- `sumeru_turn_index` (turn rows keyed by `turn_hash`)
+- `sumeru_turn_fts` (FTS5 virtual table over turn content)
+- `sumeru_session_index` (session metadata/status/counters, includes nullable `meta_hash`)
+- `sumeru_session_turns` (durable ordered turn pointers per session)
 
-### Query Parameters
+Important: `sumeru_session_turns` is not owned by FTS and is intentionally preserved during rebuild.
 
-| Param | Default | Constraints | Notes |
-|-------|---------|-------------|-------|
-| `q` | (required) | max 1024 chars, non-empty after trim | Wrapped in FTS5 phrase quotes |
-| `limit` | 50 | 1–100 (clamped) | |
-| `offset` | 0 | ≥ 0 | |
-| `gateway` | null | top-level only | Ignored on per-gateway route |
+## Index Write APIs
 
-## SQLite Schema
+`SearchIndex` includes:
 
-Three tables live in `<ocasDir>/_store.db` (same file as `@ocas/fs` var/tag store, shared via WAL):
+- `indexSessionMeta`
+- `indexTurn`
+- `markSessionClosed`
+- `appendSessionTurn`
+- `listSessionTurns`
+- `loadSessionTurnsBulk`
+- `loadSessionRows`
+- `search`
+- `rebuild`
+- `turnCount`
 
-### sumeru_turn_index
+This supports both online indexing and startup rehydration of session state.
 
-One row per turn (PK = turn ocas hash):
+## Rebuild Behavior (Updated)
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `turn_hash` | TEXT PK | Ocas CAS hash |
-| `session_id` | TEXT NOT NULL | Indexed |
-| `gateway` | TEXT NOT NULL | Indexed |
-| `turn_index` | INTEGER NOT NULL | |
-| `role` | TEXT NOT NULL | user / assistant |
-| `content` | TEXT NOT NULL | Full turn text |
-| `created_at` | TEXT NOT NULL | ISO timestamp |
+`rebuildSearchIndex(index, ocas)` now requires only two arguments and delegates to `index.rebuild(ocas)`.
 
-### sumeru_session_index
+Rebuild flow in `sqlite-index.ts`:
 
-One row per session (PK = session id):
+1. Read `sumeru_session_turns` first to build `turnHash -> sessionId` associations.
+2. Clear only FTS-owned tables (`sumeru_turn_index`, `sumeru_session_index`).
+3. Enumerate OCAS session-meta nodes via `store.cas.listByType(sessionMetaSchemaHash)`.
+4. Re-index session rows and build `sessionId -> gateway` map.
+5. Enumerate OCAS turn nodes via `store.cas.listByType(turnSchemaHash)`.
+6. Re-index turns by joining:
+   - turn hash -> session id (from durable pointer table)
+   - session id -> gateway (from indexed session-meta)
+7. Skip orphaned turns with warnings instead of failing.
+8. Run corrective UPDATE to recompute `turn_count` and `last_active_at` from indexed turns.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `session_id` | TEXT PK | |
-| `gateway` | TEXT NOT NULL | Indexed |
-| `adapter` | TEXT NOT NULL | |
-| `status` | TEXT NOT NULL | idle / closed |
-| `created_at` | TEXT NOT NULL | |
-| `last_active_at` | TEXT NOT NULL | Indexed DESC; bumped on each turn |
-| `turn_count` | INTEGER NOT NULL | Incremented on each new turn |
+So rebuild source-of-truth is OCAS CAS nodes plus durable `sumeru_session_turns`, not caller-provided root sets.
 
-### sumeru_turn_fts
+## Migration Note
 
-Contentless FTS5 virtual table mirroring `sumeru_turn_index.content`:
+`migrateMetaHashColumn` adds `meta_hash` to older `sumeru_session_index` schemas when absent, preserving compatibility with pre-column databases.
 
-```sql
-CREATE VIRTUAL TABLE sumeru_turn_fts USING fts5(
-  content,
-  content='sumeru_turn_index',
-  content_rowid='rowid',
-  tokenize='unicode61 remove_diacritics 2'
-);
-```
+## Test Coverage
 
-Triggers keep it in sync: `AFTER INSERT` and `AFTER DELETE` on `sumeru_turn_index`.
+`rebuild-search-index-walk.test.ts` verifies:
 
-## Search Algorithm
+- two-arg rebuild restores search hits after index-table wipe
+- rebuild idempotency across repeated runs
+- orphaned turns are skipped with warning, not crash
+- session-meta indexing occurs before turn indexing assumptions
 
-1. **FTS5 MATCH** — query is wrapped in `"..."` (phrase mode, internal `"` doubled) and matched against `sumeru_turn_fts`
-2. **BM25 scoring** — SQLite's `bm25()` auxiliary function scores each matching row (lower = better relevance)
-3. **Gateway filter** — optional `WHERE t.gateway = ?` applied at the SQL level
-4. **Session aggregation** — in JavaScript, deduplicate by `session_id` keeping the best (lowest) BM25 score per session and its snippet
-5. **Session metadata join** — fetch `sumeru_session_index` rows for matched session IDs
-6. **Sort** — by BM25 score ASC, then `last_active_at` DESC as tie-breaker
-7. **Paginate** — apply `offset` and `limit`
-8. **Relevance normalization** — `1 / (1 + |score|)` maps to (0, 1] regardless of BM25 sign
-
-### Snippet Generation
-
-Uses FTS5's `snippet()` function:
-- Highlight markers: `<<` and `>>`
-- Ellipsis: `…`
-- Max tokens: 24
-- `stripHighlights` option removes markers when needed
-
-## Write Paths
-
-### indexSessionMeta
-
-Called by session store on create. Inserts a row with `status='idle'`, `turn_count=0`. Idempotent (`ON CONFLICT DO NOTHING`).
-
-### indexTurn
-
-Called by SSE message handler for each user/assistant turn. Transactional:
-1. Insert turn row (idempotent on `turn_hash`)
-2. If new row inserted (`changes > 0`), bump session's `last_active_at` and `turn_count`
-
-### markSessionClosed
-
-Best-effort `UPDATE ... SET status='closed'`. Failures are logged, not propagated.
-
-## SearchIndex Interface
-
-```typescript
-type SearchIndex = {
-  indexSessionMeta: (meta: SessionMetaInput) => void;
-  indexTurn: (input: IndexTurnInput) => void;
-  markSessionClosed: (sessionId: string) => void;
-  search: (opts: SearchOptions) => SearchResult;
-  rebuild: (ocas: SearchRebuildOcas) => void;
-  turnCount: () => number;
-  close: () => void;
-};
-```
-
-## Database Connection
-
-- Opens a **second** `DatabaseSync` handle on the same `_store.db` file (safe because WAL mode)
-- `PRAGMA journal_mode = WAL` and `PRAGMA foreign_keys = ON`
-- Retries up to 3× on `SQLITE_BUSY` with 50ms backoff
-- DDL creation wrapped in a transaction
-
-## Idempotency
-
-All write paths use `ON CONFLICT DO NOTHING` on primary keys (turn_hash / session_id). Re-indexing the same CAS node is always a safe no-op. The `rebuild` function wipes both tables and re-indexes from scratch.
-
-## Error Handling
-
-- **Schema creation failure** → throws, blocks server startup
-- **Search query failure** → logs warning, returns empty results (no 500)
-- **indexTurn failure** → propagates (caller decides: 500 JSON pre-SSE, or SSE error post-SSE)
-- **markSessionClosed failure** → logged, not propagated (in-memory status is authoritative)
-
-## Module Exports
-
-`search/index.ts` re-exports:
-- HTTP handlers: `handleSearchTopLevel`, `handleSearchPerGateway`, `isSearchRequest`, `parseSearchParams`
-- Index operations: `createSearchIndex`, `quoteFtsPhrase`, `rebuildSearchIndex`, `searchSessions`
-- Types: `SearchIndex`, `SearchOptions`, `SearchResult`, `SearchHit`, `IndexTurnInput`, `SessionMetaInput`, `SearchRebuildOcas`
+This locks the new walk-based rebuild semantics.
