@@ -6,10 +6,17 @@ import {
 	type GatewayConfig,
 	type InstanceConfig,
 	loadConfig,
+	materializeDockerAssets,
 	startServer,
 } from "@sumeru/server";
 import { Command } from "commander";
 import { buildAdapters } from "./build-adapters.js";
+import { type DeployConfig, loadDeployConfig } from "./deploy-config.js";
+import {
+	DOCKER_UNAVAILABLE_MESSAGE,
+	isDockerAvailable,
+	launchDockerCompose,
+} from "./docker-launch.js";
 import {
 	isProcessAlive,
 	readPidFile,
@@ -49,7 +56,6 @@ program
 	.option("-t, --timeout <seconds>", "Timeout in seconds", "300")
 	.option("--network", "Allow network access", true)
 	.option("--no-network", "Disable network access")
-	.option("-i, --image <image>", "Docker image")
 	.option("-o, --output <path>", "Output path for recording")
 	.action(async (opts) => {
 		console.log("sumeru run — not yet implemented");
@@ -79,7 +85,34 @@ program
 		"--force",
 		"Kill any process holding the chosen port before binding (sends SIGTERM, then SIGKILL after 2s)",
 	)
+	.option(
+		"--emit-assets",
+		"Release the Docker compose templates next to the config, then exit (do not launch)",
+	)
 	.action(async (opts) => {
+		const configPath =
+			typeof opts.config === "string" && opts.config.length > 0
+				? opts.config
+				: null;
+
+		// --- `--emit-assets`: materialize-and-exit (issue #85) ---
+		// Pure side-effecting file emit feeding the manual `docker compose` flow.
+		// It short-circuits BEFORE any deploy-mode dispatch: no Docker probe, no
+		// pid file, no port bind, no startServer, no `docker compose up`. Unlike
+		// the implicit auto-start path it MAY overwrite (explicit refresh), which
+		// is exactly `materializeDockerAssets`' unconditional copy.
+		if (opts.emitAssets === true) {
+			if (configPath === null) {
+				console.error(
+					"--emit-assets requires -c <config> to choose the target directory.",
+				);
+				process.exit(1);
+			}
+			const written = materializeDockerAssets(dirname(configPath));
+			for (const p of written) console.log(`[sumeru] wrote ${p}`);
+			process.exit(0);
+		}
+
 		const port = Number.parseInt(opts.port, 10);
 		if (Number.isNaN(port) || port < 0) {
 			console.error(`Invalid --port value: ${opts.port}`);
@@ -97,18 +130,47 @@ program
 		let name = "sumeru";
 		let gateways: Record<string, GatewayConfig> = {};
 		let workspaceRoot: string | null = null;
-		if (typeof opts.config === "string" && opts.config.length > 0) {
+		if (configPath !== null) {
 			let cfg: InstanceConfig;
 			try {
-				cfg = await loadConfig(opts.config);
+				cfg = await loadConfig(configPath);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
-				console.error(`Failed to load config from ${opts.config}: ${msg}`);
+				console.error(`Failed to load config from ${configPath}: ${msg}`);
 				process.exit(1);
 			}
 			name = cfg.name;
 			gateways = cfg.gateways;
 			workspaceRoot = cfg.workspaceRoot;
+
+			// --- deploy.mode dispatch (issue #85) ---
+			// docker mode is a thin `docker compose` wrapper: NO local pid file,
+			// NO port bind, NO startServer. Probe Docker first; an unavailable
+			// daemon is a hard stop (no silent fallback to local). local / absent
+			// deploy blocks fall through to the existing local path below.
+			let deploy: DeployConfig;
+			try {
+				deploy = await loadDeployConfig(configPath);
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				console.error(`Failed to load config from ${configPath}: ${msg}`);
+				process.exit(1);
+			}
+			if (deploy.mode === "docker") {
+				if (!isDockerAvailable()) {
+					console.error(DOCKER_UNAVAILABLE_MESSAGE);
+					process.exit(1);
+				}
+				let code: number;
+				try {
+					code = await launchDockerCompose({ name, configPath, deploy });
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					console.error(`Failed to start docker compose: ${msg}`);
+					process.exit(1);
+				}
+				process.exit(code);
+			}
 		}
 
 		// --- PID file lifecycle (issue #33) ---
