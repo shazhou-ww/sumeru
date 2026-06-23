@@ -1,4 +1,5 @@
 export { loadConfig } from "./config.js";
+export { materializeDockerAssets } from "./docker-assets.js";
 export {
 	envelope,
 	errorEnvelope,

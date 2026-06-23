@@ -1,0 +1,37 @@
+# Sumeru Docker-mode compose template.
+#
+# Zero-render: this file is copied byte-for-byte by materializeDockerAssets.
+# All variability is compose-native ${VAR:-default} interpolation — there are
+# NO moustache / handlebars / angle-bracket placeholder tokens. Drive it with
+# the SUMERU_* / WORKSPACE env vars (the CLI maps deploy.* + name onto them),
+# or rely on the inline defaults below.
+services:
+  sumeru:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SUMERU_VERSION: "${SUMERU_VERSION:-latest}"
+    image: "${SUMERU_IMAGE:-sumeru:latest}"
+    ports:
+      - "${SUMERU_PORT:-7900}:7900"
+    volumes:
+      - "sumeru-ocas:/data/ocas"
+      - "${WORKSPACE:-.}:/workspace"
+      - "${SUMERU_CONFIG:-./sumeru.yaml}:/app/sumeru.yaml:ro"
+    env_file:
+      - path: ./sumeru.env
+        required: false
+    environment:
+      SUMERU_OCAS_DIR: /data/ocas
+      HOME: /home/sumeru
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7900/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  sumeru-ocas:

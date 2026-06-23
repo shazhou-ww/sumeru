@@ -1,0 +1,9 @@
+name: alpha
+deploy:
+  mode: docker
+  workspace: ""
+  image: ""
+gateways:
+  hermes:
+    adapter: hermes
+    capabilities: { resume: true, streaming: true }

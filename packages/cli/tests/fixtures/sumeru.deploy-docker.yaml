@@ -1,0 +1,11 @@
+name: alpha
+workspaceRoot: /workspace
+deploy:
+  mode: docker
+  port: 7901
+  workspace: ~/units/alpha
+  image: sumeru:latest
+gateways:
+  hermes:
+    adapter: hermes
+    capabilities: { resume: true, streaming: true }
