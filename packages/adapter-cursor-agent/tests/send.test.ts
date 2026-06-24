@@ -39,6 +39,15 @@ function extractError(
 	);
 }
 
+/** Extract the suspend event from collected events. */
+function extractSuspend(
+	events: SendEvent[],
+): Extract<SendEvent, { type: "suspend" }> | undefined {
+	return events.find(
+		(e): e is Extract<SendEvent, { type: "suspend" }> => e.type === "suspend",
+	);
+}
+
 /** Drain the iterable to force the full stream to execute. */
 async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
 	for await (const _ of iter) {
@@ -248,7 +257,7 @@ describe("send", () => {
 		);
 	});
 
-	it("yields error event on timeout", async () => {
+	it("yields suspend event on timeout", async () => {
 		const { spawnFn } = fakeSpawn({
 			stdout: buildNdjson({ sessionId: "timeout-session" }),
 		});
@@ -264,9 +273,15 @@ describe("send", () => {
 		});
 		const ref = await adapter.createSession({ model: null, cwd: null });
 		const events = await collectEvents(adapter.send(ref, "hello"));
-		const error = extractError(events);
-		expect(error).toBeDefined();
-		expect(error?.error.message).toMatch(/send timed out after 100ms/);
+		const suspend = extractSuspend(events);
+		expect(suspend).toBeDefined();
+		expect(suspend?.reason).toBe("timeout");
+		expect(suspend?.nativeId).toBe(ref.nativeId);
+		expect(suspend?.nativeId.length).toBeGreaterThan(0);
+		expect(typeof suspend?.elapsedMs).toBe("number");
+		// suspend is terminal: no error and no done follow it
+		expect(extractError(events)).toBeUndefined();
+		expect(extractDone(events)).toBeUndefined();
 	});
 
 	it("yields error event on non-zero exit code", async () => {

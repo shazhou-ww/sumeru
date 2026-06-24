@@ -41,13 +41,18 @@ export type SessionConfig = {
 /**
  * Events yielded by `Adapter.send` as the agent runs:
  *
- * - `turn`  — a single turn produced by the agent.
- * - `done`  — signals completion with wall-clock duration and optional token usage.
- * - `error` — signals an adapter-level error; terminates the stream.
+ * - `turn`    — a single turn produced by the agent.
+ * - `done`    — terminal: signals completion with wall-clock duration and optional token usage.
+ * - `suspend` — terminal: the send was interrupted (currently only by `reason: "timeout"`)
+ *               and may be resumed later via the carried `nativeId`. The agent process has
+ *               already been killed; `elapsedMs` is how long the killed send ran. A peer of
+ *               `done`/`error` (NOT of `turn`): once yielded, the stream terminates.
+ * - `error`   — terminal: signals an adapter-level error; terminates the stream.
  */
 export type SendEvent =
 	| { type: "turn"; turn: Turn }
 	| { type: "done"; durationMs: number; tokens: TokenUsage | null }
+	| { type: "suspend"; reason: "timeout"; nativeId: string; elapsedMs: number }
 	| { type: "error"; error: Error };
 
 /**

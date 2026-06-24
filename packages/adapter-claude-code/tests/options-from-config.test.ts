@@ -36,6 +36,15 @@ function extractError(
 	);
 }
 
+/** Extract the suspend event from collected events. */
+function extractSuspend(
+	events: SendEvent[],
+): Extract<SendEvent, { type: "suspend" }> | undefined {
+	return events.find(
+		(e): e is Extract<SendEvent, { type: "suspend" }> => e.type === "suspend",
+	);
+}
+
 describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue #32)", () => {
 	it("uses operator-supplied timeouts and maxTurns for both createSession and send", async () => {
 		const { calls: spawnCalls, spawnFn } = fakeSpawn({
@@ -93,7 +102,7 @@ describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue 
 		expect(streamCalls[0]?.timeoutMs).toBe(2 * 60 * 60_000);
 	});
 
-	it("send timeout yields error event with the operator-configured value", async () => {
+	it("send timeout yields suspend event with the operator-configured value", async () => {
 		const { spawnFn } = fakeSpawn({
 			stdout: buildNdjson({ sessionId: "sess-timeout-msg" }),
 		});
@@ -110,9 +119,13 @@ describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue 
 		});
 		const ref = await adapter.createSession({ model: null, cwd: null });
 		const events = await collectEvents(adapter.send(ref, "x"));
-		const error = extractError(events);
-		expect(error).toBeDefined();
-		expect(error?.error.message).toMatch(/send timed out after 1800000ms/);
+		const suspend = extractSuspend(events);
+		expect(suspend).toBeDefined();
+		expect(suspend?.reason).toBe("timeout");
+		expect(suspend?.nativeId).toBe(ref.nativeId);
+		expect(suspend?.nativeId.length).toBeGreaterThan(0);
+		expect(typeof suspend?.elapsedMs).toBe("number");
+		expect(extractError(events)).toBeUndefined();
 	});
 
 	it("createSession timeout error message reports the operator-configured value", async () => {

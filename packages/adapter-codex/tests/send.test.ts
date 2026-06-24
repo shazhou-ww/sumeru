@@ -16,15 +16,6 @@ async function collectEvents(
 	return events;
 }
 
-/** Extract the error event from the stream. */
-async function extractError(iter: AsyncIterable<SendEvent>) {
-	const events = await collectEvents(iter);
-	const err = events.find(
-		(e): e is Extract<SendEvent, { type: "error" }> => e.type === "error",
-	);
-	return err ?? null;
-}
-
 /** Drain the iterable (consume all events, discard results). */
 async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
 	for await (const _ of iter) {
@@ -129,7 +120,7 @@ describe("createCodexAdapter().send()", () => {
 		expect(() => adapter.send(ref, "hi")).toThrow(/is closed/);
 	});
 
-	it("yields error event on send timeout", async () => {
+	it("yields suspend event on send timeout", async () => {
 		const { spawnFn } = fakeSpawn({
 			stdout: buildJsonl({ sessionId: "sess-timeout" }),
 		});
@@ -145,9 +136,18 @@ describe("createCodexAdapter().send()", () => {
 		});
 		const ref = await adapter.createSession({ model: null, cwd: null });
 
-		const err = await extractError(adapter.send(ref, "hi"));
-		expect(err).not.toBeNull();
-		expect(err?.error.message).toMatch(/send timed out/);
+		const events = await collectEvents(adapter.send(ref, "hi"));
+		const suspend = events.find(
+			(e): e is Extract<SendEvent, { type: "suspend" }> => e.type === "suspend",
+		);
+		expect(suspend).toBeDefined();
+		expect(suspend?.reason).toBe("timeout");
+		expect(suspend?.nativeId).toBe(ref.nativeId);
+		expect(suspend?.nativeId.length).toBeGreaterThan(0);
+		expect(typeof suspend?.elapsedMs).toBe("number");
+		// suspend is terminal: no error and no done follow it
+		expect(events.some((e) => e.type === "error")).toBe(false);
+		expect(events.some((e) => e.type === "done")).toBe(false);
 	});
 
 	it("yields done event when stdout has no turns (empty output)", async () => {
