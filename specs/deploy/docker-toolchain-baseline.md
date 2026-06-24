@@ -45,7 +45,7 @@ Inserted **after** the existing `FROM node:22-slim` + git/curl/pnpm/`pnpm add -g
    COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
    RUN uv python install 3.12
    ```
-3. **nvm** — Node multi-version (for agents running user projects in the workspace). Default **24 LTS** (codename Jod):
+3. **nvm** — Node multi-version (for agents running user projects in the workspace). Default **24 LTS** (codename Krypton):
    ```dockerfile
    ENV NVM_DIR=/usr/local/nvm
    RUN mkdir -p $NVM_DIR \
