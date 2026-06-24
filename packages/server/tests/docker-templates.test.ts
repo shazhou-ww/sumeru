@@ -170,7 +170,12 @@ describe.skipIf(!DOCKER)("Docker-gated build assertions", () => {
 			["run", "--rm", "sumeru:test", "node", "--version"],
 			{ encoding: "utf-8" },
 		);
-		expect(node).toMatch(/^v22\./);
+		// Default `node` is the nvm-managed v24 LTS (issue #102 foundation
+		// toolchain): the base image is still `node:22-slim`, but the toolchain
+		// layer prepends the default Node 24 bin onto the base PATH, so a bare
+		// non-login `node` (this exec shape) resolves to v24, not the
+		// node:22-slim base interpreter. The reproducible floor stays Node 22.
+		expect(node).toMatch(/^v24\./);
 	});
 
 	it("has git, curl, and sumeru on PATH", () => {

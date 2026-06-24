@@ -66,7 +66,7 @@ tags: [docker, templates, dockerfile, compose, self-contained, packaging, phase-
 
 - Guarded by `SUMERU_DOCKER_INTEGRATION=1`; when Docker is absent the whole block **skips** (not fails):
   - `docker build -f packages/server/templates/docker/Dockerfile -t sumeru:test .` exits `0` with an empty/minimal context (proves no source COPY).
-  - `docker run --rm sumeru:test node --version` prints `v22.*`.
+  - `docker run --rm sumeru:test node --version` prints `v24.*` (the nvm-managed default Node 24 LTS from the issue #102 toolchain baseline — prepended onto the base `PATH`, so a bare non-login `node` resolves to v24, not the `node:22-slim` base interpreter; the base image stays `FROM node:22-slim` as the reproducible floor).
   - `docker run --rm sumeru:test sh -lc 'command -v git && command -v curl && command -v sumeru'` prints three absolute paths.
 
 ### Build / quality gates
