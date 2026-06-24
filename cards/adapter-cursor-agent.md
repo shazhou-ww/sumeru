@@ -3,160 +3,117 @@ id: adapter-cursor-agent
 title: "Cursor Agent Adapter"
 sources:
   - packages/adapter-cursor-agent/src/adapter.ts
-  - packages/adapter-cursor-agent/src/stream-parser.ts
   - packages/adapter-cursor-agent/src/spawn.ts
+  - packages/adapter-cursor-agent/src/stream-parser.ts
   - packages/adapter-cursor-agent/src/types.ts
-tags: [architecture, adapter, cursor-agent, agent]
+  - packages/cli/src/build-adapters.ts
+tags: [architecture, adapter, cursor-agent, streaming]
 created: 2026-06-17
-updated: 2026-06-17
+updated: 2026-06-23
 ---
 
 # Cursor Agent Adapter
 
-`@sumeru/adapter-cursor-agent` implements the `Adapter` contract from `@sumeru/core` by shelling out to the `cursor-agent` CLI with `--print --output-format stream-json --trust --force --workspace <cwd>`. Like the Claude Code adapter, cursor-agent has no stable on-disk session DB — all turn history is cached in-memory for the adapter's lifetime.
+`@sumeru/adapter-cursor-agent` implements the core `Adapter` interface by spawning `cursor-agent` with `--output-format stream-json`, parsing NDJSON events into `Turn`s, and caching turns in memory per native session id.
 
-## Adapter Identity
+## Identity and Capability
 
-```typescript
-name: "cursor-agent"
-capabilities: { resume: true, streaming: false }
-```
+- `name`: `cursor-agent`
+- Session history store: in-memory `Map<string, Turn[]>`
+- Resume support: yes (`--resume <nativeId>`)
+- Streaming send path: yes (`send()` yields incremental `SendEvent`s)
 
-## Factory Function
+History is process-local and is not rehydrated from disk.
 
-```typescript
-function createCursorAgentAdapter(options?: Partial<CursorAgentAdapterOptions>): Adapter
-```
+## Factory Options
 
-### Configuration Options
+`createCursorAgentAdapter(options)` supports:
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `cursorAgentBin` | `"cursor-agent"` | Path to cursor-agent executable |
-| `model` | `null` (cursor-agent default) | `--model` value for all spawns |
-| `cwd` | `process.cwd()` | Working directory, passed as `--workspace <path>` |
-| `createSessionTimeoutMs` | 300,000 (5 min) | Timeout for createSession |
-| `sendTimeoutMs` | 600,000 (10 min) | Timeout for send |
-| `spawnFn` | `defaultSpawn` | Test seam for child_process.spawn |
-| `permissionMode` | `"force"` | Permission bypass flag: `"force"` or `"yolo"` |
-| `sandbox` | `null` | `--sandbox` value; `null` means flag is omitted |
+- `cursorAgentBin` (default `cursor-agent`)
+- `model` (default `null`)
+- `cwd` (adapter fallback cwd, default `process.cwd()`)
+- `createSessionTimeoutMs` (default 5m)
+- `sendTimeoutMs` (default 10m)
+- `spawnFn` / `streamingSpawnFn` test seams
+- `permissionMode`: `force` or `yolo` (default `force`)
+- `sandbox`: `enabled` | `disabled` | `null`
 
-## createSession
+Argument construction always includes `--print --output-format stream-json --trust --workspace <cwd>`, then:
 
-Spawns:
-```
-cursor-agent -p "<initialQuery>" --print --output-format stream-json
-  --trust --force --workspace <cwd> [--model <m>]
-```
+- `--force` when `permissionMode = force`
+- `--yolo` when `permissionMode = yolo`
+- `--sandbox <value>` when configured
+- `--resume <id>` on send
+- `--model <m>` when model is non-null
 
-Parses the NDJSON output for the `system` line (subtype `init`) containing `session_id`. The initial turns are rewritten to start at index 0 and cached in-memory.
+## createSession Flow
 
-Returns a `NativeSessionRef` with meta: `{ cwd, model, createdAt, subtype }`.
+`createSession(config)`:
 
-## send
+1. Resolves model from `config.model` then adapter default.
+2. Resolves cwd from `config.cwd` then adapter fallback.
+3. Spawns `cursor-agent -p ping ...` with resolved cwd.
+4. Parses stdout via `parseStreamJson`.
+5. Requires a non-empty parsed `sessionId`.
+6. Rewrites parsed turn indices to start at 0.
+7. Caches rewritten turns and returns `NativeSessionRef` with meta (`cwd`, `model`, `createdAt`, `subtype`).
 
-Spawns:
-```
-cursor-agent -p "<content>" --print --output-format stream-json
-  --trust --force --resume <nativeId> --workspace <cwd> [--model <m>]
-```
+## send Flow (Incremental Streaming)
 
-### Index Rewriting
+`send(ref, content)`:
 
-Same pattern as the Claude Code adapter — per-run indices are rewritten to be globally monotonic across the session lifetime.
+- Performs sync prechecks (`ref`, closed-state, non-empty content).
+- Serializes per-session sends via a promise-chain lock (`sendLocks`).
+- Re-resolves model/cwd from `ref.meta` first, then adapter defaults.
+- Uses `streamingSpawnFn` for line-by-line stdout handling.
+- Parses lines through `parseStreamJsonIncremental`.
+- Emits each new parsed turn immediately as `{ type: "turn", turn }`.
+- Rewrites emitted turn indices to globally monotonic sequence across the session.
+- Appends turns to cache as they stream.
+- Emits `{ type: "done", durationMs, tokens }` on success, or `{ type: "error", error }` on failure.
 
-### Per-nativeId Send Mutex
+Token derivation for `done` reads `resultLine.usage.inputTokens` and `outputTokens`; returns `null` if both are zero.
 
-Promise-chain-based lock ensures serial execution per session. Prevents concurrent `send` calls from racing on the in-memory cache.
+## close and getTurns
 
-## close
+- `close(ref)`: logical close only; marks session id closed.
+- `getTurns(ref)`: defensive copy of cached turns; returns empty list for unknown refs.
 
-Logical close only — adds `nativeId` to a `Set<string>`. No cursor-agent-side notification, no cache eviction. Subsequent `send` calls throw immediately. `getTurns` still works after close.
+No external close call is made to cursor-agent.
 
-## getTurns
+## Parser Semantics
 
-Returns a defensive copy (`[...cached]`) of the in-memory turn cache for the given `nativeId`. Returns `[]` for unknown sessions.
+`parseStreamJson` and `parseStreamJsonIncremental` consume NDJSON events:
 
-## NDJSON Stream Parser (`parseStreamJson`)
+- `system`: captures `session_id` and `model`
+- `assistant`: emits assistant text turns
+- `user`: emits user text turns
+- `thinking`: ignored (no turns)
+- `tool_call` subtype `started`: creates a `ToolCall`, attaches it to latest assistant turn (or creates empty assistant turn if none)
+- `tool_call` subtype `completed`: fills `ToolCall.output`/`exitCode` by `call_id`
+- `result`: stores summary and usage fields
 
-Parses cursor-agent's `--output-format stream-json` output. Each line is a JSON object with a `type` field:
+Details:
 
-| Line Type | Description |
-|-----------|-------------|
-| `system` (subtype: `init`) | First line; carries `session_id`, `model`, `cwd` |
-| `user` | User prompt; `message.content` array with text segments |
-| `thinking` | Reasoning text; **discarded entirely** — NOT emitted as turns |
-| `assistant` | Model response; `message.content` array with text segments |
-| `tool_call` (subtype: `started`) | Tool invocation; carries `call_id`, tool args |
-| `tool_call` (subtype: `completed`) | Tool result; carries `call_id`, result payload |
-| `result` (subtype: `success`) | Final summary (duration, usage, request_id) |
+- Supported tool call names are inferred from keys (`editToolCall`, `shellToolCall`, fallback detection).
+- Malformed or unknown lines are skipped.
+- If no result line but session id exists, subtype is synthesized as `incomplete`.
+- Incremental parser yields only newly created turns; tool-call mutations happen via shared references and do not create extra events.
 
-### Key Difference from Claude Code Parser
+## Spawn and Timeout Behavior
 
-Claude Code embeds `tool_use` segments in assistant message content and returns results as `tool_result` user lines. Cursor-agent uses **separate `tool_call` events** with explicit `started`/`completed` subtypes:
+Both spawn implementations (`defaultSpawn`, `defaultStreamingSpawn`) use `child_process.spawn` with `shell: false`, explicit `cwd`, and timeout escalation (`SIGTERM`, then `SIGKILL` after 5 seconds).
 
-- `tool_call` (started) → creates a `ToolCall` entry, associates with most recent assistant turn
-- `tool_call` (completed) → fills in `output` and `exitCode` on the matching `ToolCall` by `call_id`
+## Error Mapping
 
-Supported tool call types: `editToolCall`, `shellToolCall`. Shell tool calls extract `exitCode` from the result; edit tool calls always have `exitCode: null`.
+`makeUnparseableOrExitError` prioritizes:
 
-### Key Parser Behaviors
+1. API key/auth patterns (`CURSOR_API_KEY`, authentication/unauthorized)
+2. trust requirement patterns (mapped to explicit trust error)
+3. resume session-not-found patterns
+4. generic non-zero exits
+5. unparseable stream-json fallback with stdout/stderr snippets
 
-- **Thinking lines** → completely discarded (not emitted as turns)
-- **Unmatched `started`** → ToolCall remains with `output: null`
-- **Unmatched `completed`** → silently dropped
-- **Malformed lines** → silently skipped (tolerant parsing)
-- **No session_id and no result line** → returns `null` (hard error for caller)
-- **Session_id but no result line** → synthesized "incomplete" result
+## CLI Integration
 
-### Parsed Result Type
-
-```typescript
-type CursorAgentParsedResult = {
-  type: string;
-  subtype: "success" | "incomplete";
-  result: string;
-  sessionId: string;
-  numTurns: number;
-  durationMs: number;
-  model: string;
-  usage: {
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadTokens: number;
-    cacheWriteTokens: number;
-  };
-  turns: Turn[];
-};
-```
-
-## Error Handling
-
-Prioritized error detection:
-
-| Check Order | Condition | Error |
-|-------------|-----------|-------|
-| 1 | stderr matches CURSOR_API_KEY/auth patterns | `cursor-agent exited with code <N>: cursor-agent API key error...` |
-| 2 | stderr matches trust patterns | `cursor-agent exited with code <N>: cursor-agent requires --trust...` |
-| 3 | stderr matches "not found" (resume) | `cursor-agent session <id> not found: <detail>` |
-| 4 | Non-zero exit code | `cursor-agent exited with code <N>: <stderr tail>` |
-| 5 | Unparseable output, exit 0 | `cursor-agent returned unparseable stream-json output (bin=..., ...)` |
-
-## Process Spawning (`defaultSpawn`)
-
-Identical pattern to the Claude Code adapter:
-- Passes `cwd` to child_process.spawn options
-- Explicitly sets `env: process.env` (must include `CURSOR_API_KEY`) and `shell: false`
-- Timeout strategy: SIGTERM → 5s grace → SIGKILL
-- Timer is `unref()`'d
-
-## Architectural Similarities to Claude Code Adapter
-
-| Aspect | Cursor Agent | Claude Code |
-|--------|-------------|-------------|
-| Turn storage | In-memory Map (adapter-owned) | In-memory Map (adapter-owned) |
-| History on restart | Lost (per-process) | Lost (per-process) |
-| Index numbering | Rewritten for monotonicity | Rewritten for monotonicity |
-| Tool result handling | Separate `tool_call` events matched by `call_id` | `tool_result` user lines folded into ToolCall.output |
-| CWD | `--workspace <path>` flag | spawn `cwd` option |
-| Permission bypass | `--trust --force` (or `--yolo`) | `--dangerously-skip-permissions` |
+`packages/cli/src/build-adapters.ts` registers `"cursor-agent"` in `DEFAULT_ADAPTER_FACTORIES` and forwards each gateway's `config` blob directly into `createCursorAgentAdapter`, enabling server factory wiring without CLI-side option shaping.

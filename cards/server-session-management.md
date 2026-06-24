@@ -1,124 +1,85 @@
 ---
 id: server-session-management
-title: "Session Management"
+title: "Session Store Lifecycle"
 sources:
   - packages/server/src/session/store.ts
-  - packages/server/src/session/id.ts
-  - packages/server/src/session/cwd.ts
-  - packages/server/src/session/index.ts
-tags: [architecture, server, session, state-machine]
+  - packages/server/src/handler.ts
+  - packages/server/src/types.ts
+  - packages/server/tests/messages.test.ts
+tags: [architecture, server, session, lifecycle]
 created: 2026-06-15
-updated: 2026-06-15
+updated: 2026-06-23
 ---
 
-# Session Management
+# Session Store Lifecycle
 
-The `packages/server/src/session/` module implements in-memory session lifecycle, ID generation, and CWD resolution. Sessions are scoped per-gateway and persist only within the process (no disk persistence at this layer).
+Session lifecycle is managed by `createSessionStore(ocas)` and consumed by HTTP handlers for create/detail/delete/messages.
 
-## Session State Machine
+## Session Model
 
-```
-                   POST .../sessions
-                         │
-                         ▼
-                      ┌──────┐
-         ┌───────────│ idle │◄────────────┐
-         │           └──────┘             │
-         │              │                 │
-    DELETE│    POST .../messages      markIdle
-         │              │                 │
-         │              ▼                 │
-         │          ┌────────┐            │
-         ├──────────│ active │────────────┘
-         │          └────────┘
-         │              │
-         ▼              ▼ DELETE
-      ┌────────┐
-      │ closed │  (terminal, idempotent)
-      └────────┘
-```
+`Session` includes wire and internal fields:
 
-Transitions are enforced by the store — `tryActivate` and `markIdle` return discriminated unions with typed failure reasons:
+- wire: `id`, `gateway`, `status`, `createdAt`, `config`
+- internal: `metaHash`, `turnHashes`
 
-| Transition | Method | Failure Reasons |
-|-----------|--------|-----------------|
-| idle → active | `tryActivate` | `busy` (already active), `closed`, `not_found` |
-| active → idle | `markIdle` | `not_active`, `not_found` |
-| any → closed | `close` | returns `"already_closed"` or `"not_found"` (no error) |
+`toWire(session)` strips internal fields for HTTP responses.
 
-## Session ID Generation
+## Status State Machine
 
-Format: `ses_` + 26-character ULID (Crockford Base32, uppercase).
+`SessionStatus` is `idle | active | closed`.
 
-```
-ses_01H5EXAMPLE00000000000000
-│    │          │
-│    │          └── 16 random chars (5-bit each)
-│    └── 10 timestamp chars (ms since epoch)
-└── prefix
-```
+Transitions enforced by store methods:
 
-Properties:
-- **Total length**: 30 characters (4 prefix + 26 body)
-- **Lexicographically sortable** by creation time
-- **Monotonic**: within the same millisecond, the random component is incremented (not re-randomized) to guarantee strict ordering
-- **Overflow safety**: if the 16-char random component overflows (astronomically unlikely), falls back to a fresh random vector
+- create -> `idle`
+- `tryActivate`: `idle -> active`, else `busy|closed|not_found`
+- `markIdle`: `active -> idle`, else `not_active|not_found`
+- `close`: `idle|active -> closed`, idempotent on already closed
 
-The Crockford Base32 alphabet excludes I, L, O, U to avoid ambiguity.
+`activeCount` counts non-closed sessions.
 
-## In-Memory Store
+## Create Path and Metadata
 
-`createSessionStore(ocas)` returns a closure-based store over:
-- `byGateway: Map<gateway, Map<id, Session>>` — scoped per gateway, insertion-ordered (chronological listings)
-- `nativeRefs: Map<"gateway\0id", NativeSessionRef>` — internal adapter handles, never exposed via HTTP
+`store.create(gateway, adapter, config, nativeRef, resolvedCwd)`:
 
-### Store API
+1. generates server session id
+2. writes `@sumeru/session-meta` payload to OCAS before registering in memory
+3. seeds search index with `metaHash` (best-effort warning on failure)
+4. stores session with `status: idle`, `metaHash`, empty `turnHashes`
+5. stores `nativeRef` (if present) in internal `nativeRefs` map
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `create` | `(gateway, adapter, config, nativeRef, resolvedCwd) → Session` | Generate ID, write ocas meta, register session |
-| `list` | `(gateway) → Session[]` | Insertion-ordered listing |
-| `get` | `(gateway, id) → Session \| null` | Single lookup |
-| `getNativeRef` | `(gateway, id) → NativeSessionRef \| null` | Internal: retrieve adapter handle |
-| `appendTurnHash` | `(gateway, id, hash) → void` | Append a turn hash (no-op if session gone) |
-| `close` | `(gateway, id) → "closed" \| "already_closed" \| "not_found"` | Terminal state transition |
-| `activeCount` | `(gateway) → number` | Count non-closed sessions |
-| `tryActivate` | `(gateway, id) → TransitionResult<…>` | Attempt idle → active |
-| `markIdle` | `(gateway, id) → TransitionResult<…>` | Mark active → idle |
+The session-meta payload includes `resolvedCwd` so request config and resolved cwd are persisted together.
 
-### Create Flow
+## Turn Hash Persistence Coupling
 
-1. Generate a `ses_` + ULID ID
-2. Write `@sumeru/session-meta` to ocas (atomic — fails the create if write fails)
-3. Best-effort seed the search index (failure logged, not propagated)
-4. Register in-memory session with status `idle`
-5. Store the `NativeSessionRef` keyed by `gateway\0id`
+`appendTurnHash` persists `(session_id, turn_index, turn_hash)` through `searchIndex.appendSessionTurn` before mutating in-memory `turnHashes`.
 
-### Wire Serialization
+If persistence fails, error propagates; memory is not advanced first. This avoids disk/memory divergence.
 
-`toWire(session)` strips internal fields (`metaHash`, `turnHashes`) from the `Session` type, producing a `SessionWire` for HTTP envelope responses.
+## Rehydration on Startup
 
-## CWD Resolution
+At store construction, `rehydrate()` loads persisted session rows and turn pointers from search index tables, then rebuilds in-memory maps.
 
-`resolveSessionCwd(workspaceRoot, rawCwd)` enforces path confinement before the adapter sees the CWD:
+- `config` is recovered from immutable session-meta CAS node via `metaHash`
+- missing/unreadable meta falls back to `{}` with warnings
+- `nativeRef` is intentionally not restored
 
-| rawCwd | workspaceRoot | Result |
-|--------|---------------|--------|
-| undefined / null / `""` | any | `{ ok: true, cwd: null }` |
-| non-string | any | `{ ok: false }` (type error) |
-| relative path | non-null | `path.resolve(root, raw)`, rejected if escapes root |
-| absolute path | non-null | resolved and confined within root |
-| absolute path | null | passed through verbatim |
-| relative path | null | `{ ok: false }` (no root to resolve against) |
+Result: restarted server can serve historical session state, but rehydrated sessions may lack native adapter refs for new sends.
 
-**Security invariant**: when `workspaceRoot` is set, no session can reference a CWD outside that directory tree. The check uses `resolved.startsWith(root + path.sep)` to prevent prefix-collision attacks (e.g. `/workspace-evil` matching `/workspace`).
+## Delete/Close Interaction in Handler
 
-The resolved CWD replaces the user-supplied value in the config blob forwarded to the adapter. The original wire envelope returned to the client is left untouched.
+`DELETE /gateways/:name/sessions/:id` behavior in `handler.ts`:
 
-## Module Exports
+- if session exists and has `nativeRef` and adapter and not already closed, attempts `await adapter.close(nativeRef)`
+- adapter close errors are swallowed (logical delete still proceeds)
+- `sessions.close(...)` runs regardless
+- returns `204` for both first close and already-closed (idempotent)
 
-`session/index.ts` re-exports:
-- `resolveSessionCwd` + `ResolveCwdResult`
-- `generateSessionId`
-- `SessionStore` + `TransitionResult` (types)
-- `createSessionStore`
+## Message Endpoint Lifecycle Signals
+
+`messages.test.ts` validates key interactions:
+
+- posting to closed session returns `404 session_not_found`
+- when adapter send fails, SSE emits `error` and session returns to `idle`
+- concurrent sends trigger busy behavior through status transitions
+
+This confirms store transitions are authoritative for session lifecycle under streaming message flows.

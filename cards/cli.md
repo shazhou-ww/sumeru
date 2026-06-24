@@ -1,173 +1,64 @@
 ---
 id: cli
-title: "CLI Tool"
+title: "CLI Adapter Wiring"
 sources:
-  - packages/cli/src/cli.ts
   - packages/cli/src/build-adapters.ts
-  - packages/cli/src/pid-file.ts
-  - packages/cli/src/port-check.ts
-tags: [architecture, cli, entry-point]
+  - packages/cli/package.json
+  - packages/cli/tests/build-adapters.test.ts
+  - packages/cli/tests/start-with-gateway-config.test.ts
+tags: [architecture, cli, adapters, config]
 created: 2026-06-15
-updated: 2026-06-17
+updated: 2026-06-23
 ---
 
-# CLI Tool
+# CLI Adapter Wiring
 
-`@sumeru/cli` is the entry point binary (`sumeru`) built with Commander.js. It exposes the `start` command for launching the HTTP server and placeholder commands for planned features.
+The CLI builds the runtime adapter registry from gateway config using `buildAdapters()`.
 
-## Commands
+## Factory Registry
 
-### sumeru start (implemented)
+`DEFAULT_ADAPTER_FACTORIES` now includes four built-in adapter keys:
 
-Starts the Sumeru HTTP server with adapter registration.
+- `hermes`
+- `claude-code`
+- `codex`
+- `cursor-agent`
 
-```
-sumeru start [options]
-```
+Each key maps to the corresponding package factory:
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `-p, --port <number>` | `7900` | TCP port (0 = ephemeral) |
-| `-h, --host <host>` | `127.0.0.1` | Bind address |
-| `-c, --config <path>` | (none) | Path to `sumeru.yaml` |
-| `--ocas-dir <path>` | `$SUMERU_OCAS_DIR` or `~/.sumeru/ocas` | CAS store directory |
-| `--force` | (none) | Kill any process holding the port before binding (SIGTERM, then SIGKILL after 2s) |
+- `createHermesAdapter`
+- `createClaudeCodeAdapter`
+- `createCodexAdapter`
+- `createCursorAgentAdapter`
 
-#### Startup Sequence
+The CLI package also depends on all four adapter packages in `packages/cli/package.json`.
 
-1. Parse and validate `--port` (must be non-negative integer)
-2. If `--config` provided: load and validate `sumeru.yaml` via `loadConfig`
-   - Extracts `name`, `gateways`, `workspaceRoot`
-   - Fails loudly before binding (no half-started listener)
-3. **PID file lifecycle** (issue #33):
-   - Check `~/.sumeru/sumeru.pid` (or `$SUMERU_PID_FILE`)
-   - If pid file exists and process is alive:
-     - With `--force`: kill the process (SIGTERM → SIGKILL after 2s)
-     - Without `--force`: error and exit 1
-   - If pid file exists but process is dead: remove stale file
-   - Write current process.pid to pid file
-4. Call `startServer` with:
-   - Parsed config (or defaults: name="sumeru", empty gateways)
-   - Adapters built via `buildAdapters(gateways)` — dynamically registers only those referenced in config
-   - SSE defaults: null (falls through to server defaults)
-   - ocas dir from `--ocas-dir` or null (server resolves via env/default)
-5. If `EADDRINUSE` and `--force`: kill port holder, retry bind once
-6. Print `Listening on http://<host>:<port>`
-7. Register SIGINT/SIGTERM handlers for graceful shutdown (removes pid file on exit)
+## Config Propagation Semantics
 
-#### Adapter Registration
+`buildAdapters(gateways, factories?)` behavior:
 
-The CLI uses `buildAdapters()` (from `build-adapters.ts`) to construct the adapter registry from the parsed gateway config:
+1. Iterate every configured gateway.
+2. Resolve `factory = factories[gw.adapter]`.
+3. If no factory exists, skip gateway silently.
+4. Pass `gw.config ?? {}` verbatim to the factory.
+5. Store adapter instance under the gateway name.
 
-```typescript
-adapters: buildAdapters(args.gateways)
-```
+This means:
 
-`buildAdapters()` walks the `gateways` map and dispatches on `gw.adapter` to the matching factory:
-- `"hermes"` → `createHermesAdapter(opts)`
-- `"claude-code"` → `createClaudeCodeAdapter(opts)`
+- The CLI does not validate adapter-specific config keys.
+- Multiple gateways sharing one adapter type still receive independent option blobs and independent adapter instances.
+- Unknown adapters do not crash startup; they remain unavailable at server surface.
 
-Each gateway's `gw.config` blob is forwarded verbatim to the factory; absent/`null` blobs become `{}`. Unknown adapter names are **silently skipped** — the gateway then shows as `status: "unavailable"` via `GET /gateways`. The CLI does NOT crash on unbundled adapters.
+## Test Coverage Highlights
 
-#### Error Handling
+`packages/cli/tests/build-adapters.test.ts` verifies:
 
-| Error | Behavior |
-|-------|----------|
-| Invalid port | Print error, exit 1 |
-| Config load failure | Print file + cause, exit 1 |
-| Existing pid + alive process (no `--force`) | Print error suggesting `--force`, exit 1 |
-| `EADDRINUSE` | Use `lsof` to identify port holder, print diagnostic with `--force` hint, exit 1 |
-| Other start failure | Generic error message, exit 1 |
-| Shutdown failure | Print error, exit 1 |
-| PID file write failure | Best-effort warning, continue startup |
+- no-config gateways call factories with `{}`
+- populated config blobs are forwarded unchanged
+- duplicate adapter types produce separate instances
+- unknown adapters are skipped without throw
+- arbitrary/unknown config keys are still forwarded
+- cursor-agent config forwarding works
+- default registry includes cursor-agent wiring
 
-#### Signal Handling
-
-Both `SIGINT` and `SIGTERM` trigger graceful shutdown:
-1. Call `server.stop()` (closes HTTP listener)
-2. Remove pid file (`~/.sumeru/sumeru.pid`)
-3. Exit 0 on success, exit 1 on failure
-4. Second signal during shutdown: exit immediately (escape hatch for hung shutdown)
-
-### sumeru run (planned)
-
-```
-sumeru run -s <scene> -r <runner> -m <model> [options]
-```
-
-Planned Docker-based scene execution. Currently prints options and returns.
-
-| Option | Description |
-|--------|-------------|
-| `-s, --scene <path>` | Scene directory or YAML (required) |
-| `-r, --runner <type>` | Adapter type: hermes, claude-code (required) |
-| `-m, --model <model>` | Model identifier (required) |
-| `-t, --timeout <seconds>` | Timeout (default 300) |
-| `--network / --no-network` | Network access (default true) |
-| `-i, --image <image>` | Docker image |
-| `-o, --output <path>` | Recording output path |
-
-### sumeru list (planned)
-
-```
-sumeru list [-d <dir>]
-```
-
-Planned scene listing. Currently prints the directory and returns.
-
-## Version Discovery
-
-`findVersion()` walks up from the CLI source file looking for `package.json` with `name: "@sumeru/cli"` (up to 5 directories). Falls back to `"0.0.0"` if not found.
-
-## Modules
-
-### build-adapters.ts
-
-Builds the adapter registry from parsed gateway config.
-
-**Core Function:**
-```typescript
-function buildAdapters(
-  gateways: Record<string, GatewayConfig>,
-  factories: AdapterFactoryMap = DEFAULT_ADAPTER_FACTORIES,
-): Record<string, Adapter>
-```
-
-- Walks `gateways` map, dispatches on `gw.adapter` to matching factory
-- Forwards `gw.config` blob verbatim to factory (`null` → `{}`)
-- Unknown adapter names are **silently skipped** (no crash)
-- Default factories: `{ hermes, "claude-code" }`
-
-**Design:** Issue #32 — gateway.config forwarding. Each gateway's `config:` block in YAML passes through to the adapter factory without server-side validation.
-
-### pid-file.ts
-
-Best-effort PID file management (issue #33).
-
-**Key Functions:**
-- `resolvePidFilePath()` — `$SUMERU_PID_FILE` or `~/.sumeru/sumeru.pid`
-- `writePidFile(path, pid)` — writes `<pid>\n` with mode 0o600, creates parent dir (0o700)
-- `readPidFile(path)` — returns parsed pid or `null` if missing/malformed
-- `removePidFile(path)` — no-op if already absent
-- `isProcessAlive(pid)` — uses `process.kill(pid, 0)` (no signal sent) to probe liveness
-  - `ESRCH` → dead
-  - `EPERM` → live but foreign (treated as live for safety)
-
-### port-check.ts
-
-Port conflict detection + force-kill helpers (issue #33).
-
-**Key Functions:**
-- `lookupPortHolder(host, port)` — shells out to `lsof -i :<port> -sTCP:LISTEN -t -P -n`
-  - Returns `{ pid, command }` or `null` if lsof missing/no holder/error
-- `formatPortInUse({ host, port, holder })` — operator-facing error message with `--force` hint
-- `killHolder(pid, port, host)` — SIGTERM, wait 2s for port to free, then SIGKILL
-  - Throws on permission errors (e.g. EPERM)
-
-## Shebang
-
-```
-#!/usr/bin/env -S node --disable-warning=ExperimentalWarning
-```
-
-Suppresses Node.js experimental warnings (for `node:sqlite` and other unstable APIs used by dependencies).
+`packages/cli/tests/start-with-gateway-config.test.ts` verifies end-to-end that parsed YAML gateway config reaches adapter factories through `loadConfig(...) -> buildAdapters(...)`, preserving configured timeout values and per-gateway differences.
