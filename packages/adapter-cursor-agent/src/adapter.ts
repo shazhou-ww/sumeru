@@ -48,7 +48,16 @@ import type {
 
 const DEFAULT_CURSOR_AGENT_BIN = "cursor-agent";
 const DEFAULT_CREATE_TIMEOUT_MS = 5 * 60_000;
-const DEFAULT_SEND_TIMEOUT_MS = 10 * 60_000;
+/**
+ * Default `send` timeout — 2 hours.
+ *
+ * Raised from 10 minutes (issue #92) so long-running tasks are not killed
+ * mid-execution. Kept finite (not null): the timeout doubles as a
+ * wedged-process detector that #95 (timeout-as-suspend) will reuse. Operators
+ * may override via the `gateways.<name>.config.sendTimeoutMs` field in
+ * `sumeru.yaml`.
+ */
+const DEFAULT_SEND_TIMEOUT_MS = 2 * 60 * 60_000;
 const STDERR_TRUNCATE_LIMIT = 500;
 const API_KEY_ERROR_MESSAGE =
 	"cursor-agent API key error. Check your CURSOR_API_KEY configuration.";

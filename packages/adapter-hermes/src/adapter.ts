@@ -40,7 +40,17 @@ import type {
 const DEFAULT_HERMES_BIN = "hermes";
 const DEFAULT_SOURCE_TAG = "sumeru";
 const DEFAULT_CREATE_TIMEOUT_MS = 60_000;
-const DEFAULT_SEND_TIMEOUT_MS = 5 * 60_000;
+/**
+ * Default `send` timeout — 2 hours.
+ *
+ * Raised from 5 minutes (issue #92) so long-running tasks are not killed
+ * mid-execution. Kept finite (not null) on purpose: the timeout doubles as a
+ * wedged-process detector, and #95 (timeout-as-suspend) will reuse this trigger
+ * to turn a timeout into a resumable suspend rather than a hard failure.
+ * Operators may override via `gateways.<name>.config.sendTimeoutMs` in
+ * `sumeru.yaml`.
+ */
+const DEFAULT_SEND_TIMEOUT_MS = 2 * 60 * 60_000;
 
 const SESSION_ID_RE = /^[0-9]{8}_[0-9]{6}_[0-9a-f]+$/;
 const SESSION_LINE_RE = /^(?:Session:|session_id:)\s+(\S+)\s*$/m;

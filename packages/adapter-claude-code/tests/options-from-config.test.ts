@@ -71,7 +71,7 @@ describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue 
 		expect(streamCalls[0]?.args[maxTurnsIdx2 + 1]).toBe("120");
 	});
 
-	it("default factory uses 30-min sendTimeout and 5-min createTimeout", async () => {
+	it("default factory uses 2-hour sendTimeout and 5-min createTimeout", async () => {
 		const { calls: spawnCalls, spawnFn } = fakeSpawn({
 			stdout: buildNdjson({ sessionId: "sess-default" }),
 		});
@@ -89,8 +89,8 @@ describe("createClaudeCodeAdapter — options forwarded from sumeru.yaml (issue 
 		expect(spawnCalls.length).toBe(1);
 		expect(streamCalls.length).toBe(1);
 		expect(spawnCalls[0]?.timeoutMs).toBe(5 * 60_000);
-		// 30 min — the new default introduced by issue #32 (was 10 min).
-		expect(streamCalls[0]?.timeoutMs).toBe(30 * 60_000);
+		// 2 h — the new default introduced by issue #92 (was 30 min).
+		expect(streamCalls[0]?.timeoutMs).toBe(2 * 60 * 60_000);
 	});
 
 	it("send timeout yields error event with the operator-configured value", async () => {

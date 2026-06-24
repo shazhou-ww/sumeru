@@ -46,12 +46,15 @@ import type {
 const DEFAULT_CODEX_BIN = "codex";
 const DEFAULT_CREATE_TIMEOUT_MS = 5 * 60_000;
 /**
- * Default `send` timeout — 30 minutes.
+ * Default `send` timeout — 2 hours.
  *
- * Consistent with adapter-claude-code. Operators may further override via
- * the `gateways.<name>.config.sendTimeoutMs` field in `sumeru.yaml`.
+ * Consistent with adapter-claude-code. Raised from 30 minutes (issue #92) so
+ * long-running tasks are not killed mid-execution. Kept finite (not null): the
+ * timeout doubles as a wedged-process detector that #95 (timeout-as-suspend)
+ * will reuse. Operators may override via the
+ * `gateways.<name>.config.sendTimeoutMs` field in `sumeru.yaml`.
  */
-const DEFAULT_SEND_TIMEOUT_MS = 30 * 60_000;
+const DEFAULT_SEND_TIMEOUT_MS = 2 * 60 * 60_000;
 const STDERR_TRUNCATE_LIMIT = 500;
 const API_KEY_ERROR_MESSAGE =
 	"codex API key error. Check your OPENAI_API_KEY configuration.";
