@@ -455,6 +455,20 @@ export async function handleMessageEndpoint(
 					JSON.stringify({ type: "@sumeru/summary", value: summary }),
 				);
 				res.write(formatEvent(doneEvt));
+			} else if (event.type === "suspend") {
+				const suspendEvt = appendEvent(
+					buf,
+					"suspend",
+					JSON.stringify({
+						type: "@sumeru/suspend",
+						value: {
+							reason: event.reason,
+							nativeId: event.nativeId,
+							elapsedMs: event.elapsedMs,
+						},
+					}),
+				);
+				res.write(formatEvent(suspendEvt));
 			} else if (event.type === "error") {
 				const errEvt = appendEvent(
 					buf,

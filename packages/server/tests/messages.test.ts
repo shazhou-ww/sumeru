@@ -323,6 +323,102 @@ describe("@sumeru/server — POST /gateways/:name/sessions/:id/messages (SSE)", 
 		expect(detailBody.value.status).toBe("idle");
 	});
 
+	it("emits event: suspend envelope when adapter.send yields a suspend event (and session returns to idle)", async () => {
+		await server.stop();
+		const suspending = makeStubAdapter({
+			name: "hermes",
+			respond: async function* () {
+				yield {
+					type: "suspend",
+					reason: "timeout",
+					nativeId: "native-xyz",
+					elapsedMs: 4242,
+				};
+			},
+		});
+		const ctx = await startTest(suspending);
+		server = ctx.server;
+		baseUrl = ctx.baseUrl;
+		_stub = ctx.stub;
+		const sessionId = await createSession(baseUrl);
+		const { status, text } = await postMessages(
+			baseUrl,
+			sessionId,
+			JSON.stringify({ content: "hi" }),
+		);
+		expect(status).toBe(200);
+		const events = parseSseStream(text);
+		const suspendEvents = events.filter((e) => e.event === "suspend");
+		const errorEvents = events.filter((e) => e.event === "error");
+		const doneEvents = events.filter((e) => e.event === "done");
+		// timeout is conveyed ONLY as event: suspend, never as error or done
+		expect(suspendEvents.length).toBe(1);
+		expect(errorEvents.length).toBe(0);
+		expect(doneEvents.length).toBe(0);
+		const env = suspendEvents[0]?.data as {
+			type: string;
+			value: { reason: string; nativeId: string; elapsedMs: number };
+		};
+		expect(env.type).toBe("@sumeru/suspend");
+		expect(env.value.reason).toBe("timeout");
+		expect(env.value.nativeId).toBe("native-xyz");
+		expect(env.value.nativeId.length).toBeGreaterThan(0);
+		expect(env.value.elapsedMs).toBe(4242);
+
+		// session is back to idle (suspend is not fatal; resume is allowed)
+		const detail = await fetch(
+			`${baseUrl}/gateways/hermes/sessions/${sessionId}`,
+		);
+		const detailBody = (await detail.json()) as { value: { status: string } };
+		expect(detailBody.value.status).toBe("idle");
+	});
+
+	it("suspend is the last frame: turn then suspend, no done/error after", async () => {
+		await server.stop();
+		const suspending = makeStubAdapter({
+			name: "hermes",
+			respond: async function* () {
+				yield {
+					type: "turn",
+					turn: {
+						index: 1,
+						role: "assistant",
+						content: "partial work",
+						toolCalls: null,
+						tokens: null,
+						timestamp: new Date().toISOString(),
+					},
+				};
+				yield {
+					type: "suspend",
+					reason: "timeout",
+					nativeId: "native-after-turn",
+					elapsedMs: 99,
+				};
+			},
+		});
+		const ctx = await startTest(suspending);
+		server = ctx.server;
+		baseUrl = ctx.baseUrl;
+		_stub = ctx.stub;
+		const sessionId = await createSession(baseUrl);
+		const { status, text } = await postMessages(
+			baseUrl,
+			sessionId,
+			JSON.stringify({ content: "hi" }),
+		);
+		expect(status).toBe(200);
+		const events = parseSseStream(text).filter(
+			(e) => e.event === "turn" || e.event === "suspend" || e.event === "done",
+		);
+		// frames are turn (id 1) then suspend (id 2) — no done, no error
+		const names = events.map((e) => e.event);
+		expect(names).toEqual(["turn", "suspend"]);
+		expect(events[0]?.id).toBe(1);
+		expect(events[1]?.id).toBe(2);
+		expect((events[1]?.data as { type: string }).type).toBe("@sumeru/suspend");
+	});
+
 	it("409 session_busy when two sends race on the same session", async () => {
 		await server.stop();
 		const slow = makeStubAdapter({ name: "hermes", sendDelayMs: 200 });

@@ -83,6 +83,7 @@ SSE 事件流：
 - `event: turn` — 完整的 Turn 对象 `{ index, role, content, timestamp, hash }`
 - `event: heartbeat` — 保活
 - `event: done` — 完成，附带 summary `{ turnCount, tokens, durationMs }`
+- `event: suspend` — 终态：send 被中断（当前仅 `reason: "timeout"`），附带 `{ reason, nativeId, elapsedMs }`，可凭 `nativeId` 将来 resume
 - `event: error` — 错误
 
 支持 `Last-Event-ID` header 断点续传。

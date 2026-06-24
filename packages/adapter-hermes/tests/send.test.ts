@@ -92,6 +92,15 @@ function extractError(
 	);
 }
 
+/** Extract the suspend event from collected events. */
+function extractSuspend(
+	events: SendEvent[],
+): Extract<SendEvent, { type: "suspend" }> | undefined {
+	return events.find(
+		(e): e is Extract<SendEvent, { type: "suspend" }> => e.type === "suspend",
+	);
+}
+
 /** Drain the iterable to force the full stream to execute. */
 async function drain(iter: AsyncIterable<SendEvent>): Promise<void> {
 	for await (const _ of iter) {
@@ -227,16 +236,23 @@ describe("@sumeru/adapter-hermes — send", () => {
 		expect(error?.error.message).toMatch(/not found/);
 	});
 
-	it("yields error event on timeout", async () => {
+	it("yields suspend event on timeout", async () => {
 		const adapter = createHermesAdapter({
 			spawnFn: makeSpawn({ timedOut: true }),
 			turnsReader: async () => [],
 			sendTimeoutMs: 50,
 		});
-		const events = await collectEvents(adapter.send(ref(), "hi"));
-		const error = extractError(events);
-		expect(error).toBeDefined();
-		expect(error?.error.message).toMatch(/send timed out after 50ms/);
+		const sessionRef = ref();
+		const events = await collectEvents(adapter.send(sessionRef, "hi"));
+		const suspend = extractSuspend(events);
+		expect(suspend).toBeDefined();
+		expect(suspend?.reason).toBe("timeout");
+		expect(suspend?.nativeId).toBe(sessionRef.nativeId);
+		expect(suspend?.nativeId.length).toBeGreaterThan(0);
+		expect(typeof suspend?.elapsedMs).toBe("number");
+		// suspend is terminal: no error and no done follow it
+		expect(extractError(events)).toBeUndefined();
+		expect(extractDone(events)).toBeUndefined();
 	});
 
 	it("serializes concurrent sends per nativeId via mutex", async () => {

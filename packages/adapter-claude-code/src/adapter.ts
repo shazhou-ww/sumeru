@@ -342,8 +342,10 @@ export function createClaudeCodeAdapter(
 
 		if (exitInfo.timedOut) {
 			yield {
-				type: "error" as const,
-				error: new Error(`send timed out after ${sendTimeoutMs}ms`),
+				type: "suspend" as const,
+				reason: "timeout",
+				nativeId,
+				elapsedMs: exitInfo.durationMs,
 			};
 			return;
 		}

@@ -271,8 +271,10 @@ export function createHermesAdapter(
 				if (result.timedOut) {
 					return [
 						{
-							type: "error" as const,
-							error: new Error(`send timed out after ${sendTimeoutMs}ms`),
+							type: "suspend" as const,
+							reason: "timeout",
+							nativeId,
+							elapsedMs: Date.now() - startedAt,
 						},
 					];
 				}

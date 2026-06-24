@@ -71,6 +71,49 @@ describe("@sumeru/core — Adapter type surface", () => {
 		expectTypeOf(errorEvt).toMatchTypeOf<SendEvent>();
 	});
 
+	it("SendEvent includes a terminal suspend variant carrying nativeId + elapsedMs", () => {
+		const suspendEvt: SendEvent = {
+			type: "suspend",
+			reason: "timeout",
+			nativeId: "abc",
+			elapsedMs: 1234,
+		};
+		expectTypeOf(suspendEvt).toMatchTypeOf<SendEvent>();
+
+		type SuspendEvent = Extract<SendEvent, { type: "suspend" }>;
+		expectTypeOf<SuspendEvent["reason"]>().toEqualTypeOf<"timeout">();
+		expectTypeOf<SuspendEvent["nativeId"]>().toEqualTypeOf<string>();
+		expectTypeOf<SuspendEvent["elapsedMs"]>().toEqualTypeOf<number>();
+	});
+
+	it("rejects a suspend event missing nativeId", () => {
+		// @ts-expect-error — nativeId is required, non-nullable
+		const _bad: SendEvent = {
+			type: "suspend",
+			reason: "timeout",
+			elapsedMs: 1234,
+		};
+	});
+
+	it("rejects a suspend event missing elapsedMs", () => {
+		// @ts-expect-error — elapsedMs is required, non-nullable
+		const _bad: SendEvent = {
+			type: "suspend",
+			reason: "timeout",
+			nativeId: "abc",
+		};
+	});
+
+	it("rejects a suspend event whose reason is not the literal 'timeout'", () => {
+		// @ts-expect-error — reason is the string literal "timeout", not a free string
+		const _bad: SendEvent = {
+			type: "suspend",
+			reason: "cancelled",
+			nativeId: "abc",
+			elapsedMs: 1234,
+		};
+	});
+
 	it("SendEvent done tokens uses T | null (not optional)", () => {
 		type DoneEvent = Extract<SendEvent, { type: "done" }>;
 		expectTypeOf<DoneEvent["tokens"]>().toEqualTypeOf<TokenUsage | null>();
