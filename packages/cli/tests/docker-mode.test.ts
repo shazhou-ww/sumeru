@@ -162,11 +162,15 @@ describe.skipIf(!GATED)(
 		}, COLD_BUILD_MS);
 
 		// ─── Then-1: image builds + self-contained ─────────────
-		it("builds a self-contained image (node 22, global sumeru, no source COPY)", async () => {
+		it("builds a self-contained image (node 24 default, global sumeru, no source COPY)", async () => {
 			// The image sets `ENTRYPOINT ["sumeru"]`, so a bare `docker run IMAGE
 			// node …` would run `sumeru node …` (the args become sumeru
 			// subcommands). Probing the base image therefore overrides the
 			// entrypoint with `--entrypoint <bin>`.
+			// Default `node` is the nvm-managed v24 LTS (issue #102 toolchain
+			// baseline): the foundation layer prepends the default Node 24 bin
+			// onto the base PATH, so a bare non-login `node` resolves to v24, not
+			// the node:22-slim base interpreter.
 			const ver = await docker([
 				"run",
 				"--rm",
@@ -176,7 +180,7 @@ describe.skipIf(!GATED)(
 				"--version",
 			]);
 			expect(ver.code).toBe(0);
-			expect(ver.stdout.trim()).toMatch(/^v22\./);
+			expect(ver.stdout.trim()).toMatch(/^v24\./);
 
 			const tools = await docker([
 				"run",

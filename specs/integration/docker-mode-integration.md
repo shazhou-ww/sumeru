@@ -110,7 +110,7 @@ The gated suite runs (with `SUMERU_DOCKER_INTEGRATION=1` and Docker present) the
 ### Then-1: the image builds and is self-contained
 
 - `docker compose -p <name> build` (or `docker build -t sumeru:latest`) exits `0`.
-- `docker run --rm <image> node --version` prints `v22.*`.
+- `docker run --rm <image> node --version` prints `v24.*` (the nvm-managed default Node 24 LTS — the toolchain baseline, issue #102, prepends it onto the base `PATH` so a bare non-login `node` resolves to v24, not the `node:22-slim` base interpreter).
 - `docker run --rm <image> sh -lc 'command -v git && command -v node && command -v sumeru'` prints three absolute paths (`sumeru` from the global npm install).
 - **Self-containment (asserted on the templates, not just the build):** the shipped `Dockerfile` contains **no** `COPY packages` / `COPY src` / `COPY dist` line (a regex scan of `packages/server/templates/docker/Dockerfile`), and the build succeeds with an **empty-ish build context** (only the three emitted assets in the unit dir). `docker run --rm <image> npm ls -g @sumeru/cli` lists a concrete version (the install came from npm, not a source tree).
 - A missing adapter binary does NOT fail the build (adapter binaries are run-time `spawn` dependencies; the build never validates their presence).
