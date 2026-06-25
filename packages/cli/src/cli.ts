@@ -2,21 +2,10 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-	type GatewayConfig,
-	type InstanceConfig,
-	loadConfig,
-	materializeDockerAssets,
-	startServer,
-} from "@sumeru/server";
-import { Command } from "commander";
+import { createCLI } from "@ocas/cli-kit";
+import { type GatewayConfig, loadConfig, startServer } from "@sumeru/server";
+import { z } from "zod";
 import { buildAdapters } from "./build-adapters.js";
-import { type DeployConfig, loadDeployConfig } from "./deploy-config.js";
-import {
-	DOCKER_UNAVAILABLE_MESSAGE,
-	isDockerAvailable,
-	launchDockerCompose,
-} from "./docker-launch.js";
 import {
 	isProcessAlive,
 	readPidFile,
@@ -26,150 +15,66 @@ import {
 } from "./pid-file.js";
 import { formatPortInUse, killHolder, lookupPortHolder } from "./port-check.js";
 
-function findVersion(): string {
-	let dir = dirname(fileURLToPath(import.meta.url));
-	for (let i = 0; i < 5; i++) {
-		try {
-			const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf-8"));
-			if (pkg.name === "@sumeru/cli") return pkg.version ?? "0.0.0";
-		} catch {
-			/* keep walking */
-		}
-		dir = dirname(dir);
-	}
-	return "0.0.0";
-}
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(
+	readFileSync(join(__dirname, "..", "package.json"), "utf-8"),
+) as { version: string };
+const VERSION = pkg.version;
 
-const program = new Command();
+// --- Schemas ---
 
-program
-	.name("sumeru")
-	.description("Agent house — HTTP service for multi-agent management")
-	.version(findVersion());
+const notImplementedSchema = z.object({
+	command: z.string(),
+	status: z.literal("not_implemented"),
+});
 
-program
-	.command("run")
-	.description("[planned] Run a scene with a specified adapter and model")
-	.requiredOption("-s, --scene <path>", "Path to scene directory or YAML")
-	.requiredOption("-r, --runner <type>", "Adapter type (hermes, claude-code)")
-	.requiredOption("-m, --model <model>", "Model identifier")
-	.option("-t, --timeout <seconds>", "Timeout in seconds", "300")
-	.option("--network", "Allow network access", true)
-	.option("--no-network", "Disable network access")
-	.option("-o, --output <path>", "Output path for recording")
-	.action(async (opts) => {
-		console.log("sumeru run — not yet implemented");
-		console.log("Options:", JSON.stringify(opts, null, 2));
-	});
+const startResultSchema = z.object({
+	url: z.string(),
+	host: z.string(),
+	port: z.number(),
+	status: z.literal("started"),
+});
 
-program
-	.command("list")
-	.description("[planned] List available scenes")
-	.option("-d, --dir <path>", "Scenes directory", "scenes")
-	.action(async (opts) => {
-		console.log("sumeru list — not yet implemented");
-		console.log("Directory:", opts.dir);
-	});
+// --- Build CLI ---
 
-program
+const cli = createCLI({
+	name: "sumeru",
+	version: VERSION,
+});
+
+// start [--port] [--host] [--config] [--ocas-dir] [--force]
+cli
 	.command("start")
-	.description("Start the Sumeru HTTP server")
-	.option("-p, --port <number>", "TCP port to bind (0 = ephemeral)", "7900")
-	.option("-h, --host <host>", "Bind address", "127.0.0.1")
-	.option("-c, --config <path>", "Path to sumeru.yaml configuration file")
-	.option(
-		"--ocas-dir <path>",
-		"Directory for the ocas content-addressed store (default: $SUMERU_OCAS_DIR or ~/.sumeru/ocas)",
-	)
-	.option(
-		"--force",
-		"Kill any process holding the chosen port before binding (sends SIGTERM, then SIGKILL after 2s)",
-	)
-	.option(
-		"--emit-assets",
-		"Release the Docker compose templates next to the config, then exit (do not launch)",
-	)
-	.action(async (opts) => {
-		const configPath =
-			typeof opts.config === "string" && opts.config.length > 0
-				? opts.config
-				: null;
-
-		// --- `--emit-assets`: materialize-and-exit (issue #85) ---
-		// Pure side-effecting file emit feeding the manual `docker compose` flow.
-		// It short-circuits BEFORE any deploy-mode dispatch: no Docker probe, no
-		// pid file, no port bind, no startServer, no `docker compose up`. Unlike
-		// the implicit auto-start path it MAY overwrite (explicit refresh), which
-		// is exactly `materializeDockerAssets`' unconditional copy.
-		if (opts.emitAssets === true) {
-			if (configPath === null) {
-				console.error(
-					"--emit-assets requires -c <config> to choose the target directory.",
-				);
-				process.exit(1);
-			}
-			const written = materializeDockerAssets(dirname(configPath));
-			for (const p of written) console.log(`[sumeru] wrote ${p}`);
-			process.exit(0);
-		}
-
-		const port = Number.parseInt(opts.port, 10);
-		if (Number.isNaN(port) || port < 0) {
-			console.error(`Invalid --port value: ${opts.port}`);
-			process.exit(1);
-		}
-		const host = String(opts.host);
-		const force = Boolean(opts.force);
+	.flag("port", { type: "number", default: 7900 })
+	.flag("host", { type: "string", default: "127.0.0.1" })
+	.flag("config", { type: "string" })
+	.flag("ocas-dir", { type: "string" })
+	.flag("force", { type: "boolean", default: false })
+	.returns(startResultSchema, "Listening on {{ url }}")
+	.action(async (_args, flags, ctx) => {
+		const port = flags.port as number;
+		const host = flags.host as string;
+		const force = flags.force as boolean;
+		const configPath = (flags.config as string | undefined) ?? null;
+		const ocasDirRaw = flags["ocas-dir"] as string | undefined;
 		const ocasDir =
-			typeof opts.ocasDir === "string" && opts.ocasDir.length > 0
-				? opts.ocasDir
+			typeof ocasDirRaw === "string" && ocasDirRaw.length > 0
+				? ocasDirRaw
 				: null;
 
-		// Load config (if any) BEFORE binding a port — we want to fail loudly
-		// on bad config without leaving a half-started listener around.
+		// Load config (if any) BEFORE binding a port
 		let name = "sumeru";
 		let gateways: Record<string, GatewayConfig> = {};
 		let workspaceRoot: string | null = null;
 		if (configPath !== null) {
-			let cfg: InstanceConfig;
 			try {
-				cfg = await loadConfig(configPath);
+				const cfg = await loadConfig(configPath);
+				name = cfg.name;
+				gateways = cfg.gateways;
+				workspaceRoot = cfg.workspaceRoot;
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
-				console.error(`Failed to load config from ${configPath}: ${msg}`);
-				process.exit(1);
-			}
-			name = cfg.name;
-			gateways = cfg.gateways;
-			workspaceRoot = cfg.workspaceRoot;
-
-			// --- deploy.mode dispatch (issue #85) ---
-			// docker mode is a thin `docker compose` wrapper: NO local pid file,
-			// NO port bind, NO startServer. Probe Docker first; an unavailable
-			// daemon is a hard stop (no silent fallback to local). local / absent
-			// deploy blocks fall through to the existing local path below.
-			let deploy: DeployConfig;
-			try {
-				deploy = await loadDeployConfig(configPath);
-			} catch (err) {
-				const msg = err instanceof Error ? err.message : String(err);
-				console.error(`Failed to load config from ${configPath}: ${msg}`);
-				process.exit(1);
-			}
-			if (deploy.mode === "docker") {
-				if (!isDockerAvailable()) {
-					console.error(DOCKER_UNAVAILABLE_MESSAGE);
-					process.exit(1);
-				}
-				let code: number;
-				try {
-					code = await launchDockerCompose({ name, configPath, deploy });
-				} catch (err) {
-					const msg = err instanceof Error ? err.message : String(err);
-					console.error(`Failed to start docker compose: ${msg}`);
-					process.exit(1);
-				}
-				process.exit(code);
+				ctx.error(`Failed to load config from ${configPath}: ${msg}`);
 			}
 		}
 
@@ -181,25 +86,24 @@ program
 				if (force) {
 					try {
 						await killHolder(existingPid, port, host);
-						console.error(
-							`[sumeru] killed pid ${existingPid} from stale pid file`,
+						ctx.log.info(
+							"SUMERU0001",
+							`killed pid ${existingPid} from stale pid file`,
 						);
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err);
-						console.error(`Failed to kill pid ${existingPid}: ${msg}`);
-						process.exit(1);
+						ctx.error(`Failed to kill pid ${existingPid}: ${msg}`);
 					}
 				} else {
-					console.error(
+					ctx.error(
 						`Another sumeru appears to be running (pid ${existingPid}, recorded in ${pidFilePath}).\n  Stop it first, or run \`sumeru start … --force\` to terminate it.`,
 					);
-					process.exit(1);
 				}
 			} else {
-				console.error(
-					`[sumeru] removing stale pid file (pid ${existingPid} not running)`,
+				ctx.log.info(
+					"SUMERU0002",
+					`removing stale pid file (pid ${existingPid} not running)`,
 				);
-				// fall through; writePidFile below will overwrite.
 			}
 		}
 
@@ -207,8 +111,7 @@ program
 			writePidFile(pidFilePath, process.pid);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			console.error(`[sumeru] could not write pid file ${pidFilePath}: ${msg}`);
-			// Best-effort — continue startup.
+			ctx.log.warn("SUMERU0003", `could not write pid file: ${msg}`);
 		}
 
 		try {
@@ -216,54 +119,63 @@ program
 				port,
 				host,
 				name,
-				version: findVersion(),
+				version: VERSION,
 				gateways,
 				workspaceRoot,
 				ocasDir,
 				force,
 			});
-			console.log(`Listening on http://${server.host}:${server.port}`);
 
-			let shuttingDown = false;
-			const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
-				if (shuttingDown) {
-					// Second signal — escape hatch for a hung shutdown.
-					const code = signal === "SIGINT" ? 130 : 143;
-					process.exit(code);
-				}
-				shuttingDown = true;
-				console.error(`[sumeru] shutting down (${signal})...`);
-				try {
-					await server.stop();
+			const url = `http://${server.host}:${server.port}`;
+
+			// Block until shutdown signal
+			await new Promise<void>((resolve) => {
+				let shuttingDown = false;
+				const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+					if (shuttingDown) {
+						const code = signal === "SIGINT" ? 130 : 143;
+						process.exit(code);
+					}
+					shuttingDown = true;
+					ctx.log.info("SUMERU0004", `shutting down (${signal})...`);
 					try {
-						removePidFile(pidFilePath);
+						await server.stop();
+						try {
+							removePidFile(pidFilePath);
+						} catch (err) {
+							const msg = err instanceof Error ? err.message : String(err);
+							ctx.log.warn("SUMERU0005", `could not remove pid file: ${msg}`);
+						}
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err);
-						console.error(`[sumeru] could not remove pid file: ${msg}`);
+						ctx.log.warn("SUMERU0006", `failed to stop server: ${msg}`);
+						try {
+							removePidFile(pidFilePath);
+						} catch {
+							/* ignore on the failure path */
+						}
 					}
-					process.exit(0);
-				} catch (err) {
-					const msg = err instanceof Error ? err.message : String(err);
-					console.error(`[sumeru] failed to stop server: ${msg}`);
-					try {
-						removePidFile(pidFilePath);
-					} catch {
-						/* ignore on the failure path */
-					}
-					process.exit(1);
-				}
+					resolve();
+				};
+				process.on("SIGINT", () => {
+					void shutdown("SIGINT");
+				});
+				process.on("SIGTERM", () => {
+					void shutdown("SIGTERM");
+				});
+			});
+
+			return {
+				url,
+				host: server.host,
+				port: server.port,
+				status: "started" as const,
 			};
-			process.on("SIGINT", () => {
-				void shutdown("SIGINT");
-			});
-			process.on("SIGTERM", () => {
-				void shutdown("SIGTERM");
-			});
 		} catch (err) {
 			try {
 				removePidFile(pidFilePath);
 			} catch {
-				/* best effort on the error path */
+				/* best effort */
 			}
 			const code =
 				err instanceof Error && "code" in err
@@ -271,14 +183,39 @@ program
 					: null;
 			if (code === "EADDRINUSE") {
 				const holder = await lookupPortHolder(host, port);
-				console.error(formatPortInUse({ host, port, holder }));
+				ctx.error(formatPortInUse({ host, port, holder }));
 			} else {
 				const msg = err instanceof Error ? err.message : String(err);
-				console.error(`Failed to start server: ${msg}`);
+				ctx.error(`Failed to start server: ${msg}`);
 			}
-			process.exit(1);
 		}
 	});
+
+// run [planned]
+cli
+	.command("run")
+	.flag("scene", { type: "string" })
+	.flag("runner", { type: "string" })
+	.flag("model", { type: "string" })
+	.flag("timeout", { type: "number", default: 300 })
+	.flag("network", { type: "boolean", default: true })
+	.flag("image", { type: "string" })
+	.flag("output", { type: "string" })
+	.returns(notImplementedSchema, "{{ command }}: {{ status }}")
+	.action(async () => {
+		return { command: "run", status: "not_implemented" as const };
+	});
+
+// list [planned]
+cli
+	.command("list")
+	.flag("dir", { type: "string", default: "scenes" })
+	.returns(notImplementedSchema, "{{ command }}: {{ status }}")
+	.action(async () => {
+		return { command: "list", status: "not_implemented" as const };
+	});
+
+// --- Helpers ---
 
 type StartArgs = {
 	port: number;
@@ -317,21 +254,14 @@ async function startServerWithRetry(
 
 		const holder = await lookupPortHolder(args.host, args.port);
 		if (holder === null) {
-			// Cannot identify holder — propagate the original error so the
-			// generic diagnostic kicks in.
 			throw err;
 		}
 		try {
 			await killHolder(holder.pid, args.port, args.host);
 		} catch (killErr) {
 			const msg = killErr instanceof Error ? killErr.message : String(killErr);
-			console.error(`Failed to kill pid ${holder.pid}: ${msg}`);
-			process.exit(1);
+			throw new Error(`Failed to kill pid ${holder.pid}: ${msg}`);
 		}
-		console.error(
-			`[sumeru] killed pid ${holder.pid} holding port ${args.port}`,
-		);
-		// Retry the bind once.
 		return startServer({
 			port: args.port,
 			host: args.host,
@@ -348,4 +278,4 @@ async function startServerWithRetry(
 	}
 }
 
-program.parse();
+cli.run();
