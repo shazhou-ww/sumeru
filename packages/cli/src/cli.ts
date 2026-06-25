@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createCLI } from "@ocas/cli-kit";
 import {
 	type GatewayConfig,
 	type InstanceConfig,
@@ -9,7 +10,7 @@ import {
 	materializeDockerAssets,
 	startServer,
 } from "@sumeru/server";
-import { Command } from "commander";
+import { z } from "zod";
 import { buildAdapters } from "./build-adapters.js";
 import { type DeployConfig, loadDeployConfig } from "./deploy-config.js";
 import {
@@ -26,74 +27,143 @@ import {
 } from "./pid-file.js";
 import { formatPortInUse, killHolder, lookupPortHolder } from "./port-check.js";
 
-function findVersion(): string {
-	let dir = dirname(fileURLToPath(import.meta.url));
-	for (let i = 0; i < 5; i++) {
-		try {
-			const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf-8"));
-			if (pkg.name === "@sumeru/cli") return pkg.version ?? "0.0.0";
-		} catch {
-			/* keep walking */
-		}
-		dir = dirname(dir);
-	}
-	return "0.0.0";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(
+	readFileSync(join(__dirname, "..", "package.json"), "utf-8"),
+) as { version: string };
+const VERSION = pkg.version;
+
+// --- Early: --version / -v (before cli-kit, which doesn't handle these) ---
+// See https://git.shazhou.work/shazhou/ocas/issues/230 (missing --help support)
+
+const firstToken = process.argv[2];
+if (firstToken === "--version" || firstToken === "-v") {
+	process.stdout.write(`${VERSION}\n`);
+	process.exit(0);
 }
 
-const program = new Command();
+// --- Early: top-level --help / -h / no args ---
 
-program
-	.name("sumeru")
-	.description("Agent house — HTTP service for multi-agent management")
-	.version(findVersion());
+const HELP_TEXT = `Usage: sumeru <command> [options]
 
-program
-	.command("run")
-	.description("[planned] Run a scene with a specified adapter and model")
-	.requiredOption("-s, --scene <path>", "Path to scene directory or YAML")
-	.requiredOption("-r, --runner <type>", "Adapter type (hermes, claude-code)")
-	.requiredOption("-m, --model <model>", "Model identifier")
-	.option("-t, --timeout <seconds>", "Timeout in seconds", "300")
-	.option("--network", "Allow network access", true)
-	.option("--no-network", "Disable network access")
-	.option("-o, --output <path>", "Output path for recording")
-	.action(async (opts) => {
-		console.log("sumeru run — not yet implemented");
-		console.log("Options:", JSON.stringify(opts, null, 2));
-	});
+Commands:
+  start    Start the Sumeru HTTP server
+  run      [planned] Run a scene with a specified adapter and model
+  list     [planned] List available scenes
 
-program
-	.command("list")
-	.description("[planned] List available scenes")
-	.option("-d, --dir <path>", "Scenes directory", "scenes")
-	.action(async (opts) => {
-		console.log("sumeru list — not yet implemented");
-		console.log("Directory:", opts.dir);
-	});
+Standard flags:
+  --format <yaml|json|text>    Output format (default: yaml)
+  --compact                    Compact output
+  --quiet                      Suppress stderr yields
+  --json                       Shorthand for --format json --compact
 
-program
+Options:
+  -h, --help                   Show this help
+  -v, --version                Show version
+`;
+
+const argv = process.argv.slice(2);
+const firstArg = argv[0];
+if (firstArg === undefined || firstArg === "--help" || firstArg === "-h") {
+	process.stdout.write(HELP_TEXT);
+	process.exit(0);
+}
+
+// --- Per-command --help (cli-kit doesn't generate per-command help) ---
+
+const START_HELP = `Usage: sumeru start [options]
+
+Start the Sumeru HTTP server
+
+Options:
+  -p, --port <number>      TCP port to bind (0 = ephemeral) (default: 7900)
+  -h, --host <host>        Bind address (default: 127.0.0.1)
+  -c, --config <path>      Path to sumeru.yaml configuration file
+  --ocas-dir <path>        Directory for the ocas content-addressed store (default: $SUMERU_OCAS_DIR or ~/.sumeru/ocas)
+  --force                  Kill any process holding the chosen port before binding (sends SIGTERM, then SIGKILL after 2s)
+  --emit-assets            Release the Docker compose templates next to the config, then exit (do not launch)
+`;
+
+const RUN_HELP = `Usage: sumeru run [options]
+
+[planned] Run a scene with a specified adapter and model
+
+Options:
+  -s, --scene <path>       Path to scene directory or YAML
+  -r, --runner <type>      Adapter type (hermes, claude-code)
+  -m, --model <model>      Model identifier
+  -t, --timeout <seconds>  Timeout in seconds (default: 300)
+  --network                Allow network access (default)
+  --no-network             Disable network access
+  -o, --output <path>      Output path for recording
+`;
+
+if (firstArg === "start" && (argv[1] === "--help" || argv[1] === "-h")) {
+	process.stdout.write(START_HELP);
+	process.exit(0);
+}
+if (firstArg === "run" && (argv[1] === "--help" || argv[1] === "-h")) {
+	process.stdout.write(RUN_HELP);
+	process.exit(0);
+}
+
+// --- Schemas ---
+
+const notImplementedSchema = z.object({
+	command: z.string(),
+	status: z.literal("not_implemented"),
+});
+
+// Dummy schema for start — the action always calls process.exit(), so the
+// return value is never validated. This just satisfies cli-kit's requirement
+// that executable commands declare a .returns().
+const startResultSchema = z.object({
+	url: z.string(),
+	host: z.string(),
+	port: z.number(),
+	status: z.literal("started"),
+});
+
+// --- Build CLI ---
+
+const cli = createCLI({
+	name: "sumeru",
+	version: VERSION,
+});
+
+// start — long-running server process.
+//
+// cli-kit's output system (returns/yields/NDJSON) is bypassed entirely:
+// the action uses process.stdout/stderr.write() + process.exit() for all
+// output, and returns undefined so cli-kit doesn't render anything.
+// This preserves the exact output format the e2e tests expect.
+//
+// Short flags (-c, -p, -h) are defined as separate flag names because
+// cli-kit doesn't support flag aliases (issue #230).
+cli
 	.command("start")
-	.description("Start the Sumeru HTTP server")
-	.option("-p, --port <number>", "TCP port to bind (0 = ephemeral)", "7900")
-	.option("-h, --host <host>", "Bind address", "127.0.0.1")
-	.option("-c, --config <path>", "Path to sumeru.yaml configuration file")
-	.option(
-		"--ocas-dir <path>",
-		"Directory for the ocas content-addressed store (default: $SUMERU_OCAS_DIR or ~/.sumeru/ocas)",
-	)
-	.option(
-		"--force",
-		"Kill any process holding the chosen port before binding (sends SIGTERM, then SIGKILL after 2s)",
-	)
-	.option(
-		"--emit-assets",
-		"Release the Docker compose templates next to the config, then exit (do not launch)",
-	)
-	.action(async (opts) => {
+	.flag("port", { type: "number", default: 7900 })
+	.flag("host", { type: "string", default: "127.0.0.1" })
+	.flag("config", { type: "string" })
+	.flag("c", { type: "string" }) // short alias for --config
+	.flag("ocas-dir", { type: "string" })
+	.flag("force", { type: "boolean", default: false })
+	.flag("emit-assets", { type: "boolean", default: false })
+	.returns(startResultSchema, "")
+	.action(async (_args, flags) => {
+		const port = flags.port as number;
+		const host = flags.host as string;
+		const force = flags.force as boolean;
 		const configPath =
-			typeof opts.config === "string" && opts.config.length > 0
-				? opts.config
+			(flags.config as string | undefined) ??
+			(flags.c as string | undefined) ??
+			null;
+		const ocasDirRaw = flags["ocas-dir"] as string | undefined;
+		const ocasDir =
+			typeof ocasDirRaw === "string" && ocasDirRaw.length > 0
+				? ocasDirRaw
 				: null;
+		const emitAssets = flags["emit-assets"] as boolean;
 
 		// --- `--emit-assets`: materialize-and-exit (issue #85) ---
 		// Pure side-effecting file emit feeding the manual `docker compose` flow.
@@ -101,29 +171,17 @@ program
 		// pid file, no port bind, no startServer, no `docker compose up`. Unlike
 		// the implicit auto-start path it MAY overwrite (explicit refresh), which
 		// is exactly `materializeDockerAssets`' unconditional copy.
-		if (opts.emitAssets === true) {
+		if (emitAssets) {
 			if (configPath === null) {
-				console.error(
-					"--emit-assets requires -c <config> to choose the target directory.",
+				process.stderr.write(
+					"--emit-assets requires -c <config> to choose the target directory.\n",
 				);
 				process.exit(1);
 			}
 			const written = materializeDockerAssets(dirname(configPath));
-			for (const p of written) console.log(`[sumeru] wrote ${p}`);
+			for (const p of written) process.stdout.write(`[sumeru] wrote ${p}\n`);
 			process.exit(0);
 		}
-
-		const port = Number.parseInt(opts.port, 10);
-		if (Number.isNaN(port) || port < 0) {
-			console.error(`Invalid --port value: ${opts.port}`);
-			process.exit(1);
-		}
-		const host = String(opts.host);
-		const force = Boolean(opts.force);
-		const ocasDir =
-			typeof opts.ocasDir === "string" && opts.ocasDir.length > 0
-				? opts.ocasDir
-				: null;
 
 		// Load config (if any) BEFORE binding a port — we want to fail loudly
 		// on bad config without leaving a half-started listener around.
@@ -136,7 +194,9 @@ program
 				cfg = await loadConfig(configPath);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
-				console.error(`Failed to load config from ${configPath}: ${msg}`);
+				process.stderr.write(
+					`Failed to load config from ${configPath}: ${msg}\n`,
+				);
 				process.exit(1);
 			}
 			name = cfg.name;
@@ -153,12 +213,14 @@ program
 				deploy = await loadDeployConfig(configPath);
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
-				console.error(`Failed to load config from ${configPath}: ${msg}`);
+				process.stderr.write(
+					`Failed to load config from ${configPath}: ${msg}\n`,
+				);
 				process.exit(1);
 			}
 			if (deploy.mode === "docker") {
 				if (!isDockerAvailable()) {
-					console.error(DOCKER_UNAVAILABLE_MESSAGE);
+					process.stderr.write(`${DOCKER_UNAVAILABLE_MESSAGE}\n`);
 					process.exit(1);
 				}
 				let code: number;
@@ -166,7 +228,7 @@ program
 					code = await launchDockerCompose({ name, configPath, deploy });
 				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
-					console.error(`Failed to start docker compose: ${msg}`);
+					process.stderr.write(`Failed to start docker compose: ${msg}\n`);
 					process.exit(1);
 				}
 				process.exit(code);
@@ -181,23 +243,23 @@ program
 				if (force) {
 					try {
 						await killHolder(existingPid, port, host);
-						console.error(
-							`[sumeru] killed pid ${existingPid} from stale pid file`,
+						process.stderr.write(
+							`[sumeru] killed pid ${existingPid} from stale pid file\n`,
 						);
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err);
-						console.error(`Failed to kill pid ${existingPid}: ${msg}`);
+						process.stderr.write(`Failed to kill pid ${existingPid}: ${msg}\n`);
 						process.exit(1);
 					}
 				} else {
-					console.error(
-						`Another sumeru appears to be running (pid ${existingPid}, recorded in ${pidFilePath}).\n  Stop it first, or run \`sumeru start … --force\` to terminate it.`,
+					process.stderr.write(
+						`Another sumeru appears to be running (pid ${existingPid}, recorded in ${pidFilePath}).\n  Stop it first, or run \`sumeru start … --force\` to terminate it.\n`,
 					);
 					process.exit(1);
 				}
 			} else {
-				console.error(
-					`[sumeru] removing stale pid file (pid ${existingPid} not running)`,
+				process.stderr.write(
+					`[sumeru] removing stale pid file (pid ${existingPid} not running)\n`,
 				);
 				// fall through; writePidFile below will overwrite.
 			}
@@ -207,7 +269,9 @@ program
 			writePidFile(pidFilePath, process.pid);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			console.error(`[sumeru] could not write pid file ${pidFilePath}: ${msg}`);
+			process.stderr.write(
+				`[sumeru] could not write pid file ${pidFilePath}: ${msg}\n`,
+			);
 			// Best-effort — continue startup.
 		}
 
@@ -216,49 +280,60 @@ program
 				port,
 				host,
 				name,
-				version: findVersion(),
+				version: VERSION,
 				gateways,
 				workspaceRoot,
 				ocasDir,
 				force,
 			});
-			console.log(`Listening on http://${server.host}:${server.port}`);
+			process.stdout.write(
+				`Listening on http://${server.host}:${server.port}\n`,
+			);
 
-			let shuttingDown = false;
-			const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
-				if (shuttingDown) {
-					// Second signal — escape hatch for a hung shutdown.
-					const code = signal === "SIGINT" ? 130 : 143;
-					process.exit(code);
-				}
-				shuttingDown = true;
-				console.error(`[sumeru] shutting down (${signal})...`);
-				try {
-					await server.stop();
+			// Block until shutdown signal
+			await new Promise<void>((_resolve) => {
+				let shuttingDown = false;
+				const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+					if (shuttingDown) {
+						// Second signal — escape hatch for a hung shutdown.
+						const code = signal === "SIGINT" ? 130 : 143;
+						process.exit(code);
+					}
+					shuttingDown = true;
+					process.stderr.write(`[sumeru] shutting down (${signal})...\n`);
 					try {
-						removePidFile(pidFilePath);
+						await server.stop();
+						try {
+							removePidFile(pidFilePath);
+						} catch (err) {
+							const msg = err instanceof Error ? err.message : String(err);
+							process.stderr.write(
+								`[sumeru] could not remove pid file: ${msg}\n`,
+							);
+						}
+						process.exit(0);
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err);
-						console.error(`[sumeru] could not remove pid file: ${msg}`);
+						process.stderr.write(`[sumeru] failed to stop server: ${msg}\n`);
+						try {
+							removePidFile(pidFilePath);
+						} catch {
+							/* ignore on the failure path */
+						}
+						process.exit(1);
 					}
-					process.exit(0);
-				} catch (err) {
-					const msg = err instanceof Error ? err.message : String(err);
-					console.error(`[sumeru] failed to stop server: ${msg}`);
-					try {
-						removePidFile(pidFilePath);
-					} catch {
-						/* ignore on the failure path */
-					}
-					process.exit(1);
-				}
-			};
-			process.on("SIGINT", () => {
-				void shutdown("SIGINT");
+				};
+				process.on("SIGINT", () => {
+					void shutdown("SIGINT");
+				});
+				process.on("SIGTERM", () => {
+					void shutdown("SIGTERM");
+				});
 			});
-			process.on("SIGTERM", () => {
-				void shutdown("SIGTERM");
-			});
+
+			// If the promise resolves without process.exit (shouldn't happen
+			// in normal flow, but TypeScript needs a return), exit gracefully.
+			process.exit(0);
 		} catch (err) {
 			try {
 				removePidFile(pidFilePath);
@@ -271,14 +346,40 @@ program
 					: null;
 			if (code === "EADDRINUSE") {
 				const holder = await lookupPortHolder(host, port);
-				console.error(formatPortInUse({ host, port, holder }));
+				process.stderr.write(formatPortInUse({ host, port, holder }));
 			} else {
 				const msg = err instanceof Error ? err.message : String(err);
-				console.error(`Failed to start server: ${msg}`);
+				process.stderr.write(`Failed to start server: ${msg}\n`);
 			}
 			process.exit(1);
 		}
 	});
+
+// run [planned]
+cli
+	.command("run")
+	.flag("scene", { type: "string" })
+	.flag("runner", { type: "string" })
+	.flag("model", { type: "string" })
+	.flag("timeout", { type: "number", default: 300 })
+	.flag("network", { type: "boolean", default: true })
+	.flag("no-network", { type: "boolean", default: false })
+	.flag("output", { type: "string" })
+	.returns(notImplementedSchema, "{{ command }}: {{ status }}")
+	.action(async () => {
+		return { command: "run", status: "not_implemented" as const };
+	});
+
+// list [planned]
+cli
+	.command("list")
+	.flag("dir", { type: "string", default: "scenes" })
+	.returns(notImplementedSchema, "{{ command }}: {{ status }}")
+	.action(async () => {
+		return { command: "list", status: "not_implemented" as const };
+	});
+
+// --- Helpers ---
 
 type StartArgs = {
 	port: number;
@@ -325,11 +426,11 @@ async function startServerWithRetry(
 			await killHolder(holder.pid, args.port, args.host);
 		} catch (killErr) {
 			const msg = killErr instanceof Error ? killErr.message : String(killErr);
-			console.error(`Failed to kill pid ${holder.pid}: ${msg}`);
+			process.stderr.write(`Failed to kill pid ${holder.pid}: ${msg}\n`);
 			process.exit(1);
 		}
-		console.error(
-			`[sumeru] killed pid ${holder.pid} holding port ${args.port}`,
+		process.stderr.write(
+			`[sumeru] killed pid ${holder.pid} holding port ${args.port}\n`,
 		);
 		// Retry the bind once.
 		return startServer({
@@ -348,4 +449,7 @@ async function startServerWithRetry(
 	}
 }
 
-program.parse();
+const exitCode = await cli.run();
+if (exitCode !== 0) {
+	process.exit(exitCode);
+}
