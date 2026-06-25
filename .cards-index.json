@@ -1,4 +1,459 @@
 {
-  "by_source": {},
-  "by_id": {}
+  "by_source": {
+    "packages/adapter-claude-code/src/adapter.ts": [
+      "adapter-claude-code"
+    ],
+    "packages/adapter-claude-code/src/spawn.ts": [
+      "adapter-claude-code"
+    ],
+    "packages/adapter-claude-code/src/stream-parser.ts": [
+      "adapter-claude-code"
+    ],
+    "packages/adapter-claude-code/src/types.ts": [
+      "adapter-claude-code"
+    ],
+    "packages/adapter-codex/src/adapter.ts": [
+      "adapter-codex"
+    ],
+    "packages/adapter-codex/src/spawn.ts": [
+      "adapter-codex"
+    ],
+    "packages/adapter-codex/src/stream-parser.ts": [
+      "adapter-codex"
+    ],
+    "packages/adapter-codex/src/types.ts": [
+      "adapter-codex"
+    ],
+    "packages/adapter-codex/docs/jsonl-schema.md": [
+      "adapter-codex"
+    ],
+    "packages/server/src/start.ts": [
+      "adapter-codex",
+      "instance-gateway-session",
+      "server-config"
+    ],
+    "packages/cli/src/build-adapters.ts": [
+      "adapter-codex",
+      "adapter-cursor-agent",
+      "architecture-overview",
+      "cli",
+      "server-config"
+    ],
+    "packages/adapter-cursor-agent/src/adapter.ts": [
+      "adapter-cursor-agent"
+    ],
+    "packages/adapter-cursor-agent/src/spawn.ts": [
+      "adapter-cursor-agent"
+    ],
+    "packages/adapter-cursor-agent/src/stream-parser.ts": [
+      "adapter-cursor-agent"
+    ],
+    "packages/adapter-cursor-agent/src/types.ts": [
+      "adapter-cursor-agent"
+    ],
+    "packages/adapter-hermes/src/adapter.ts": [
+      "adapter-hermes"
+    ],
+    "packages/adapter-hermes/src/spawn.ts": [
+      "adapter-hermes"
+    ],
+    "packages/adapter-hermes/src/types.ts": [
+      "adapter-hermes"
+    ],
+    "README.md": [
+      "architecture-overview",
+      "deploy-systemd-runtime",
+      "instance-gateway-session",
+      "server-config",
+      "session-persistence"
+    ],
+    "packages/core/src/adapter.ts": [
+      "architecture-overview",
+      "core-adapter-contract"
+    ],
+    "packages/server/src/types.ts": [
+      "architecture-overview",
+      "http-envelope-pattern",
+      "instance-gateway-session",
+      "server-config",
+      "server-http-routing",
+      "server-session-management"
+    ],
+    "packages/cli/src/pid-file.ts": [
+      "cli-utilities"
+    ],
+    "packages/cli/src/port-check.ts": [
+      "cli-utilities"
+    ],
+    "packages/cli/package.json": [
+      "cli"
+    ],
+    "packages/cli/tests/build-adapters.test.ts": [
+      "cli"
+    ],
+    "packages/cli/tests/start-with-gateway-config.test.ts": [
+      "cli"
+    ],
+    "packages/core/src/index.ts": [
+      "core-adapter-contract"
+    ],
+    "packages/core/tests/adapter-types.test.ts": [
+      "core-adapter-contract"
+    ],
+    "deploy/sumeru.service": [
+      "deploy-systemd-runtime"
+    ],
+    "deploy/sumeru.env.example": [
+      "deploy-systemd-runtime"
+    ],
+    "packages/server/src/envelope.ts": [
+      "http-envelope-pattern"
+    ],
+    "packages/server/src/handler.ts": [
+      "http-envelope-pattern",
+      "instance-gateway-session",
+      "server-config",
+      "server-http-routing",
+      "server-session-management"
+    ],
+    "packages/server/tests/start-gateway-log.test.ts": [
+      "server-config"
+    ],
+    "packages/server/src/sse/messages.ts": [
+      "server-http-routing",
+      "server-sse-messaging"
+    ],
+    "packages/server/src/ocas/schemas.ts": [
+      "server-ocas-integration",
+      "session-persistence"
+    ],
+    "packages/server/src/ocas/index.ts": [
+      "server-ocas-integration",
+      "server-search"
+    ],
+    "packages/server/src/index.ts": [
+      "server-ocas-integration"
+    ],
+    "packages/server/tests/ocas-schema-hash-constants.test.ts": [
+      "server-ocas-integration"
+    ],
+    "packages/server/tests/ocas-schemas.test.ts": [
+      "server-ocas-integration"
+    ],
+    "packages/server/src/search/sqlite-index.ts": [
+      "server-search"
+    ],
+    "packages/server/tests/rebuild-search-index-walk.test.ts": [
+      "server-search"
+    ],
+    "packages/server/src/export/bundle.ts": [
+      "server-session-export"
+    ],
+    "packages/server/src/export/handler.ts": [
+      "server-session-export"
+    ],
+    "packages/server/src/export/index.ts": [
+      "server-session-export"
+    ],
+    "packages/server/src/session/store.ts": [
+      "server-session-management",
+      "session-persistence"
+    ],
+    "packages/server/tests/messages.test.ts": [
+      "server-session-management"
+    ],
+    "packages/server/src/sse/buffer.ts": [
+      "server-sse-messaging"
+    ],
+    "packages/server/tests/messages-sse-resume-expired.test.ts": [
+      "server-sse-messaging"
+    ],
+    "specs/server-ocas/server-ocas-session-meta.md": [
+      "session-persistence"
+    ]
+  },
+  "by_id": {
+    "adapter-claude-code": {
+      "title": "\"Claude Code Adapter\"",
+      "sources": [
+        "packages/adapter-claude-code/src/adapter.ts",
+        "packages/adapter-claude-code/src/spawn.ts",
+        "packages/adapter-claude-code/src/stream-parser.ts",
+        "packages/adapter-claude-code/src/types.ts"
+      ],
+      "tags": [
+        "architecture",
+        "adapter",
+        "claude-code",
+        "streaming"
+      ]
+    },
+    "adapter-codex": {
+      "title": "\"Codex Adapter\"",
+      "sources": [
+        "packages/adapter-codex/src/adapter.ts",
+        "packages/adapter-codex/src/spawn.ts",
+        "packages/adapter-codex/src/stream-parser.ts",
+        "packages/adapter-codex/src/types.ts",
+        "packages/adapter-codex/docs/jsonl-schema.md",
+        "packages/server/src/start.ts",
+        "packages/cli/src/build-adapters.ts"
+      ],
+      "tags": [
+        "architecture",
+        "adapter",
+        "codex",
+        "streaming"
+      ]
+    },
+    "adapter-cursor-agent": {
+      "title": "\"Cursor Agent Adapter\"",
+      "sources": [
+        "packages/adapter-cursor-agent/src/adapter.ts",
+        "packages/adapter-cursor-agent/src/spawn.ts",
+        "packages/adapter-cursor-agent/src/stream-parser.ts",
+        "packages/adapter-cursor-agent/src/types.ts",
+        "packages/cli/src/build-adapters.ts"
+      ],
+      "tags": [
+        "architecture",
+        "adapter",
+        "cursor-agent",
+        "streaming"
+      ]
+    },
+    "adapter-hermes": {
+      "title": "\"Hermes Adapter\"",
+      "sources": [
+        "packages/adapter-hermes/src/adapter.ts",
+        "packages/adapter-hermes/src/spawn.ts",
+        "packages/adapter-hermes/src/types.ts"
+      ],
+      "tags": [
+        "architecture",
+        "adapter",
+        "hermes",
+        "session"
+      ]
+    },
+    "architecture-overview": {
+      "title": "\"Architecture Overview\"",
+      "sources": [
+        "README.md",
+        "packages/core/src/adapter.ts",
+        "packages/server/src/types.ts",
+        "packages/cli/src/build-adapters.ts"
+      ],
+      "tags": [
+        "architecture",
+        "monorepo",
+        "server",
+        "adapters"
+      ]
+    },
+    "cli-utilities": {
+      "title": "\"CLI Utilities: PID File and Port Check\"",
+      "sources": [
+        "packages/cli/src/pid-file.ts",
+        "packages/cli/src/port-check.ts"
+      ],
+      "tags": [
+        "cli",
+        "utilities",
+        "process-management"
+      ]
+    },
+    "cli": {
+      "title": "\"CLI Adapter Wiring\"",
+      "sources": [
+        "packages/cli/src/build-adapters.ts",
+        "packages/cli/package.json",
+        "packages/cli/tests/build-adapters.test.ts",
+        "packages/cli/tests/start-with-gateway-config.test.ts"
+      ],
+      "tags": [
+        "architecture",
+        "cli",
+        "adapters",
+        "config"
+      ]
+    },
+    "core-adapter-contract": {
+      "title": "\"Core Adapter Contract\"",
+      "sources": [
+        "packages/core/src/adapter.ts",
+        "packages/core/src/index.ts",
+        "packages/core/tests/adapter-types.test.ts"
+      ],
+      "tags": [
+        "architecture",
+        "core",
+        "adapter",
+        "types"
+      ]
+    },
+    "deploy-systemd-runtime": {
+      "title": "\"Systemd Runtime Environment\"",
+      "sources": [
+        "deploy/sumeru.service",
+        "deploy/sumeru.env.example",
+        "README.md"
+      ],
+      "tags": [
+        "deployment",
+        "systemd",
+        "runtime",
+        "adapters"
+      ]
+    },
+    "http-envelope-pattern": {
+      "title": "\"HTTP Envelope Pattern\"",
+      "sources": [
+        "packages/server/src/envelope.ts",
+        "packages/server/src/types.ts",
+        "packages/server/src/handler.ts"
+      ],
+      "tags": [
+        "architecture",
+        "http",
+        "api-design"
+      ]
+    },
+    "instance-gateway-session": {
+      "title": "\"Instance/Gateway/Session Hierarchy\"",
+      "sources": [
+        "README.md",
+        "packages/server/src/types.ts",
+        "packages/server/src/handler.ts",
+        "packages/server/src/start.ts"
+      ],
+      "tags": [
+        "architecture",
+        "hierarchy",
+        "session-management"
+      ]
+    },
+    "server-config": {
+      "title": "\"Server Startup and Gateway Wiring\"",
+      "sources": [
+        "packages/server/src/start.ts",
+        "packages/server/src/handler.ts",
+        "packages/server/src/types.ts",
+        "packages/server/tests/start-gateway-log.test.ts",
+        "packages/cli/src/build-adapters.ts",
+        "README.md"
+      ],
+      "tags": [
+        "architecture",
+        "server",
+        "startup",
+        "configuration"
+      ]
+    },
+    "server-http-routing": {
+      "title": "\"Server HTTP Routing\"",
+      "sources": [
+        "packages/server/src/handler.ts",
+        "packages/server/src/types.ts",
+        "packages/server/src/sse/messages.ts"
+      ],
+      "tags": [
+        "architecture",
+        "server",
+        "http",
+        "routing"
+      ]
+    },
+    "server-ocas-integration": {
+      "title": "\"Server OCAS Integration\"",
+      "sources": [
+        "packages/server/src/ocas/schemas.ts",
+        "packages/server/src/ocas/index.ts",
+        "packages/server/src/index.ts",
+        "packages/server/tests/ocas-schema-hash-constants.test.ts",
+        "packages/server/tests/ocas-schemas.test.ts"
+      ],
+      "tags": [
+        "architecture",
+        "server",
+        "ocas",
+        "schemas",
+        "storage"
+      ]
+    },
+    "server-search": {
+      "title": "\"Server Search Index\"",
+      "sources": [
+        "packages/server/src/search/sqlite-index.ts",
+        "packages/server/src/ocas/index.ts",
+        "packages/server/tests/rebuild-search-index-walk.test.ts"
+      ],
+      "tags": [
+        "architecture",
+        "server",
+        "search",
+        "fts5",
+        "sqlite"
+      ]
+    },
+    "server-session-export": {
+      "title": "\"Session Export\"",
+      "sources": [
+        "packages/server/src/export/bundle.ts",
+        "packages/server/src/export/handler.ts",
+        "packages/server/src/export/index.ts"
+      ],
+      "tags": [
+        "architecture",
+        "server",
+        "export",
+        "ocas"
+      ]
+    },
+    "server-session-management": {
+      "title": "\"Session Store Lifecycle\"",
+      "sources": [
+        "packages/server/src/session/store.ts",
+        "packages/server/src/handler.ts",
+        "packages/server/src/types.ts",
+        "packages/server/tests/messages.test.ts"
+      ],
+      "tags": [
+        "architecture",
+        "server",
+        "session",
+        "lifecycle"
+      ]
+    },
+    "server-sse-messaging": {
+      "title": "\"SSE Messaging and Resume Semantics\"",
+      "sources": [
+        "packages/server/src/sse/messages.ts",
+        "packages/server/src/sse/buffer.ts",
+        "packages/server/tests/messages-sse-resume-expired.test.ts"
+      ],
+      "tags": [
+        "architecture",
+        "server",
+        "sse",
+        "messaging",
+        "streaming"
+      ]
+    },
+    "session-persistence": {
+      "title": "\"Session Persistence\"",
+      "sources": [
+        "packages/server/src/session/store.ts",
+        "packages/server/src/ocas/schemas.ts",
+        "README.md",
+        "specs/server-ocas/server-ocas-session-meta.md"
+      ],
+      "tags": [
+        "architecture",
+        "server",
+        "persistence",
+        "session"
+      ]
+    }
+  }
 }

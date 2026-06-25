@@ -114,8 +114,11 @@ export function createCodexAdapter(
 			args.push("--skip-git-repo-check");
 		}
 
-		// Add working directory
-		args.push("-C", spawnCwd);
+		// Add working directory (only for non-resume mode — `codex exec resume`
+	// does not support -C; the spawn cwd option handles it instead)
+		if (resumeId === null) {
+			args.push("-C", spawnCwd);
+		}
 
 		// Add model if specified
 		if (model !== null) {

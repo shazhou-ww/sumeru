@@ -1,0 +1,32 @@
+{
+  "name": "@ocas/cli-kit",
+  "version": "0.1.0",
+  "description": "Schema-driven CLI framework with structured output",
+  "keywords": ["cli", "framework", "zod", "output"],
+  "engines": { "node": ">=24.15.0" },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src"],
+  "dependencies": {
+    "zod": "^4.1.12"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shazhou-ww/ocas.git",
+    "directory": "packages/cli-kit"
+  },
+  "homepage": "https://github.com/shazhou-ww/ocas/tree/main/packages/cli-kit",
+  "bugs": {
+    "url": "https://github.com/shazhou-ww/ocas/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1"
+  }
+}

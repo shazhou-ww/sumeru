@@ -1,4 +1,4 @@
-name: sumeru@neko
+name: sumeru@kuma
 
 # Optional: instance workspace root. When set, per-session `config.cwd`
 # values are resolved against this path (and confined within it). Omit
@@ -6,21 +6,28 @@ name: sumeru@neko
 # workspaceRoot: /home/azureuser/repos
 
 gateways:
-  hermes:
-    adapter: hermes
+  codex:
+    adapter: codex
+    config:
+      sendTimeoutMs: 1800000        # 30 min
+      createSessionTimeoutMs: 300000 # 5 min
+      maxTurns: 120
     capabilities:
       resume: true
       streaming: true
 
   claude-code:
     adapter: claude-code
-    # Per-gateway adapter options. Forwarded verbatim to the adapter factory
-    # at boot. See `specs/adapter-claude-code-timeout-config.md`. The defaults
-    # below cover long-running solve-issue runs; trim them for short tasks.
     config:
-      sendTimeoutMs: 1800000        # 30 min — kill a wedged `claude` send
-      createSessionTimeoutMs: 300000 # 5 min — kill a stuck initial spawn
+      sendTimeoutMs: 1800000
+      createSessionTimeoutMs: 300000
       maxTurns: 120
+    capabilities:
+      resume: true
+      streaming: true
+
+  hermes:
+    adapter: hermes
     capabilities:
       resume: true
       streaming: true
