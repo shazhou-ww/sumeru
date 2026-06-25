@@ -122,24 +122,6 @@ export async function handleSessionExport(
 	);
 }
 
-/** Path matcher for `/gateways/<name>/sessions/<id>/export` (with optional trailing slash). */
-export function matchSessionExport(
-	path: string,
-): { gatewayRaw: string; idRaw: string } | null {
-	const prefix = "/gateways/";
-	if (!path.startsWith(prefix)) return null;
-	const rest = path.slice(prefix.length);
-	const stripped = rest.endsWith("/") ? rest.slice(0, -1) : rest;
-	const parts = stripped.split("/");
-	if (parts.length !== 4) return null;
-	const [gatewayRaw, sessionsLiteral, idRaw, exportLiteral] = parts;
-	if (gatewayRaw === undefined || sessionsLiteral !== "sessions") return null;
-	if (idRaw === undefined || idRaw.length === 0) return null;
-	if (exportLiteral !== "export") return null;
-	if (gatewayRaw.length === 0) return null;
-	return { gatewayRaw, idRaw };
-}
-
 function decodePathSegment(segment: string): string | null {
 	try {
 		return decodeURIComponent(segment);
