@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Adapter, SessionConfig, Turn } from "@sumeru/core";
+import { createAPI } from "./api-kit/index.js";
 import {
 	envelope,
 	errorEnvelope,
@@ -9,7 +10,7 @@ import {
 	sessionEnvelope,
 	sessionListEnvelope,
 } from "./envelope.js";
-import { handleSessionExport, matchSessionExport } from "./export/index.js";
+import { handleSessionExport } from "./export/index.js";
 import {
 	handleSearchPerGateway,
 	handleSearchTopLevel,
@@ -64,278 +65,234 @@ export function createHandler(
 	const sessions = createSessionStore(config.ocas);
 	const bufferStore = makeMessageBufferStore(config);
 
-	return (req, res) => {
-		const method = req.method ?? "GET";
-		const url = req.url ?? "/";
-		const path = stripQueryString(url);
-		const queryString =
-			url.indexOf("?") === -1 ? "" : url.slice(url.indexOf("?") + 1);
+	const api = createAPI({
+		methodNotAllowed: (res, method, path, allow) => {
+			methodNotAllowed(res, method, path, allow);
+		},
+		notFound: (res, method, path) => {
+			writeJson(
+				res,
+				404,
+				errorEnvelope("not_found", `No route for ${method} ${path}`),
+			);
+		},
+	});
 
-		// GET /  (root)
-		if (path === "/") {
-			if (method === "GET") {
-				writeJson(
-					res,
-					200,
-					instanceEnvelope({
-						name: config.name,
-						version: config.version,
-						gateways: Object.keys(config.gateways),
-					}),
-				);
-				return;
-			}
-			methodNotAllowed(res, method, path, "GET");
+	// GET / (root) — method-first
+	api.route("GET", "/", (_req, res) => {
+		writeJson(
+			res,
+			200,
+			instanceEnvelope({
+				name: config.name,
+				version: config.version,
+				gateways: Object.keys(config.gateways),
+			}),
+		);
+	});
+
+	// GET /gateways — method-first
+	api.route("GET", "/gateways", (_req, res) => {
+		writeJson(
+			res,
+			200,
+			gatewayListEnvelope(
+				buildGatewayList(config.gateways, config.adapters, sessions),
+			),
+		);
+	});
+
+	// GET /gateways/:name — method-first
+	api.route("GET", "/gateways/:name", (_req, res, params, path) => {
+		const nameRaw = params.name;
+		if (nameRaw === undefined) {
+			writeJson(
+				res,
+				404,
+				errorEnvelope("not_found", `No route for GET ${path}`),
+			);
 			return;
 		}
+		const requested = decodePathSegment(nameRaw);
+		if (requested === null) {
+			writeJson(
+				res,
+				404,
+				errorEnvelope("gateway_not_found", `Gateway ${nameRaw} not found`),
+			);
+			return;
+		}
+		const cfg = config.gateways[requested];
+		if (cfg === undefined) {
+			writeJson(
+				res,
+				404,
+				errorEnvelope("gateway_not_found", `Gateway ${requested} not found`),
+			);
+			return;
+		}
+		writeJson(
+			res,
+			200,
+			gatewayEnvelope(buildGateway(requested, cfg, config.adapters, sessions)),
+		);
+	});
 
-		// /gateways or /gateways/
-		if (path === "/gateways" || path === "/gateways/") {
-			if (method === "GET") {
+	// /gateways/:name/sessions — resource-first (handler does method check)
+	api.route(
+		"*",
+		"/gateways/:name/sessions",
+		(req, res, params, path, queryString) => {
+			const gatewayRaw = params.name;
+			if (gatewayRaw === undefined) {
 				writeJson(
 					res,
-					200,
-					gatewayListEnvelope(
-						buildGatewayList(config.gateways, config.adapters, sessions),
+					404,
+					errorEnvelope(
+						"not_found",
+						`No route for ${req.method ?? "GET"} ${path}`,
 					),
 				);
 				return;
 			}
-			methodNotAllowed(res, method, path, "GET");
-			return;
-		}
+			void handleSessionsCollection(
+				req,
+				res,
+				req.method ?? "GET",
+				path,
+				gatewayRaw,
+				queryString,
+				config,
+				sessions,
+			);
+		},
+	);
 
-		// /ocas/<hash>  (Phase 4 — single ocas object endpoint)
-		const ocasMatch = matchOcasObject(path);
-		if (ocasMatch !== null) {
-			handleOcasObject(req, res, method, path, ocasMatch, config.ocas);
-			return;
-		}
-		// /ocas or /ocas/  (no listing endpoint defined)
-		if (path === "/ocas" || path === "/ocas/") {
+	// /gateways/:name/sessions/:id — resource-first (handler does method check)
+	api.route("*", "/gateways/:name/sessions/:id", (req, res, params, path) => {
+		const gatewayRaw = params.name;
+		const idRaw = params.id;
+		if (gatewayRaw === undefined || idRaw === undefined) {
 			writeJson(
 				res,
 				404,
-				errorEnvelope("route_not_found", `No route for ${method} ${path}`),
+				errorEnvelope(
+					"not_found",
+					`No route for ${req.method ?? "GET"} ${path}`,
+				),
 			);
 			return;
 		}
+		void handleSessionDetail(
+			req.method ?? "GET",
+			path,
+			gatewayRaw,
+			idRaw,
+			config.gateways,
+			config.adapters,
+			sessions,
+			res,
+		);
+	});
 
-		// /sessions or /sessions/  (Phase 5 — top-level cross-gateway search)
-		if (path === "/sessions" || path === "/sessions/") {
-			if (method !== "GET" && method !== "HEAD") {
-				methodNotAllowed(res, method, path, "GET");
+	// /gateways/:name/sessions/:id/messages — resource-first (handler does method check)
+	api.route(
+		"*",
+		"/gateways/:name/sessions/:id/messages",
+		(req, res, params, path, queryString) => {
+			const gatewayRaw = params.name;
+			const idRaw = params.id;
+			if (gatewayRaw === undefined || idRaw === undefined) {
+				writeJson(
+					res,
+					404,
+					errorEnvelope(
+						"not_found",
+						`No route for ${req.method ?? "GET"} ${path}`,
+					),
+				);
 				return;
 			}
-			handleSearchTopLevel(res, queryString, config.ocas.searchIndex);
-			return;
-		}
-
-		// /gateways/<name>/sessions/<id>/export  (Phase 5)
-		const exportMatch = matchSessionExport(path);
-		if (exportMatch !== null) {
-			void handleSessionExport(
-				req,
-				res,
-				method,
-				path,
-				exportMatch,
-				config.gateways,
-				sessions,
-				config.ocas,
-			);
-			return;
-		}
-
-		// /gateways/<name>/sessions/<id>/messages
-		const messagesMatch = matchSessionMessages(path);
-		if (messagesMatch !== null) {
 			void handleMessages(
 				req,
 				res,
-				method,
+				req.method ?? "GET",
 				path,
-				messagesMatch,
+				{ gatewayRaw, idRaw },
 				queryString,
 				config,
 				sessions,
 				bufferStore,
 			);
-			return;
-		}
+		},
+	);
 
-		// /gateways/<name>/sessions/<id> (and trailing slash variants)
-		const sessionDetail = matchSessionDetail(path);
-		if (sessionDetail !== null) {
-			void handleSessionDetail(
-				method,
-				path,
-				sessionDetail.gatewayRaw,
-				sessionDetail.idRaw,
-				config.gateways,
-				config.adapters,
-				sessions,
-				res,
-			);
-			return;
-		}
-
-		// /gateways/<name>/sessions or /gateways/<name>/sessions/
-		const sessionsCollection = matchSessionsCollection(path);
-		if (sessionsCollection !== null) {
-			void handleSessionsCollection(
-				req,
-				res,
-				method,
-				path,
-				sessionsCollection,
-				queryString,
-				config,
-				sessions,
-			);
-			return;
-		}
-
-		// /gateways/<name> or /gateways/<name>/
-		const detailMatch = matchGatewayDetail(path);
-		if (detailMatch !== null) {
-			if (method !== "GET") {
-				methodNotAllowed(res, method, path, "GET");
-				return;
-			}
-			const requested = decodePathSegment(detailMatch);
-			if (requested === null) {
+	// /gateways/:name/sessions/:id/export — resource-first (handler does method check)
+	api.route(
+		"*",
+		"/gateways/:name/sessions/:id/export",
+		(req, res, params, path) => {
+			const gatewayRaw = params.name;
+			const idRaw = params.id;
+			if (gatewayRaw === undefined || idRaw === undefined) {
 				writeJson(
 					res,
 					404,
 					errorEnvelope(
-						"gateway_not_found",
-						`Gateway ${detailMatch} not found`,
+						"not_found",
+						`No route for ${req.method ?? "GET"} ${path}`,
 					),
 				);
 				return;
 			}
-			const cfg = config.gateways[requested];
-			if (cfg === undefined) {
-				writeJson(
-					res,
-					404,
-					errorEnvelope("gateway_not_found", `Gateway ${requested} not found`),
-				);
-				return;
-			}
+			void handleSessionExport(
+				req,
+				res,
+				req.method ?? "GET",
+				path,
+				{ gatewayRaw, idRaw },
+				config.gateways,
+				sessions,
+				config.ocas,
+			);
+		},
+	);
+
+	// GET /ocas/:hash — method-first (handler gates GET/HEAD internally)
+	api.route("GET", "/ocas/:hash", (req, res, params, path) => {
+		const hash = params.hash;
+		if (hash === undefined) {
 			writeJson(
 				res,
-				200,
-				gatewayEnvelope(
-					buildGateway(requested, cfg, config.adapters, sessions),
+				404,
+				errorEnvelope(
+					"not_found",
+					`No route for ${req.method ?? "GET"} ${path}`,
 				),
 			);
 			return;
 		}
+		handleOcasObject(req, res, req.method ?? "GET", path, hash, config.ocas);
+	});
 
-		// Unknown path
+	// /ocas or /ocas/ — special 404 route_not_found (not generic not_found)
+	api.route("*", "/ocas", (req, res, _params, path) => {
 		writeJson(
 			res,
 			404,
-			errorEnvelope("not_found", `No route for ${method} ${path}`),
+			errorEnvelope(
+				"route_not_found",
+				`No route for ${req.method ?? "GET"} ${path}`,
+			),
 		);
-	};
-}
+	});
 
-// ─── Path matchers ───────────────────────────────────────
+	// GET /sessions — method-first (handler gates GET/HEAD internally)
+	api.route("GET", "/sessions", (_req, res, _params, _path, queryString) => {
+		handleSearchTopLevel(res, queryString, config.ocas.searchIndex);
+	});
 
-function stripQueryString(url: string): string {
-	const q = url.indexOf("?");
-	return q === -1 ? url : url.slice(0, q);
-}
-
-function matchGatewayDetail(path: string): string | null {
-	const prefix = "/gateways/";
-	if (!path.startsWith(prefix)) return null;
-	const rest = path.slice(prefix.length);
-	if (rest.length === 0) return null;
-	const trimmed = rest.endsWith("/") ? rest.slice(0, -1) : rest;
-	if (trimmed.length === 0) return null;
-	if (trimmed.includes("/")) return null;
-	return trimmed;
-}
-
-/**
- * Match `/gateways/<name>/sessions` (with optional trailing slash).
- * Returns the raw (still URL-encoded) gateway name, or null if no match.
- */
-function matchSessionsCollection(path: string): string | null {
-	const prefix = "/gateways/";
-	if (!path.startsWith(prefix)) return null;
-	const rest = path.slice(prefix.length);
-	const stripped = rest.endsWith("/") ? rest.slice(0, -1) : rest;
-	if (!stripped.endsWith("/sessions")) return null;
-	const gatewayRaw = stripped.slice(0, -"/sessions".length);
-	if (gatewayRaw.length === 0) return null;
-	if (gatewayRaw.includes("/")) return null;
-	return gatewayRaw;
-}
-
-/**
- * Match `/gateways/<name>/sessions/<id>` (with optional trailing slash).
- * Returns raw (still URL-encoded) segments, or null.
- */
-function matchSessionDetail(
-	path: string,
-): { gatewayRaw: string; idRaw: string } | null {
-	const prefix = "/gateways/";
-	if (!path.startsWith(prefix)) return null;
-	const rest = path.slice(prefix.length);
-	const stripped = rest.endsWith("/") ? rest.slice(0, -1) : rest;
-	const parts = stripped.split("/");
-	if (parts.length !== 3) return null;
-	const [gatewayRaw, sessionsLiteral, idRaw] = parts;
-	if (gatewayRaw === undefined || sessionsLiteral !== "sessions") return null;
-	if (idRaw === undefined || idRaw.length === 0) return null;
-	if (gatewayRaw.length === 0) return null;
-	return { gatewayRaw, idRaw };
-}
-
-/** Match `/gateways/<name>/sessions/<id>/messages` (with optional trailing slash). */
-function matchSessionMessages(
-	path: string,
-): { gatewayRaw: string; idRaw: string } | null {
-	const prefix = "/gateways/";
-	if (!path.startsWith(prefix)) return null;
-	const rest = path.slice(prefix.length);
-	const stripped = rest.endsWith("/") ? rest.slice(0, -1) : rest;
-	const parts = stripped.split("/");
-	if (parts.length !== 4) return null;
-	const [gatewayRaw, sessionsLiteral, idRaw, messagesLiteral] = parts;
-	if (gatewayRaw === undefined || sessionsLiteral !== "sessions") return null;
-	if (idRaw === undefined || idRaw.length === 0) return null;
-	if (messagesLiteral !== "messages") return null;
-	if (gatewayRaw.length === 0) return null;
-	return { gatewayRaw, idRaw };
-}
-
-/**
- * Match `/ocas/<hash>` (with optional trailing slash). Returns the raw segment
- * (still URL-encoded form, but the hash regex rejects any encoded characters
- * downstream). Returns null for `/ocas`, `/ocas/`, or `/ocas/<hash>/extra`.
- */
-function matchOcasObject(path: string): string | null {
-	const prefix = "/ocas/";
-	if (!path.startsWith(prefix)) return null;
-	const rest = path.slice(prefix.length);
-	const stripped = rest.endsWith("/") ? rest.slice(0, -1) : rest;
-	if (stripped.length === 0) return null;
-	if (stripped.includes("/")) return null;
-	return stripped;
-}
-
-function decodePathSegment(segment: string): string | null {
-	try {
-		return decodeURIComponent(segment);
-	} catch {
-		return null;
-	}
+	return api.handle;
 }
 
 // ─── Session collection: GET (list) / POST (create) ──────
@@ -772,6 +729,14 @@ function handleOcasObject(
 }
 
 // ─── Helpers ─────────────────────────────────────────────
+
+function decodePathSegment(segment: string): string | null {
+	try {
+		return decodeURIComponent(segment);
+	} catch {
+		return null;
+	}
+}
 
 function methodNotAllowed(
 	res: ServerResponse,
