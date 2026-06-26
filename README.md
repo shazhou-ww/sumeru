@@ -107,6 +107,13 @@ session 历史可读但不可继续发新消息，`POST .../messages` 会返回
 `503 adapter_unavailable`。已关闭的 session 重启后仍为 `closed`；idle/active 统一
 恢复为 `idle`（重启不可能让一次发送悬在半途）。
 
+### SSE Reliability (Phase A, RFC #107)
+
+- Declarative router (api-kit) replacing hand-written dispatch
+- Generator + middleware pipeline: messageAction → withResumable → withHeartbeats → writeSseStream
+- CAS-backed SSE frame persistence — events survive server restart, no length/time limit
+- Automatic resume via Last-Event-ID (CAS replay)
+
 ## Packages
 
 | Package | Description |
@@ -116,6 +123,7 @@ session 历史可读但不可继续发新消息，`POST .../messages` 会返回
 | `@sumeru/adapter-hermes` | Adapter for Hermes Agent |
 | `@sumeru/adapter-claude-code` | Adapter for Claude Code CLI |
 | `@sumeru/adapter-cursor-agent` | Adapter for Cursor Agent CLI |
+| `@sumeru/adapter-codex` | Adapter for OpenAI Codex CLI |
 | `@sumeru/cli` | CLI tool (`sumeru start`) |
 
 ## Configuration
