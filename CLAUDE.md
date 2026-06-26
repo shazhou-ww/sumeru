@@ -13,6 +13,7 @@ Monorepo with packages under `packages/`:
 | `@sumeru/adapter-hermes` | `packages/adapter-hermes` | Adapter for Hermes Agent |
 | `@sumeru/adapter-claude-code` | `packages/adapter-claude-code` | Adapter for Claude Code CLI |
 | `@sumeru/adapter-cursor-agent` | `packages/adapter-cursor-agent` | Adapter for Cursor Agent CLI |
+| `@sumeru/adapter-codex` | `packages/adapter-codex` | Adapter for OpenAI Codex CLI |
 | `@sumeru/cli` | `packages/cli` | CLI tool (`sumeru start`) |
 
 ## Core Concepts

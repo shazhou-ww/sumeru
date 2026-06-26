@@ -10,6 +10,7 @@ tags: [http, session, message, sse, resume, last-event-id, ring-buffer, phase-3]
 - A retention policy: events are buffered for at least `30s` after `event: done` is emitted, so a slightly-late reconnect can still resume. After the retention window, the buffer is dropped and a Last-Event-ID resume returns `410 Gone`.
 - The architecture spec (lines 261–267) explicitly requires this behavior: *"每个事件带 id（递增序号）。客户端断连后重连时发送 Last-Event-ID 头，Sumeru 从断点继续推送。Turn 数据在 ocas 里，重推零成本"*.
 - For Phase-3 MVP, **events are buffered in-memory only** (a ring buffer keyed by `(gatewayName, sessionId, sendNonce)`). Forward-compat: a later phase can persist them in CAS so resume works across server restarts; the wire format is identical.
+- **Phase A3 (PR #114) added CAS-backed frame persistence.** The in-memory ring buffer remains as hot cache for fast replay of recent events, but CAS provides durable replay with no length or time limit. The 30s/1024 constraints apply only to the hot-path buffer, not to overall resume capability.
 
 ## When
 - The client begins a `POST .../messages` request and starts receiving the SSE stream.

@@ -7,7 +7,7 @@ sources:
   - packages/server/src/export/index.ts
 tags: [architecture, server, export, ocas]
 created: 2026-06-15
-updated: 2026-06-15
+updated: 2026-06-26
 ---
 
 # Session Export
@@ -90,12 +90,21 @@ roots = [metaHash, turnHash_0, turnHash_1, ..., turnHash_N]
 - **Body drain**: incoming POST body is fully consumed before export starts to prevent connection stalls
 - **Error handling**: build failures return 500 `export_failed` with truncated cause (500 char max)
 
-## Path Matcher
+## Route Registration
 
-`matchSessionExport(path)` matches `/gateways/<name>/sessions/<id>/export` (with optional trailing slash). Returns `{ gatewayRaw, idRaw }` or `null`.
+The export endpoint is registered declaratively in `createHandler`:
+
+```typescript
+api.route("*", "/gateways/:name/sessions/:id/export", (req, res, params, path) => {
+  // extracts params.name → gatewayRaw, params.id → idRaw
+  void handleSessionExport(req, res, req.method ?? "GET", path, { gatewayRaw, idRaw }, ...);
+});
+```
+
+The handler performs its own method check (`POST`, `HEAD` allowed; others → 405).
 
 ## Module Exports
 
 `export/index.ts` re-exports:
 - `buildSessionExport`, `streamExportResponse` (bundle building)
-- `handleSessionExport`, `matchSessionExport` (HTTP handler + path matcher)
+- `handleSessionExport` (HTTP handler)
