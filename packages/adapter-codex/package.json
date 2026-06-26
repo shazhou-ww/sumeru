@@ -1,25 +1,25 @@
 {
-	"name": "@sumeru/adapter-codex",
-	"description": "Sumeru adapter for OpenAI Codex CLI",
-	"version": "0.1.0",
-	"type": "module",
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"exports": {
-		".": {
-			"import": "./dist/index.js",
-			"types": "./dist/index.d.ts"
-		}
-	},
-	"files": [
-		"dist"
-	],
-	"license": "MIT",
-	"dependencies": {
-		"@sumeru/core": "workspace:*"
-	},
-	"scripts": {
-		"build": "tsc -b",
-		"test:ci": "npx vitest run"
-	}
+  "name": "@sumeru/adapter-codex",
+  "description": "Sumeru adapter for OpenAI Codex CLI",
+  "version": "0.2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@sumeru/core": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test:ci": "npx vitest run"
+  }
 }
