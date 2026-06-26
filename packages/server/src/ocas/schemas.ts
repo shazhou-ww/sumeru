@@ -112,3 +112,22 @@ export const SUMERU_TURN_SCHEMA: JSONSchema = {
  * sync with `computeSelfHashSync(SUMERU_TURN_SCHEMA)`.
  */
 export const SUMERU_TURN_SCHEMA_HASH: Hash = "718S3WF704TZ6";
+
+/**
+ * `@sumeru/sse-frame` — one SSE event frame persisted to CAS as part of the
+ * resumable event chain (RFC #107, Phase A3). Heartbeats are excluded — only
+ * content events (turn, done, suspend, error) are recorded.
+ */
+export const SUMERU_SSE_FRAME_SCHEMA: JSONSchema = {
+	title: "@sumeru/sse-frame",
+	description:
+		"One SSE event frame in a session stream — persisted for resumable replay.",
+	type: "object",
+	additionalProperties: false,
+	required: ["seq", "event", "data"],
+	properties: {
+		seq: { type: "integer", minimum: 1 },
+		event: { type: "string", minLength: 1 },
+		data: { type: "string" },
+	},
+};

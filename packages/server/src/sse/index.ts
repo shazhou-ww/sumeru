@@ -18,9 +18,15 @@ export {
 	type SseEvent,
 } from "./buffer.js";
 export { writeSseHeaders, writeSseStream } from "./encode.js";
+export { createSseFrameStore, type SseFrameStore } from "./frame-store.js";
 export {
 	handleMessageEndpoint,
 	type MessageEndpointDeps,
 	makeMessageBufferStore,
 } from "./messages.js";
-export { type HeartbeatCtx, withHeartbeats } from "./middleware.js";
+export {
+	type HeartbeatCtx,
+	type ResumableCtx,
+	withHeartbeats,
+	withResumable,
+} from "./middleware.js";

@@ -22,7 +22,12 @@ import {
 import { createFsStore, createSqliteVarStore } from "@ocas/fs";
 import * as AjvModule from "ajv";
 import { createSearchIndex, type SearchIndex } from "../search/index.js";
-import { SUMERU_SESSION_META_SCHEMA, SUMERU_TURN_SCHEMA } from "./schemas.js";
+import { createSseFrameStore, type SseFrameStore } from "../sse/frame-store.js";
+import {
+	SUMERU_SESSION_META_SCHEMA,
+	SUMERU_SSE_FRAME_SCHEMA,
+	SUMERU_TURN_SCHEMA,
+} from "./schemas.js";
 
 // ajv CJS interop: the constructor lives on `.default` at runtime, but the
 // namespace shape is what tsc's verbatimModuleSyntax surfaces.
@@ -51,12 +56,16 @@ export type SumeruOcas = {
 	store: Store;
 	turnSchemaHash: Hash;
 	sessionMetaSchemaHash: Hash;
+	/** Phase A3 (RFC #107): SSE frame schema for resumable event chains. */
+	sseFrameSchemaHash: Hash;
 	/** Schema-of-schemas hash from `@ocas/core` bootstrap. */
 	metaSchemaHash: Hash;
 	/** Map: schema hash → human alias for the `/ocas/:hash` endpoint. */
 	schemaAliases: Record<Hash, string>;
 	/** Phase 5: FTS5-backed session search index. */
 	searchIndex: SearchIndex;
+	/** Phase A3 (RFC #107): durable per-send SSE frame index. */
+	frameStore: SseFrameStore;
 };
 
 /**
@@ -90,6 +99,7 @@ export function openSumeruOcas(dir: string): SumeruOcas {
 
 	const turnSchemaHash = putSchema(store, SUMERU_TURN_SCHEMA);
 	const sessionMetaSchemaHash = putSchema(store, SUMERU_SESSION_META_SCHEMA);
+	const sseFrameSchemaHash = putSchema(store, SUMERU_SSE_FRAME_SCHEMA);
 	const metaSchemaHash = aliases["@ocas/schema"];
 	if (metaSchemaHash === undefined) {
 		throw new Error(
@@ -101,11 +111,14 @@ export function openSumeruOcas(dir: string): SumeruOcas {
 		[metaSchemaHash]: "@ocas/schema",
 		[turnSchemaHash]: "@sumeru/turn",
 		[sessionMetaSchemaHash]: "@sumeru/session-meta",
+		[sseFrameSchemaHash]: "@sumeru/sse-frame",
 	};
+
+	const dbPath = join(dir, "_store.db");
 
 	let searchIndex: SearchIndex;
 	try {
-		searchIndex = createSearchIndex(join(dir, "_store.db"));
+		searchIndex = createSearchIndex(dbPath);
 	} catch (err) {
 		const cause = err instanceof Error ? err.message : String(err);
 		throw new Error(`failed to open ocas store at ${dir}: ${cause}`);
@@ -113,13 +126,23 @@ export function openSumeruOcas(dir: string): SumeruOcas {
 	const indexedTurns = searchIndex.turnCount();
 	console.log(`[sumeru] search index ready: ${indexedTurns} turns indexed`);
 
+	let frameStore: SseFrameStore;
+	try {
+		frameStore = createSseFrameStore(dbPath);
+	} catch (err) {
+		const cause = err instanceof Error ? err.message : String(err);
+		throw new Error(`failed to open ocas store at ${dir}: ${cause}`);
+	}
+
 	return {
 		store,
 		turnSchemaHash,
 		sessionMetaSchemaHash,
+		sseFrameSchemaHash,
 		metaSchemaHash,
 		schemaAliases,
 		searchIndex,
+		frameStore,
 	};
 }
 

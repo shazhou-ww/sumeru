@@ -6,7 +6,10 @@
  * iterable and a context object, returning a new iterable that wraps the source.
  */
 
+import type { Hash, Store } from "@ocas/core";
+import { recordPayload } from "../ocas/index.js";
 import type { SseOutEvent } from "./action.js";
+import type { SseFrameStore } from "./frame-store.js";
 
 export type HeartbeatCtx = {
 	intervalMs: number;
@@ -74,5 +77,41 @@ export async function* withHeartbeats(
 		}
 	} finally {
 		if (timer !== null) clearTimeout(timer);
+	}
+}
+
+export type ResumableCtx = {
+	sessionId: string;
+	nonce: string;
+	store: Store;
+	sseFrameSchemaHash: Hash;
+	frameStore: SseFrameStore;
+};
+
+/**
+ * Persist each content event to the CAS-backed frame store as it passes
+ * through. Failures are swallowed — CAS is a persistence layer underneath
+ * the live stream, not a gate.
+ *
+ * Placed BETWEEN `messageAction` and `withHeartbeats` so heartbeats are
+ * excluded from CAS (they are ephemeral keepalive signals).
+ *
+ * Signature satisfies `ApiMiddleware<SseOutEvent, ResumableCtx>`.
+ */
+export async function* withResumable(
+	source: AsyncIterable<SseOutEvent>,
+	ctx: ResumableCtx,
+): AsyncGenerator<SseOutEvent> {
+	let seq = 0;
+	for await (const out of source) {
+		seq += 1;
+		try {
+			const payload = { seq, event: out.event, data: out.data };
+			const hash = recordPayload(ctx.store, ctx.sseFrameSchemaHash, payload);
+			ctx.frameStore.appendFrame(ctx.sessionId, ctx.nonce, seq, hash);
+		} catch {
+			// CAS persistence failure is non-fatal
+		}
+		yield out;
 	}
 }

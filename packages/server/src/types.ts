@@ -10,6 +10,7 @@
 import type { Hash, Store } from "@ocas/core";
 import type { Adapter, NativeSessionRef, Turn } from "@sumeru/core";
 import type { SearchIndex } from "./search/index.js";
+import type { SseFrameStore } from "./sse/frame-store.js";
 
 // ─── Envelope ────────────────────────────────────────────
 
@@ -218,9 +219,13 @@ export type OcasConfig = {
 	store: Store;
 	turnSchemaHash: Hash;
 	sessionMetaSchemaHash: Hash;
+	/** Phase A3 (RFC #107): SSE frame schema for resumable event chains. */
+	sseFrameSchemaHash: Hash;
 	metaSchemaHash: Hash;
 	schemaAliases: Record<Hash, string>;
 	searchIndex: SearchIndex;
+	/** Phase A3 (RFC #107): durable per-send SSE frame index. */
+	frameStore: SseFrameStore;
 };
 
 /** Configuration for `createHandler`. */

@@ -33,7 +33,7 @@ import {
 	type SseBufferStore,
 } from "./buffer.js";
 import { writeSseHeaders, writeSseStream } from "./encode.js";
-import { withHeartbeats } from "./middleware.js";
+import { withHeartbeats, withResumable } from "./middleware.js";
 
 export type MessageEndpointDeps = {
 	sessions: SessionStore;
@@ -362,7 +362,14 @@ export async function handleMessageEndpoint(
 	};
 
 	const action = messageAction(actionCtx);
-	const stream = withHeartbeats(action, {
+	const resumable = withResumable(action, {
+		sessionId,
+		nonce: buf.nonce,
+		store: config.ocas.store,
+		sseFrameSchemaHash: config.ocas.sseFrameSchemaHash,
+		frameStore: config.ocas.frameStore,
+	});
+	const stream = withHeartbeats(resumable, {
 		intervalMs: config.sseHeartbeatMs,
 		startedAt: Date.now(),
 	});
@@ -400,6 +407,7 @@ async function handleResumeOnly(
 			);
 			return;
 		}
+		if (replayFromCas(res, sessionId, config)) return;
 		writeJson(
 			res,
 			404,
@@ -443,6 +451,34 @@ async function handleResumeOnly(
 		res.write(formatEvent(evt));
 	}
 	res.end();
+}
+
+/**
+ * Attempt CAS-backed full replay for a session. Returns `true` if events were
+ * found and written; `false` when no CAS frames exist (caller should proceed
+ * with the original 404 path).
+ */
+function replayFromCas(
+	res: ServerResponse,
+	sessionId: string,
+	config: ServerConfig,
+): boolean {
+	const { frameStore, store } = config.ocas;
+	const nonce = frameStore.getLatestNonce(sessionId);
+	if (nonce === null) return false;
+
+	const frames = frameStore.getFrames(sessionId, nonce);
+	if (frames.length === 0) return false;
+
+	writeSseHeaders(res);
+	for (const frame of frames) {
+		const node = store.cas.get(frame.frameHash);
+		if (node === null) continue;
+		const p = node.payload as { seq: number; event: string; data: string };
+		res.write(formatEvent({ id: p.seq, event: p.event, data: p.data }));
+	}
+	res.end();
+	return true;
 }
 
 async function streamFromBufferThenLive(

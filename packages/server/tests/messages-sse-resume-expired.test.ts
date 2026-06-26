@@ -209,7 +209,7 @@ describe("@sumeru/server — SSE resume: expired vs never-existed (fix #58)", ()
 		);
 	});
 
-	it("E: ghost entry is pruned after 2x retentionMs, resume returns 404 (not 410)", async () => {
+	it("E: ghost entry is pruned after 2x retentionMs, CAS replays events (Phase A3)", async () => {
 		const sessionId = await createSession(baseUrl);
 
 		// Send a message to create a buffer
@@ -232,15 +232,14 @@ describe("@sumeru/server — SSE resume: expired vs never-existed (fix #58)", ()
 		// Advance well past the ghost window (another retentionMs)
 		vi.advanceTimersByTime(RETENTION_MS + 1);
 
-		// Now the ghost should also be pruned — resume should return 404
+		// Ghost is pruned but CAS frames persist — resume now succeeds via
+		// the CAS fallback path added in Phase A3 (RFC #107).
 		const secondResume = await postMessages(baseUrl, sessionId, "", {
 			"last-event-id": "2",
 		});
-		expect(secondResume.status).toBe(404);
-		const body = JSON.parse(secondResume.text) as {
-			type: string;
-			value: { error: string };
-		};
-		expect(body.value.error).toBe("no_event_buffer");
+		expect(secondResume.status).toBe(200);
+		expect(secondResume.headers.get("content-type") ?? "").toMatch(
+			/^text\/event-stream/,
+		);
 	});
 });
