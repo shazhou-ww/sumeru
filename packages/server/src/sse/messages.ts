@@ -8,6 +8,12 @@
  * event is emitted; the resulting hash is stamped onto the SSE payload's
  * `value.hash` and appended to `Session.turnHashes` so the history endpoint
  * can replay it.
+ *
+ * Architecture (Phase A2 / RFC #107):
+ *   1. Validation + edge cases (resume-only, resume-with-body, concurrency)
+ *   2. Generator action — iterates adapter events and yields `SseOutEvent`
+ *   3. Middleware — merges heartbeat events into the stream
+ *   4. SSE encoder — assigns buffer IDs and writes wire-formatted frames
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -17,8 +23,8 @@ import { errorEnvelope } from "../envelope.js";
 import { recordPayload } from "../ocas/index.js";
 import type { SessionStore } from "../session/index.js";
 import type { ServerConfig } from "../types.js";
+import { type MessageActionCtx, messageAction } from "./action.js";
 import {
-	appendEvent,
 	createSseBufferStore,
 	eventsAfter,
 	formatEvent,
@@ -26,6 +32,8 @@ import {
 	type SseBuffer,
 	type SseBufferStore,
 } from "./buffer.js";
+import { writeSseHeaders, writeSseStream } from "./encode.js";
+import { withHeartbeats } from "./middleware.js";
 
 export type MessageEndpointDeps = {
 	sessions: SessionStore;
@@ -304,9 +312,6 @@ export async function handleMessageEndpoint(
 		);
 		return;
 	}
-	// Phase 5: index the user turn for FTS5 search BEFORE appending the hash
-	// or starting the SSE stream. If indexing fails the ocas write stays —
-	// the index can be rebuilt — but the request fails fast.
 	try {
 		config.ocas.searchIndex.indexTurn({
 			turnHash: userHash,
@@ -330,9 +335,6 @@ export async function handleMessageEndpoint(
 		);
 		return;
 	}
-	// Phase 6 (Refs #399): persist the turn-list pointer. A failure here must
-	// not silently diverge memory from disk — fail fast with a clean 500 before
-	// the SSE stream starts (headers are written just below).
 	try {
 		sessions.appendTurnHash(gatewayName, sessionId, userHash);
 	} catch (err) {
@@ -349,157 +351,25 @@ export async function handleMessageEndpoint(
 		return;
 	}
 
+	// ── Compose: action → middleware → encode ──
 	const buf = bufferStore.create(gatewayName, sessionId);
 	writeSseHeaders(res);
 
-	const startedAt = Date.now();
-	const heartbeatTimer = startHeartbeats(res, buf, startedAt, config);
+	const actionCtx: MessageActionCtx = {
+		params: { gatewayName, sessionId },
+		body: { content: body.value.content },
+		deps: { adapter: adapterByName, nativeRef, sessions, config },
+	};
 
-	let turnCount = 0;
+	const action = messageAction(actionCtx);
+	const stream = withHeartbeats(action, {
+		intervalMs: config.sseHeartbeatMs,
+		startedAt: Date.now(),
+	});
+
 	try {
-		for await (const event of adapterByName.send(
-			nativeRef,
-			body.value.content,
-		)) {
-			if (event.type === "turn") {
-				const turn = event.turn;
-				const payload = turnPayload(turn);
-				let hash: string;
-				try {
-					hash = recordPayload(
-						config.ocas.store,
-						config.ocas.turnSchemaHash,
-						payload,
-					);
-				} catch (err) {
-					const cause = err instanceof Error ? err.message : String(err);
-					const reason =
-						err instanceof SchemaValidationError
-							? "adapter_returned_invalid_turn"
-							: "ocas_write_failed";
-					const errEvt = appendEvent(
-						buf,
-						"error",
-						JSON.stringify({
-							type: "@sumeru/error",
-							value: { error: reason, message: truncate(cause, 500) },
-						}),
-					);
-					res.write(formatEvent(errEvt));
-					break;
-				}
-				try {
-					config.ocas.searchIndex.indexTurn({
-						turnHash: hash,
-						sessionId,
-						gateway: gatewayName,
-						turnIndex: turn.index,
-						role: turn.role,
-						content: turn.content,
-						createdAt: turn.timestamp,
-					});
-				} catch (err) {
-					const cause = err instanceof Error ? err.message : String(err);
-					const errEvt = appendEvent(
-						buf,
-						"error",
-						JSON.stringify({
-							type: "@sumeru/error",
-							value: {
-								error: "search_index_failed",
-								message: `Failed to update search index: ${truncate(cause, 500)}`,
-							},
-						}),
-					);
-					res.write(formatEvent(errEvt));
-					break;
-				}
-				try {
-					sessions.appendTurnHash(gatewayName, sessionId, hash);
-				} catch (err) {
-					const cause = err instanceof Error ? err.message : String(err);
-					const errEvt = appendEvent(
-						buf,
-						"error",
-						JSON.stringify({
-							type: "@sumeru/error",
-							value: {
-								error: "turn_persist_failed",
-								message: `Failed to persist turn list: ${truncate(cause, 500)}`,
-							},
-						}),
-					);
-					res.write(formatEvent(errEvt));
-					break;
-				}
-				const wireTurn: Turn = { ...turn, hash };
-				const evt = appendEvent(
-					buf,
-					"turn",
-					JSON.stringify({ type: "@sumeru/turn", value: wireTurn }),
-				);
-				res.write(formatEvent(evt));
-				turnCount += 1;
-			} else if (event.type === "done") {
-				const summary = {
-					turnCount,
-					tokens:
-						event.tokens === null
-							? null
-							: { in: event.tokens.input, out: event.tokens.output },
-					durationMs: event.durationMs,
-				};
-				const doneEvt = appendEvent(
-					buf,
-					"done",
-					JSON.stringify({ type: "@sumeru/summary", value: summary }),
-				);
-				res.write(formatEvent(doneEvt));
-			} else if (event.type === "suspend") {
-				const suspendEvt = appendEvent(
-					buf,
-					"suspend",
-					JSON.stringify({
-						type: "@sumeru/suspend",
-						value: {
-							reason: event.reason,
-							nativeId: event.nativeId,
-							elapsedMs: event.elapsedMs,
-						},
-					}),
-				);
-				res.write(formatEvent(suspendEvt));
-			} else if (event.type === "error") {
-				const errEvt = appendEvent(
-					buf,
-					"error",
-					JSON.stringify({
-						type: "@sumeru/error",
-						value: {
-							error: "adapter_error",
-							message: truncate(event.error.message, 500),
-						},
-					}),
-				);
-				res.write(formatEvent(errEvt));
-			}
-		}
-	} catch (err) {
-		const adapterError = err instanceof Error ? err : new Error(String(err));
-		const errEvt = appendEvent(
-			buf,
-			"error",
-			JSON.stringify({
-				type: "@sumeru/error",
-				value: {
-					error: "adapter_error",
-					message: truncate(adapterError.message, 500),
-				},
-			}),
-		);
-		res.write(formatEvent(errEvt));
+		await writeSseStream(res, stream, buf);
 	} finally {
-		clearInterval(heartbeatTimer);
 		sessions.markIdle(gatewayName, sessionId);
 	}
 
@@ -507,25 +377,7 @@ export async function handleMessageEndpoint(
 	res.end();
 }
 
-/**
- * Strip server-only / nullable fields from a Turn before recording so the
- * payload conforms to `@sumeru/turn`. The schema rejects extra fields
- * (`additionalProperties: false`); also drops `tokens` when null/absent and
- * `hash` (always server-injected, never persisted INSIDE the payload).
- */
-function turnPayload(turn: Turn): Record<string, unknown> {
-	const out: Record<string, unknown> = {
-		index: turn.index,
-		role: turn.role,
-		content: turn.content,
-		timestamp: turn.timestamp,
-		toolCalls: turn.toolCalls,
-	};
-	if (turn.tokens !== undefined && turn.tokens !== null) {
-		out.tokens = { input: turn.tokens.input, output: turn.tokens.output };
-	}
-	return out;
-}
+// ─── Resume handlers (unchanged wire behavior) ──────────
 
 async function handleResumeOnly(
 	res: ServerResponse,
@@ -637,8 +489,6 @@ async function streamFromBufferThenLive(
 		res.end();
 		return;
 	}
-	// Poll the buffer until finished. The original send writes events to this
-	// same buffer; resume just mirrors them out on the new connection.
 	await new Promise<void>((resolve) => {
 		const poll = setInterval(() => {
 			const finished = flushPending();
@@ -655,43 +505,26 @@ async function streamFromBufferThenLive(
 	});
 }
 
-function writeSseHeaders(res: ServerResponse): void {
-	res.statusCode = 200;
-	res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-	res.setHeader("Cache-Control", "no-cache, no-transform");
-	res.setHeader("Connection", "keep-alive");
-	res.setHeader("X-Accel-Buffering", "no");
-	// Disable Nagle's algorithm so each res.write() flushes immediately.
-	// Without this, SSE events (heartbeats, turns, done) are buffered by
-	// the TCP stack and never reach the client — the broker's consumeSse
-	// blocks on reader.read() forever. Fixes #30.
-	res.socket?.setNoDelay(true);
-	res.flushHeaders?.();
-}
+// ─── Helpers ────────────────────────────────────────────
 
-function startHeartbeats(
-	res: ServerResponse,
-	buf: SseBuffer,
-	startedAt: number,
-	config: ServerConfig,
-): NodeJS.Timeout {
-	const timer = setInterval(
-		() => {
-			const elapsed = Date.now() - startedAt;
-			const evt = appendEvent(
-				buf,
-				"heartbeat",
-				JSON.stringify({
-					type: "@sumeru/heartbeat",
-					value: { elapsed },
-				}),
-			);
-			res.write(formatEvent(evt));
-		},
-		Math.max(50, config.sseHeartbeatMs),
-	);
-	timer.unref();
-	return timer;
+/**
+ * Strip server-only / nullable fields from a Turn before recording so the
+ * payload conforms to `@sumeru/turn`. The schema rejects extra fields
+ * (`additionalProperties: false`); also drops `tokens` when null/absent and
+ * `hash` (always server-injected, never persisted INSIDE the payload).
+ */
+function turnPayload(turn: Turn): Record<string, unknown> {
+	const out: Record<string, unknown> = {
+		index: turn.index,
+		role: turn.role,
+		content: turn.content,
+		timestamp: turn.timestamp,
+		toolCalls: turn.toolCalls,
+	};
+	if (turn.tokens !== undefined && turn.tokens !== null) {
+		out.tokens = { input: turn.tokens.input, output: turn.tokens.output };
+	}
+	return out;
 }
 
 function truncate(s: string, max: number): string {

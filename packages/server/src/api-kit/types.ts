@@ -37,3 +37,26 @@ export type MatchResult =
 	| { type: "match"; handler: RouteHandler; params: Record<string, string> }
 	| { type: "method_not_allowed"; allow: string }
 	| { type: "not_found" };
+
+/**
+ * Validated request context passed to a generator action. Parameterised by the
+ * route params shape and the parsed request body type. Actions receive this
+ * after all HTTP-level validation (auth, content-type, body parsing, resource
+ * lookup) is complete — they never touch raw req/res.
+ */
+export type ActionContext<TParams = Record<string, string>, TBody = unknown> = {
+	params: TParams;
+	body: TBody;
+};
+
+/**
+ * Middleware for generator-based actions. Wraps an async iterable event source,
+ * returning a new iterable that may transform, filter, or augment the yielded
+ * events. The context parameter carries per-invocation configuration.
+ *
+ * Compose by nesting: `mid2(mid1(source, ctx1), ctx2)`.
+ */
+export type ApiMiddleware<TEvent, TCtx = ActionContext> = (
+	source: AsyncIterable<TEvent>,
+	ctx: TCtx,
+) => AsyncIterable<TEvent>;
