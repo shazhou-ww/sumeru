@@ -77,7 +77,7 @@ Start the Sumeru HTTP server
 
 Options:
   -p, --port <number>      TCP port to bind (0 = ephemeral) (default: 7900)
-  -h, --host <host>        Bind address (default: 127.0.0.1)
+  --host <host>            Bind address (default: 127.0.0.1)
   -c, --config <path>      Path to sumeru.yaml configuration file
   --ocas-dir <path>        Directory for the ocas content-addressed store (default: $SUMERU_OCAS_DIR or ~/.sumeru/ocas)
   --force                  Kill any process holding the chosen port before binding (sends SIGTERM, then SIGKILL after 2s)
@@ -138,11 +138,22 @@ const cli = createCLI({
 // output, and returns undefined so cli-kit doesn't render anything.
 // This preserves the exact output format the e2e tests expect.
 //
-// Short flags (-c, -p, -h) are defined as separate flag names because
-// cli-kit doesn't support flag aliases (issue #230).
+// Short flags (-c, -p) are defined as separate flag names because cli-kit
+// doesn't support flag aliases (issue #230). `-h` is intentionally NOT a host
+// alias: it is claimed by the early help guard (universal `-h` = help), so the
+// help text advertises host as long-form `--host` only.
+//
+// `port` deliberately has NO `default` here. cli-kit pre-seeds every defaulted
+// flag (args.js seeds `flags[name] = definition.default`), so a `default: 7900`
+// on `port` would make `flags.port` always 7900 when `--port` is omitted and
+// silently shadow an explicit `-p 8080`. Instead the alias is resolved first
+// (`flags.port ?? flags.p`) and the 7900 default applied LAST in the action —
+// the same shape as `config`/`c`, which works precisely because `config` has
+// no default. See specs/cli/start-port-short-flag.md.
 cli
 	.command("start")
-	.flag("port", { type: "number", default: 7900 })
+	.flag("port", { type: "number" })
+	.flag("p", { type: "number" }) // short alias for --port
 	.flag("host", { type: "string", default: "127.0.0.1" })
 	.flag("config", { type: "string" })
 	.flag("c", { type: "string" }) // short alias for --config
@@ -151,7 +162,14 @@ cli
 	.flag("emit-assets", { type: "boolean", default: false })
 	.returns(startResultSchema, "")
 	.action(async (_args, flags) => {
-		const port = flags.port as number;
+		// Resolve the `-p` alias BEFORE applying the 7900 default so an explicit
+		// `-p <port>` is never shadowed (mirrors config/c). `-p 0` / `--port 0`
+		// ephemeral semantics are preserved: 0 is a real value, so `??` keeps it
+		// — only null/undefined (the flag truly absent) fall through to 7900.
+		const port =
+			(flags.port as number | undefined) ??
+			(flags.p as number | undefined) ??
+			7900;
 		const host = flags.host as string;
 		const force = flags.force as boolean;
 		const configPath =
