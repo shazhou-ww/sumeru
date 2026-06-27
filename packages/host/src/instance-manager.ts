@@ -13,6 +13,7 @@ import {
 	MASTER_INSTANCE_ID,
 	projectNameFromInstanceId,
 } from "./id.js";
+import { createOcasRecorder, type OcasRecorder } from "./ocas-recorder.js";
 import { outboxFrameToSseEvent, parseOutboxLine } from "./outbox.js";
 import {
 	createSseBuffer,
@@ -22,6 +23,7 @@ import {
 import { defaultAdapterCommand } from "./transport.js";
 import type {
 	CreateInstanceRequest,
+	HistoryValue,
 	InboxRequest,
 	LoadedHostConfig,
 	ManagedInstance,
@@ -54,6 +56,7 @@ export type InstanceManager = {
 		onEvent: (event: SseEvent) => void,
 	): () => void;
 	getSseBuffer(id: InstanceId): SseBuffer;
+	getHistory(id: InstanceId, limit: number, offset: number): HistoryValue;
 	hostRoot(): {
 		name: string;
 		master: InstanceId;
@@ -65,9 +68,12 @@ export type InstanceManager = {
 export function createInstanceManager(input: {
 	hostConfig: LoadedHostConfig;
 	transport: Transport;
+	recorder?: OcasRecorder;
 }): InstanceManager {
 	const instances = new Map<InstanceId, ManagedInstance>();
 	const adapters = new Map<InstanceId, AdapterRuntime>();
+	const recorder =
+		input.recorder ?? createOcasRecorder(input.hostConfig.dataDir);
 
 	const master: ManagedInstance = {
 		id: MASTER_INSTANCE_ID,
@@ -217,6 +223,17 @@ export function createInstanceManager(input: {
 				value: { ...message, resumeNativeId },
 			})}\n`,
 		);
+		recorder.record(id, {
+			type: "turn",
+			value: {
+				index: recorder.getTurnTotal(id),
+				role: "user",
+				content: body.content,
+				timestamp: new Date().toISOString(),
+				toolCalls: null,
+				tokens: null,
+			},
+		});
 		if (record.status === "suspended") {
 			record.status = "running";
 		}
@@ -263,7 +280,9 @@ export function createInstanceManager(input: {
 	function appendOutboxEvent(
 		runtime: AdapterRuntime,
 		frame: OutboxFrame,
+		instanceId: InstanceId,
 	): SseEvent {
+		recorder.record(instanceId, frame);
 		const mapped = outboxFrameToSseEvent(frame);
 		const event = runtime.sseBuffer.append({
 			event: mapped.event,
@@ -355,14 +374,14 @@ export function createInstanceManager(input: {
 					runtime.session = null;
 					runtime.initialized = false;
 				}
-				appendOutboxEvent(runtime, frame);
+				appendOutboxEvent(runtime, frame, id);
 			}
 		} catch {
 			const errorFrame: OutboxFrame = {
 				type: "error",
 				value: { code: "adapter_io_error", message: "adapter stdout closed" },
 			};
-			appendOutboxEvent(runtime, errorFrame);
+			appendOutboxEvent(runtime, errorFrame, id);
 		} finally {
 			if (runtime.session === activeSession) {
 				runtime.session = null;
@@ -399,6 +418,23 @@ export function createInstanceManager(input: {
 		};
 	}
 
+	function getHistory(
+		id: InstanceId,
+		limit: number,
+		offset: number,
+	): HistoryValue {
+		const record = instances.get(id);
+		if (record === undefined) {
+			throw new Error("instance_not_found");
+		}
+		return {
+			instanceId: id,
+			total: recorder.getTurnTotal(id),
+			offset,
+			turns: recorder.getTurns(id, limit, offset),
+		};
+	}
+
 	function hostRoot(): {
 		name: string;
 		master: InstanceId;
@@ -423,6 +459,7 @@ export function createInstanceManager(input: {
 		submitInbox,
 		subscribeOutbox,
 		getSseBuffer,
+		getHistory,
 		hostRoot,
 	};
 }

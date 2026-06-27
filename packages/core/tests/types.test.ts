@@ -103,6 +103,7 @@ describe("@sumeru/core — minimal type set conformance", () => {
 			name: "node-1",
 			master: masterConfig,
 			resources: resourceLimits,
+			dataDir: null,
 		};
 
 		// Touch each literal at runtime so the suite exercises every type.

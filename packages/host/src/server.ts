@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer as createHttpServer } from "node:http";
 import { loadHostConfig } from "./config.js";
 import {
+	createHistoryHandler,
 	createInboxHandler,
 	createInstancesHandler,
 	createOutboxHandler,
@@ -54,7 +55,12 @@ export function createHostHandler(input: {
 		.route("GET", "/instances/:id/status", instances.status)
 		.route("POST", "/instances/:id/reset", instances.reset)
 		.route("POST", "/instances/:id/inbox", createInboxHandler(input.manager))
-		.route("GET", "/instances/:id/outbox", createOutboxHandler(input.manager));
+		.route("GET", "/instances/:id/outbox", createOutboxHandler(input.manager))
+		.route(
+			"GET",
+			"/instances/:id/history",
+			createHistoryHandler(input.manager),
+		);
 
 	return (req, res) => {
 		router.handle(req, res);

@@ -1,3 +1,4 @@
+export { createHistoryHandler, historyEnvelope } from "./history.js";
 export { createInboxHandler } from "./inbox.js";
 export { createInstancesHandler } from "./instances.js";
 export { createOutboxHandler } from "./outbox.js";

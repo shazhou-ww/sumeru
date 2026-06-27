@@ -43,6 +43,16 @@ describe("router — host routes", () => {
 		expect(result.type).toBe("match");
 	});
 
+	it("matches GET /instances/:id/history", () => {
+		const router = createTestRouter();
+		router.route("GET", "/instances/:id/history", () => {});
+		const result = router.match("GET", "/instances/inst_01J/history");
+		expect(result.type).toBe("match");
+		if (result.type === "match") {
+			expect(result.params).toEqual({ id: "inst_01J" });
+		}
+	});
+
 	it("returns method_not_allowed for wrong verb on inbox", () => {
 		const router = createTestRouter();
 		router.route("POST", "/instances/:id/inbox", () => {});
