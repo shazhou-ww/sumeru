@@ -1,0 +1,28 @@
+{
+  "name": "@sumeru/adapter-hermes",
+  "description": "Hermes adapter for Sumeru",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "sumeru-adapter-hermes": "./dist/main.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@sumeru/adapter-core": "workspace:*",
+    "@sumeru/core": "workspace:*"
+  },
+  "scripts": {
+    "test:ci": "npx vitest run"
+  }
+}

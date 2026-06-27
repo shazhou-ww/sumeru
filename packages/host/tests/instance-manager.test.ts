@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadHostConfig } from "../src/config.js";
 import { generateInstanceId, MASTER_INSTANCE_ID } from "../src/id.js";
 import { createInstanceManager } from "../src/instance-manager.js";
+import { LOCAL_MASTER_HANDLE } from "../src/local-transport.js";
 import { createOcasRecorder } from "../src/ocas-recorder.js";
 import type { Transport, TransportExecSession } from "../src/types.js";
 
@@ -16,8 +17,11 @@ function writeHostFixture(rootDir: string, maxInstances = 2): void {
 		[
 			"name: test-host",
 			"master:",
-			"  adapter: claude-code",
-			"  config: {}",
+			"  adapter: hermes",
+			"  config:",
+			"    profile: default",
+			"    instructions: You are the master.",
+			"    skills: []",
 			"resources:",
 			"  maxMemory: 4g",
 			"  maxCpus: 2",
@@ -55,6 +59,9 @@ function createInteractiveTransport(): {
 	const transport: Transport = {
 		async up(input) {
 			calls.push(`up:${input.projectName}`);
+			if (input.projectName === "inst-0") {
+				return { containerId: LOCAL_MASTER_HANDLE };
+			}
 			upComposeContents.push(readFileSync(input.composePath, "utf-8"));
 			return { containerId: `container-${input.projectName}` };
 		},
@@ -134,6 +141,53 @@ describe("instance-manager", () => {
 		expect(instances).toHaveLength(1);
 		expect(instances[0]?.id).toBe(MASTER_INSTANCE_ID);
 		expect(instances[0]?.prototype).toBeNull();
+	});
+
+	it("bootMaster provisions local master handle", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		const { transport } = createInteractiveTransport();
+		const manager = createInstanceManager({ hostConfig, transport });
+		await manager.bootMaster();
+		const master = manager.getInstance(MASTER_INSTANCE_ID);
+		expect(master?.containerId).toBe(LOCAL_MASTER_HANDLE);
+		expect(master?.status).toBe("running");
+	});
+
+	it("rejects deleting master instance", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		const { transport } = createInteractiveTransport();
+		const manager = createInstanceManager({ hostConfig, transport });
+		await expect(manager.deleteInstance(MASTER_INSTANCE_ID)).rejects.toThrow(
+			"cannot_delete_master",
+		);
+	});
+
+	it("routes master inbox through local adapter process", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		const { transport, calls } = createInteractiveTransport();
+		const manager = createInstanceManager({ hostConfig, transport });
+		await manager.bootMaster();
+
+		const events: Array<{ event: string; data: string }> = [];
+		const unsubscribe = manager.subscribeOutbox(MASTER_INSTANCE_ID, (event) => {
+			events.push({ event: event.event, data: event.data });
+		});
+
+		await manager.submitInbox(MASTER_INSTANCE_ID, {
+			messageId: "msg_master",
+			content: "hello master",
+			project: null,
+		});
+
+		await waitUntil(() => events.some((event) => event.event === "done"));
+		unsubscribe();
+		expect(
+			calls.some((call) => call.startsWith(`exec:${LOCAL_MASTER_HANDLE}:`)),
+		).toBe(true);
+		expect(events.map((event) => event.event)).toEqual(["turn", "done"]);
 	});
 
 	it("creates and deletes docker-backed instances", async () => {

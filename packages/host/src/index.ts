@@ -1,10 +1,20 @@
 export {
+	buildMasterInitConfig,
+	computeMasterHash,
 	computePrototypeHash,
 	loadHostConfig,
 	loadPrototypeInitSkills,
+	resolveMasterAdapterCommand,
 } from "./config.js";
 export type { InstanceManager } from "./instance-manager.js";
 export { createInstanceManager } from "./instance-manager.js";
+export type { LocalTransport } from "./local-transport.js";
+export {
+	createLocalTransport,
+	createLocalTransportImpl,
+	createRoutingTransport,
+	LOCAL_MASTER_HANDLE,
+} from "./local-transport.js";
 export type { Router } from "./router.js";
 export { createRouter } from "./router.js";
 export type { StartedHost, StartHostConfig } from "./server.js";
