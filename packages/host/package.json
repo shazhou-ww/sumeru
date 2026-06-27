@@ -15,8 +15,13 @@
     "dist"
   ],
   "license": "MIT",
+  "bin": {
+    "sumeru-host": "./dist/main.js"
+  },
   "dependencies": {
-    "@sumeru/core": "workspace:*"
+    "@sumeru/adapter-core": "workspace:*",
+    "@sumeru/core": "workspace:*",
+    "yaml": "^2.8.0"
   },
   "scripts": {
     "test:ci": "npx vitest run"

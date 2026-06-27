@@ -1,4 +1,32 @@
-// @sumeru/host — host HTTP service + Transport layer (v2 scaffold).
-// Placeholder export so the package compiles as a workspace member.
-// The HTTP service and Transport layer implementation lands in later M1 issues.
-export const VERSION = "0.1.0";
+export { loadHostConfig, loadPrototypeInitSkills } from "./config.js";
+export type { InstanceManager } from "./instance-manager.js";
+export { createInstanceManager } from "./instance-manager.js";
+export type { Router } from "./router.js";
+export { createRouter } from "./router.js";
+export type { StartedHost, StartHostConfig } from "./server.js";
+export { createHostHandler, startHost, VERSION } from "./server.js";
+export type { MockTransportCall } from "./transport.js";
+export {
+	createDockerTransport,
+	createMockTransport,
+	defaultAdapterCommand,
+} from "./transport.js";
+export type {
+	AdapterBridge,
+	CreateInstanceRequest,
+	Envelope,
+	ErrorValue,
+	HostRootValue,
+	HostServerOptions,
+	InboxAcceptedValue,
+	InboxRequest,
+	InstanceStatusValue,
+	LoadedHostConfig,
+	ManagedInstance,
+	MatchResult,
+	PrototypeInfo,
+	RouteHandler,
+	Transport,
+	TransportExecSession,
+	TransportUpResult,
+} from "./types.js";

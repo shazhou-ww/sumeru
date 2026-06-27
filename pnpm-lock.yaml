@@ -43,9 +43,15 @@ importers:
 
   packages/host:
     dependencies:
+      '@sumeru/adapter-core':
+        specifier: workspace:*
+        version: link:../adapter-core
       '@sumeru/core':
         specifier: workspace:*
         version: link:../core
+      yaml:
+        specifier: ^2.8.0
+        version: 2.9.0
 
 packages:
 
