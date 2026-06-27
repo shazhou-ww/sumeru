@@ -2,12 +2,14 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer as createHttpServer } from "node:http";
 import { loadHostConfig, resolveMasterAdapterCommand } from "./config.js";
 import {
+	createExportHandler,
 	createHistoryHandler,
 	createInboxHandler,
 	createInstancesHandler,
 	createOutboxHandler,
 	createPrototypesHandler,
 	createRootHandler,
+	createSearchHandler,
 	writeMethodNotAllowed,
 	writeRouteNotFound,
 } from "./handlers/index.js";
@@ -61,11 +63,13 @@ export function createHostHandler(input: {
 		.route("POST", "/instances/:id/reset", instances.reset)
 		.route("POST", "/instances/:id/inbox", createInboxHandler(input.manager))
 		.route("GET", "/instances/:id/outbox", createOutboxHandler(input.manager))
+		.route("GET", "/instances/:id/history", createHistoryHandler(input.manager))
 		.route(
-			"GET",
-			"/instances/:id/history",
-			createHistoryHandler(input.manager),
-		);
+			"POST",
+			"/instances/:id/export",
+			createExportHandler(input.manager, input.hostConfig.dataDir),
+		)
+		.route("GET", "/search", createSearchHandler(input.hostConfig.dataDir));
 
 	return (req, res) => {
 		router.handle(req, res);
