@@ -39,6 +39,15 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/adapter-hermes:
+    dependencies:
+      '@sumeru/adapter-core':
+        specifier: workspace:*
+        version: link:../adapter-core
+      '@sumeru/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/core: {}
 
   packages/host:

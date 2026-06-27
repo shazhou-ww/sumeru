@@ -168,6 +168,12 @@ function writeInstanceError(res: ServerResponse, err: unknown): void {
 			);
 			return;
 		case "cannot_delete_master":
+			writeJson(
+				res,
+				403,
+				errorEnvelope("invalid_request", "Master instance cannot be deleted"),
+			);
+			return;
 		case "cannot_reset_master":
 			writeJson(
 				res,

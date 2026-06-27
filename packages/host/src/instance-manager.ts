@@ -7,12 +7,17 @@ import type {
 	InstanceStatus,
 	OutboxFrame,
 } from "@sumeru/core";
-import { loadPrototypeInitSkills } from "./config.js";
+import {
+	buildMasterInitConfig,
+	loadPrototypeInitSkills,
+	resolveMasterAdapterCommand,
+} from "./config.js";
 import {
 	generateInstanceId,
 	MASTER_INSTANCE_ID,
 	projectNameFromInstanceId,
 } from "./id.js";
+import { LOCAL_MASTER_HANDLE } from "./local-transport.js";
 import { createOcasRecorder, type OcasRecorder } from "./ocas-recorder.js";
 import { outboxFrameToSseEvent, parseOutboxLine } from "./outbox.js";
 import {
@@ -57,6 +62,7 @@ export type InstanceManager = {
 	): () => void;
 	getSseBuffer(id: InstanceId): SseBuffer;
 	getHistory(id: InstanceId, limit: number, offset: number): HistoryValue;
+	bootMaster(): Promise<void>;
 	hostRoot(): {
 		name: string;
 		master: InstanceId;
@@ -212,9 +218,6 @@ export function createInstanceManager(input: {
 		if (record === undefined) {
 			throw new Error("instance_not_found");
 		}
-		if (id === MASTER_INSTANCE_ID) {
-			throw new Error("master_has_no_inbox");
-		}
 		if (record.containerId === null) {
 			throw new Error("instance_not_running");
 		}
@@ -256,9 +259,6 @@ export function createInstanceManager(input: {
 		if (record === undefined) {
 			throw new Error("instance_not_found");
 		}
-		if (id === MASTER_INSTANCE_ID) {
-			throw new Error("master_has_no_outbox");
-		}
 		return ensureAdapterRuntime(id).sseBuffer;
 	}
 
@@ -277,9 +277,6 @@ export function createInstanceManager(input: {
 		const record = instances.get(id);
 		if (record === undefined) {
 			throw new Error("instance_not_found");
-		}
-		if (id === MASTER_INSTANCE_ID) {
-			throw new Error("master_has_no_outbox");
 		}
 		let runtime = adapters.get(id);
 		if (runtime === undefined) {
@@ -310,6 +307,10 @@ export function createInstanceManager(input: {
 		id: InstanceId,
 		record: ManagedInstance,
 	): Promise<void> {
+		if (id === MASTER_INSTANCE_ID) {
+			await ensureMasterAdapterReady(id, record);
+			return;
+		}
 		if (record.prototype === null) {
 			throw new Error("prototype_not_found");
 		}
@@ -355,6 +356,65 @@ export function createInstanceManager(input: {
 		);
 		await waitForReady(id);
 		record.initVersion = currentHash;
+	}
+
+	async function ensureMasterAdapterReady(
+		id: InstanceId,
+		record: ManagedInstance,
+	): Promise<void> {
+		const currentHash = input.hostConfig.masterHash;
+		let runtime = adapters.get(id);
+		if (runtime === undefined) {
+			runtime = createAdapterRuntime(buildMasterInitConfig(input.hostConfig));
+			adapters.set(id, runtime);
+		}
+		const versionStale = record.initVersion !== currentHash;
+		if (
+			versionStale &&
+			runtime.session !== null &&
+			runtime.initialized &&
+			record.status !== "suspended"
+		) {
+			await invalidateMasterAdapterSession(runtime);
+		}
+		if (
+			runtime.session !== null &&
+			runtime.initialized &&
+			record.status !== "suspended" &&
+			!versionStale
+		) {
+			return;
+		}
+		if (record.containerId === null) {
+			throw new Error("instance_not_running");
+		}
+		if (versionStale) {
+			runtime.initConfig = buildMasterInitConfig(input.hostConfig);
+		}
+		runtime.initialized = false;
+		const session = input.transport.exec({
+			containerId: record.containerId,
+			command: resolveMasterAdapterCommand(input.hostConfig),
+		});
+		runtime.session = session;
+		const activeSession = session;
+		runtime.readTask = readAdapterOutput(id, session.lines, activeSession);
+		runtime.session.stdin.write(
+			`${JSON.stringify({ type: "init", value: runtime.initConfig })}\n`,
+		);
+		await waitForReady(id);
+		record.initVersion = currentHash;
+	}
+
+	async function invalidateMasterAdapterSession(
+		runtime: AdapterRuntime,
+	): Promise<void> {
+		if (runtime.session !== null) {
+			runtime.session.stdin.end();
+			runtime.session = null;
+		}
+		runtime.initialized = false;
+		runtime.initConfig = buildMasterInitConfig(input.hostConfig);
 	}
 
 	async function invalidateAdapterSession(
@@ -497,6 +557,21 @@ export function createInstanceManager(input: {
 		};
 	}
 
+	async function bootMaster(): Promise<void> {
+		const master = instances.get(MASTER_INSTANCE_ID);
+		if (master === undefined) return;
+		const up = await input.transport.up({
+			projectName: master.projectName,
+			composePath: master.composePath,
+			workDir: input.hostConfig.rootDir,
+		});
+		master.containerId = up.containerId;
+		master.status = "running";
+		if (up.containerId === LOCAL_MASTER_HANDLE) {
+			master.status = "running";
+		}
+	}
+
 	return {
 		listInstances,
 		getInstance,
@@ -508,6 +583,7 @@ export function createInstanceManager(input: {
 		subscribeOutbox,
 		getSseBuffer,
 		getHistory,
+		bootMaster,
 		hostRoot,
 	};
 }

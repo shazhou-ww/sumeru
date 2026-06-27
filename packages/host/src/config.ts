@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import type { SkillContent } from "@sumeru/adapter-core";
+import type { AdapterInitConfig, SkillContent } from "@sumeru/adapter-core";
 import type { HostConfig, Manifest, ModelConfig } from "@sumeru/core";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { LoadedHostConfig, PrototypeInfo } from "./types.js";
 
 const DEFAULT_HOST_FILE = "host.yaml";
@@ -17,6 +17,7 @@ export async function loadHostConfig(
 	const config = await loadHostYaml(configPath);
 	const prototypes = await scanPrototypes(prototypesDir);
 	const dataDir = resolveDataDir(rootDir, config);
+	const masterHash = await computeMasterHash(configPath);
 	return {
 		rootDir,
 		configPath,
@@ -24,6 +25,7 @@ export async function loadHostConfig(
 		dataDir,
 		config,
 		prototypes,
+		masterHash,
 	};
 }
 
@@ -119,6 +121,98 @@ async function collectSkillFiles(dir: string): Promise<Array<string>> {
 		}
 	}
 	return files.sort();
+}
+
+export async function computeMasterHash(configPath: string): Promise<string> {
+	const raw = await readFileSafely(configPath);
+	const doc = parseYamlSafely(raw, configPath);
+	if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+		throw new Error(
+			`Config ${configPath} must be a YAML mapping at the top level`,
+		);
+	}
+	const masterRaw = (doc as Record<string, unknown>).master;
+	if (
+		masterRaw === null ||
+		typeof masterRaw !== "object" ||
+		Array.isArray(masterRaw)
+	) {
+		throw new Error(`Config ${configPath} field "master" must be a mapping`);
+	}
+	const hash = createHash("sha256");
+	hash.update("master\0");
+	hash.update(stringifyYaml(masterRaw));
+	return hash.digest("hex");
+}
+
+export function buildMasterInitConfig(
+	hostConfig: LoadedHostConfig,
+): AdapterInitConfig {
+	const masterConfig = hostConfig.config.master.config;
+	const instructions =
+		typeof masterConfig.instructions === "string"
+			? masterConfig.instructions
+			: "You are the master agent.";
+	const skills = parseMasterSkills(masterConfig.skills);
+	const model = parseMasterModel(masterConfig.model);
+	return { instructions, skills, model };
+}
+
+export function resolveMasterAdapterCommand(
+	hostConfig: LoadedHostConfig,
+): Array<string> {
+	const masterConfig = hostConfig.config.master.config;
+	const command = masterConfig.command;
+	if (Array.isArray(command)) {
+		const parts: Array<string> = [];
+		for (const item of command) {
+			if (typeof item !== "string" || item.length === 0) {
+				throw new Error("master.config.command must contain non-empty strings");
+			}
+			parts.push(item);
+		}
+		if (parts.length > 0) return parts;
+	}
+	const binary = masterConfig.binary;
+	if (typeof binary === "string" && binary.length > 0) {
+		return ["node", binary];
+	}
+	return [
+		"node",
+		join(hostConfig.rootDir, "packages/adapter-hermes/dist/main.js"),
+	];
+}
+
+function parseMasterSkills(value: unknown): Array<SkillContent> {
+	if (!Array.isArray(value)) return [];
+	const skills: Array<SkillContent> = [];
+	for (const item of value) {
+		if (!isRecord(item)) continue;
+		const name = item.name;
+		const content = item.content;
+		if (typeof name !== "string" || name.length === 0) continue;
+		skills.push({
+			name,
+			content: typeof content === "string" ? content : "",
+		});
+	}
+	return skills;
+}
+
+function parseMasterModel(value: unknown): ModelConfig {
+	if (isRecord(value)) {
+		return validateModelConfig(value, "master.config.model");
+	}
+	return {
+		provider: "anthropic",
+		name: "placeholder",
+		apiKeyEnv: "ANTHROPIC_API_KEY",
+		contextWindow: 200_000,
+	};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export async function loadPrototypeInitSkills(

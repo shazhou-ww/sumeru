@@ -11,6 +11,10 @@ packages:
     path: packages/adapter-claude-code
     type: lib
 
+  - name: "@sumeru/adapter-hermes"
+    path: packages/adapter-hermes
+    type: lib
+
   - name: "@sumeru/host"
     path: packages/host
     type: lib

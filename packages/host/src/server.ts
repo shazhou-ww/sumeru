@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer as createHttpServer } from "node:http";
-import { loadHostConfig } from "./config.js";
+import { loadHostConfig, resolveMasterAdapterCommand } from "./config.js";
 import {
 	createHistoryHandler,
 	createInboxHandler,
@@ -11,7 +11,12 @@ import {
 	writeMethodNotAllowed,
 	writeRouteNotFound,
 } from "./handlers/index.js";
+import { projectNameFromInstanceId } from "./id.js";
 import { createInstanceManager } from "./instance-manager.js";
+import {
+	createLocalTransport,
+	createRoutingTransport,
+} from "./local-transport.js";
 import { createRouter } from "./router.js";
 import { createDockerTransport } from "./transport.js";
 import type {
@@ -69,8 +74,17 @@ export function createHostHandler(input: {
 
 export async function startHost(config: StartHostConfig): Promise<StartedHost> {
 	const hostConfig = await loadHostConfig(config.rootDir);
-	const transport = config.transport ?? createDockerTransport();
+	const dockerTransport = config.transport ?? createDockerTransport();
+	const localTransport = createLocalTransport({
+		adapterCommand: resolveMasterAdapterCommand(hostConfig),
+	});
+	const transport = createRoutingTransport({
+		docker: dockerTransport,
+		local: localTransport,
+		masterProjectName: projectNameFromInstanceId("inst_0"),
+	});
 	const manager = createInstanceManager({ hostConfig, transport });
+	await manager.bootMaster();
 	const handler = createHostHandler({
 		hostConfig,
 		manager,

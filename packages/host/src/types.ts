@@ -43,6 +43,7 @@ export type LoadedHostConfig = {
 	dataDir: string;
 	config: HostConfig;
 	prototypes: Map<string, PrototypeInfo>;
+	masterHash: string;
 };
 
 export type ManagedInstance = InstanceInfo & {
