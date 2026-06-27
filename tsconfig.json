@@ -19,7 +19,9 @@
     { "path": "packages/core" },
     { "path": "packages/adapter-core" },
     { "path": "packages/adapter-claude-code" },
+    { "path": "packages/adapter-codex" },
     { "path": "packages/adapter-hermes" },
+    { "path": "packages/cli" },
     { "path": "packages/host" }
   ],
   "files": []

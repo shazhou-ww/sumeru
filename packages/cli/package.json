@@ -1,0 +1,27 @@
+{
+  "name": "@sumeru/cli",
+  "description": "CLI for Sumeru Host API",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "sumeru": "./dist/main.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@sumeru/core": "workspace:*"
+  },
+  "scripts": {
+    "test:ci": "npx vitest run"
+  }
+}

@@ -33,6 +33,15 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/adapter-codex:
+    dependencies:
+      '@sumeru/adapter-core':
+        specifier: workspace:*
+        version: link:../adapter-core
+      '@sumeru/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/adapter-core:
     dependencies:
       '@sumeru/core':
@@ -44,6 +53,12 @@ importers:
       '@sumeru/adapter-core':
         specifier: workspace:*
         version: link:../adapter-core
+      '@sumeru/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/cli:
+    dependencies:
       '@sumeru/core':
         specifier: workspace:*
         version: link:../core
