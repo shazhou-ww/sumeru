@@ -176,9 +176,9 @@ describe("instance-manager", () => {
 			projects: null,
 		});
 
-		const frames: Array<{ type: string }> = [];
-		const unsubscribe = manager.subscribeOutbox(created.id, (frame) => {
-			frames.push({ type: frame.type });
+		const events: Array<{ event: string; id: number }> = [];
+		const unsubscribe = manager.subscribeOutbox(created.id, (event) => {
+			events.push({ event: event.event, id: event.id });
 		});
 
 		await manager.submitInbox(created.id, {
@@ -187,10 +187,12 @@ describe("instance-manager", () => {
 			project: null,
 		});
 
-		await waitUntil(() => frames.some((frame) => frame.type === "done"));
+		await waitUntil(() => events.some((event) => event.event === "done"));
 		unsubscribe();
 		expect(calls.some((call) => call.startsWith("exec:"))).toBe(true);
-		expect(frames.map((frame) => frame.type)).toEqual(["turn", "done"]);
+		expect(events.map((event) => event.event)).toEqual(["turn", "done"]);
+		expect(events[0]?.id).toBe(1);
+		expect(events[1]?.id).toBe(2);
 	});
 
 	it("resetInstance recreates the container", async () => {
@@ -218,6 +220,115 @@ describe("instance-manager", () => {
 		expect(a.startsWith("inst_")).toBe(true);
 		expect(b.startsWith("inst_")).toBe(true);
 		expect(a).not.toBe(b);
+	});
+
+	it("marks instance suspended on adapter suspend and resumes with nativeId", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		const stdinWrites: Array<string> = [];
+		let execCount = 0;
+		const transport: Transport = {
+			async up(input) {
+				return { containerId: `container-${input.projectName}` };
+			},
+			async down() {},
+			async rm() {},
+			exec() {
+				execCount += 1;
+				const stdin = new PassThrough();
+				const stdout = new PassThrough();
+				stdin.on("data", (chunk: Buffer | string) => {
+					const text =
+						typeof chunk === "string" ? chunk : chunk.toString("utf8");
+					stdinWrites.push(text);
+					if (text.includes('"init"')) {
+						stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
+					}
+					if (execCount === 1 && text.includes('"message"')) {
+						stdout.write(
+							`${JSON.stringify({
+								type: "suspend",
+								value: {
+									reason: "timeout",
+									elapsedMs: 42,
+									nativeId: "native-resume-abc",
+								},
+							})}\n`,
+						);
+						stdout.end();
+					}
+					if (execCount === 2 && text.includes('"message"')) {
+						stdout.write(
+							`${JSON.stringify({
+								type: "turn",
+								value: {
+									index: 0,
+									role: "assistant",
+									content: "resumed",
+									timestamp: "2026-06-27T00:00:00.000Z",
+									toolCalls: null,
+									tokens: null,
+								},
+							})}\n`,
+						);
+						stdout.write(
+							`${JSON.stringify({
+								type: "done",
+								value: { summary: "ok", tokenUsage: null },
+							})}\n`,
+						);
+					}
+				});
+				const rl = createInterface({ input: stdout, crlfDelay: Infinity });
+				return {
+					stdin,
+					lines: rl,
+					waitForExit: async () => ({ exitCode: 0, stderr: "" }),
+				};
+			},
+			async inspectStatus() {
+				return "running";
+			},
+		};
+		const manager = createInstanceManager({ hostConfig, transport });
+		const created = await manager.createInstance({
+			prototype: "claude-code",
+			projects: null,
+		});
+
+		const events: Array<{ event: string }> = [];
+		const unsubscribe = manager.subscribeOutbox(created.id, (event) => {
+			events.push({ event: event.event });
+		});
+
+		await manager.submitInbox(created.id, {
+			messageId: "msg_1",
+			content: "hello",
+			project: null,
+		});
+		await waitUntil(() => events.some((event) => event.event === "suspend"));
+		expect(manager.getInstance(created.id)?.status).toBe("suspended");
+		expect(events.map((event) => event.event)).toEqual(["suspend"]);
+
+		await manager.submitInbox(created.id, {
+			messageId: "msg_2",
+			content: "continue",
+			project: null,
+		});
+		await waitUntil(() => events.some((event) => event.event === "done"));
+		unsubscribe();
+
+		expect(execCount).toBe(2);
+		expect(manager.getInstance(created.id)?.status).toBe("running");
+		const resumeWrite = stdinWrites.find((line) =>
+			line.includes("native-resume-abc"),
+		);
+		expect(resumeWrite).toBeDefined();
+		expect(events.map((event) => event.event)).toEqual([
+			"suspend",
+			"turn",
+			"done",
+		]);
 	});
 });
 

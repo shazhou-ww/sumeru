@@ -4,7 +4,8 @@
 // process and no real OS signals are used.
 
 import { PassThrough } from "node:stream";
-import type { OutboundFrame } from "../src/types.js";
+import { runAdapterEntry } from "../src/entrypoint.js";
+import type { AdapterEntryOptions, OutboundFrame } from "../src/types.js";
 
 export type Deferred<T> = {
 	promise: Promise<T>;
@@ -80,6 +81,17 @@ export function makeSigtermHook(): SigtermHook {
 
 export function makeStdin(): PassThrough {
 	return new PassThrough();
+}
+
+export function runTestEntry(
+	options: Omit<AdapterEntryOptions, "sendTimeoutMs"> & {
+		sendTimeoutMs?: number | null;
+	},
+): Promise<void> {
+	return runAdapterEntry({
+		...options,
+		sendTimeoutMs: options.sendTimeoutMs ?? null,
+	});
 }
 
 // Flush pending macro/microtasks so event-driven reads settle.

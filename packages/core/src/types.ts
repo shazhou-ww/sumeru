@@ -80,6 +80,7 @@ export type HostConfig = {
 	name: string;
 	master: MasterConfig;
 	resources: ResourceLimits;
+	dataDir: string | null;
 };
 export type MasterConfig = {
 	adapter: string;

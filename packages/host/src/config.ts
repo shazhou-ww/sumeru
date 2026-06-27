@@ -15,10 +15,12 @@ export async function loadHostConfig(
 	const prototypesDir = join(rootDir, DEFAULT_PROTOTYPES_DIR);
 	const config = await loadHostYaml(configPath);
 	const prototypes = await scanPrototypes(prototypesDir);
+	const dataDir = resolveDataDir(rootDir, config);
 	return {
 		rootDir,
 		configPath,
 		prototypesDir,
+		dataDir,
 		config,
 		prototypes,
 	};
@@ -139,6 +141,16 @@ function validateHostConfig(doc: unknown, path: string): HostConfig {
 			`Config ${path} field "resources.maxInstances" must be a finite number`,
 		);
 	}
+	const dataDirRaw = obj.dataDir;
+	let dataDir: string | null = null;
+	if (dataDirRaw !== undefined && dataDirRaw !== null) {
+		if (typeof dataDirRaw !== "string" || dataDirRaw.length === 0) {
+			throw new Error(
+				`Config ${path} field "dataDir" must be a non-empty string when set`,
+			);
+		}
+		dataDir = dataDirRaw;
+	}
 	return {
 		name,
 		master: { adapter, config: masterConfig },
@@ -147,7 +159,15 @@ function validateHostConfig(doc: unknown, path: string): HostConfig {
 			maxCpus,
 			maxInstances,
 		},
+		dataDir,
 	};
+}
+
+function resolveDataDir(rootDir: string, config: HostConfig): string {
+	if (config.dataDir !== null) {
+		return config.dataDir;
+	}
+	return join(rootDir, "data");
 }
 
 function validateManifest(doc: unknown, path: string): Manifest {

@@ -13,10 +13,17 @@ import {
 	MASTER_INSTANCE_ID,
 	projectNameFromInstanceId,
 } from "./id.js";
-import { parseOutboxLine } from "./outbox.js";
+import { createOcasRecorder, type OcasRecorder } from "./ocas-recorder.js";
+import { outboxFrameToSseEvent, parseOutboxLine } from "./outbox.js";
+import {
+	createSseBuffer,
+	type SseBuffer,
+	type SseEvent,
+} from "./sse-buffer.js";
 import { defaultAdapterCommand } from "./transport.js";
 import type {
 	CreateInstanceRequest,
+	HistoryValue,
 	InboxRequest,
 	LoadedHostConfig,
 	ManagedInstance,
@@ -27,7 +34,9 @@ type AdapterRuntime = {
 	initConfig: AdapterInitConfig;
 	initialized: boolean;
 	readTask: Promise<void> | null;
-	subscribers: Set<(frame: OutboxFrame) => void>;
+	subscribers: Set<(event: SseEvent) => void>;
+	sseBuffer: SseBuffer;
+	resumeNativeId: string | null;
 	session: {
 		stdin: NodeJS.WritableStream;
 		waitForExit(): Promise<{ exitCode: number | null; stderr: string }>;
@@ -44,8 +53,10 @@ export type InstanceManager = {
 	submitInbox(id: InstanceId, body: InboxRequest): Promise<void>;
 	subscribeOutbox(
 		id: InstanceId,
-		onFrame: (frame: OutboxFrame) => void,
+		onEvent: (event: SseEvent) => void,
 	): () => void;
+	getSseBuffer(id: InstanceId): SseBuffer;
+	getHistory(id: InstanceId, limit: number, offset: number): HistoryValue;
 	hostRoot(): {
 		name: string;
 		master: InstanceId;
@@ -57,9 +68,12 @@ export type InstanceManager = {
 export function createInstanceManager(input: {
 	hostConfig: LoadedHostConfig;
 	transport: Transport;
+	recorder?: OcasRecorder;
 }): InstanceManager {
 	const instances = new Map<InstanceId, ManagedInstance>();
 	const adapters = new Map<InstanceId, AdapterRuntime>();
+	const recorder =
+		input.recorder ?? createOcasRecorder(input.hostConfig.dataDir);
 
 	const master: ManagedInstance = {
 		id: MASTER_INSTANCE_ID,
@@ -202,15 +216,52 @@ export function createInstanceManager(input: {
 		if (runtime === null || runtime === undefined || runtime.session === null) {
 			throw new Error("adapter_unavailable");
 		}
+		const resumeNativeId = runtime.resumeNativeId;
 		runtime.session.stdin.write(
-			`${JSON.stringify({ type: "message", value: message })}\n`,
+			`${JSON.stringify({
+				type: "message",
+				value: { ...message, resumeNativeId },
+			})}\n`,
 		);
+		recorder.record(id, {
+			type: "turn",
+			value: {
+				index: recorder.getTurnTotal(id),
+				role: "user",
+				content: body.content,
+				timestamp: new Date().toISOString(),
+				toolCalls: null,
+				tokens: null,
+			},
+		});
+		if (record.status === "suspended") {
+			record.status = "running";
+		}
+	}
+
+	function getSseBuffer(id: InstanceId): SseBuffer {
+		const record = instances.get(id);
+		if (record === undefined) {
+			throw new Error("instance_not_found");
+		}
+		if (id === MASTER_INSTANCE_ID) {
+			throw new Error("master_has_no_outbox");
+		}
+		return ensureAdapterRuntime(id).sseBuffer;
 	}
 
 	function subscribeOutbox(
 		id: InstanceId,
-		onFrame: (frame: OutboxFrame) => void,
+		onEvent: (event: SseEvent) => void,
 	): () => void {
+		const runtime = ensureAdapterRuntime(id);
+		runtime.subscribers.add(onEvent);
+		return () => {
+			runtime.subscribers.delete(onEvent);
+		};
+	}
+
+	function ensureAdapterRuntime(id: InstanceId): AdapterRuntime {
 		const record = instances.get(id);
 		if (record === undefined) {
 			throw new Error("instance_not_found");
@@ -220,19 +271,27 @@ export function createInstanceManager(input: {
 		}
 		let runtime = adapters.get(id);
 		if (runtime === undefined) {
-			runtime = {
-				initConfig: { instructions: "", skills: [], model: placeholderModel() },
-				initialized: false,
-				readTask: null,
-				subscribers: new Set(),
-				session: null,
-			};
+			runtime = createAdapterRuntime();
 			adapters.set(id, runtime);
 		}
-		runtime.subscribers.add(onFrame);
-		return () => {
-			runtime?.subscribers.delete(onFrame);
-		};
+		return runtime;
+	}
+
+	function appendOutboxEvent(
+		runtime: AdapterRuntime,
+		frame: OutboxFrame,
+		instanceId: InstanceId,
+	): SseEvent {
+		recorder.record(instanceId, frame);
+		const mapped = outboxFrameToSseEvent(frame);
+		const event = runtime.sseBuffer.append({
+			event: mapped.event,
+			data: JSON.stringify(mapped.data),
+		});
+		for (const subscriber of runtime.subscribers) {
+			subscriber(event);
+		}
+		return event;
 	}
 
 	async function ensureAdapterReady(
@@ -241,27 +300,29 @@ export function createInstanceManager(input: {
 	): Promise<void> {
 		let runtime = adapters.get(id);
 		if (runtime === undefined) {
-			runtime = {
-				initConfig: await buildInitConfig(record.prototype as string),
-				initialized: false,
-				readTask: null,
-				subscribers: new Set(),
-				session: null,
-			};
+			runtime = createAdapterRuntime(
+				await buildInitConfig(record.prototype as string),
+			);
 			adapters.set(id, runtime);
 		}
-		if (runtime.session !== null && runtime.initialized) {
+		if (
+			runtime.session !== null &&
+			runtime.initialized &&
+			record.status !== "suspended"
+		) {
 			return;
 		}
 		if (record.containerId === null) {
 			throw new Error("instance_not_running");
 		}
+		runtime.initialized = false;
 		const session = input.transport.exec({
 			containerId: record.containerId,
 			command: defaultAdapterCommand(),
 		});
 		runtime.session = session;
-		runtime.readTask = readAdapterOutput(id, session.lines);
+		const activeSession = session;
+		runtime.readTask = readAdapterOutput(id, session.lines, activeSession);
 		runtime.session.stdin.write(
 			`${JSON.stringify({ type: "init", value: runtime.initConfig })}\n`,
 		);
@@ -281,6 +342,7 @@ export function createInstanceManager(input: {
 	async function readAdapterOutput(
 		id: InstanceId,
 		lines: AsyncIterable<string>,
+		activeSession: NonNullable<AdapterRuntime["session"]>,
 	): Promise<void> {
 		const runtime = adapters.get(id);
 		if (runtime === undefined) return;
@@ -303,17 +365,27 @@ export function createInstanceManager(input: {
 				}
 				const frame = parseOutboxLine(line);
 				if (frame === null) continue;
-				for (const subscriber of runtime.subscribers) {
-					subscriber(frame);
+				if (frame.type === "suspend") {
+					const record = instances.get(id);
+					if (record !== undefined) {
+						record.status = "suspended";
+					}
+					runtime.resumeNativeId = extractSuspendNativeId(parsed);
+					runtime.session = null;
+					runtime.initialized = false;
 				}
+				appendOutboxEvent(runtime, frame, id);
 			}
 		} catch {
 			const errorFrame: OutboxFrame = {
 				type: "error",
 				value: { code: "adapter_io_error", message: "adapter stdout closed" },
 			};
-			for (const subscriber of runtime.subscribers) {
-				subscriber(errorFrame);
+			appendOutboxEvent(runtime, errorFrame, id);
+		} finally {
+			if (runtime.session === activeSession) {
+				runtime.session = null;
+				runtime.initialized = false;
 			}
 		}
 	}
@@ -346,6 +418,23 @@ export function createInstanceManager(input: {
 		};
 	}
 
+	function getHistory(
+		id: InstanceId,
+		limit: number,
+		offset: number,
+	): HistoryValue {
+		const record = instances.get(id);
+		if (record === undefined) {
+			throw new Error("instance_not_found");
+		}
+		return {
+			instanceId: id,
+			total: recorder.getTurnTotal(id),
+			offset,
+			turns: recorder.getTurns(id, limit, offset),
+		};
+	}
+
 	function hostRoot(): {
 		name: string;
 		master: InstanceId;
@@ -369,8 +458,41 @@ export function createInstanceManager(input: {
 		getStatus,
 		submitInbox,
 		subscribeOutbox,
+		getSseBuffer,
+		getHistory,
 		hostRoot,
 	};
+}
+
+function createAdapterRuntime(
+	initConfig: AdapterInitConfig = {
+		instructions: "",
+		skills: [],
+		model: placeholderModel(),
+	},
+): AdapterRuntime {
+	return {
+		initConfig,
+		initialized: false,
+		readTask: null,
+		subscribers: new Set(),
+		sseBuffer: createSseBuffer(),
+		resumeNativeId: null,
+		session: null,
+	};
+}
+
+function extractSuspendNativeId(parsed: unknown): string | null {
+	if (!isRecord(parsed) || parsed.type !== "suspend") return null;
+	const value = parsed.value;
+	if (!isRecord(value)) return null;
+	const nativeId = value.nativeId;
+	if (typeof nativeId !== "string" || nativeId.length === 0) return null;
+	return nativeId;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
 }
 
 function toInstanceInfo(record: ManagedInstance): InstanceInfo {

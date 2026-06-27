@@ -7,6 +7,7 @@ import type {
 	Manifest,
 	OutboxFrame,
 } from "@sumeru/core";
+import type { TurnRecord } from "./ocas-recorder.js";
 
 export type Envelope<T> = {
 	type: string;
@@ -38,6 +39,7 @@ export type LoadedHostConfig = {
 	rootDir: string;
 	configPath: string;
 	prototypesDir: string;
+	dataDir: string;
 	config: HostConfig;
 	prototypes: Map<string, PrototypeInfo>;
 };
@@ -68,6 +70,13 @@ export type InstanceStatusValue = {
 	id: InstanceId;
 	status: InstanceStatus;
 	containerId: string | null;
+};
+
+export type HistoryValue = {
+	instanceId: InstanceId;
+	total: number;
+	offset: number;
+	turns: Array<TurnRecord>;
 };
 
 export type TransportUpResult = {

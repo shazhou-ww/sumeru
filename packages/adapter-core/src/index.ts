@@ -4,8 +4,10 @@ export { createAdapterEntry, runAdapterEntry } from "./entrypoint.js";
 export type {
 	AdapterEntryOptions,
 	AdapterImpl,
+	AdapterInboxMessage,
 	AdapterInitConfig,
 	InboundFrame,
 	OutboundFrame,
 	SkillContent,
+	SuspendOutboundValue,
 } from "./types.js";

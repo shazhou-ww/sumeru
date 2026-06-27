@@ -3,9 +3,14 @@
 // then stdin close → graceful exit. No child process, no real signals.
 
 import { describe, expect, it } from "vitest";
-import { runAdapterEntry } from "../src/index.js";
 import type { AdapterImpl, AdapterInitConfig } from "../src/types.js";
-import { flush, makeSigtermHook, makeStdin, makeStdout } from "./harness.js";
+import {
+	flush,
+	makeSigtermHook,
+	makeStdin,
+	makeStdout,
+	runTestEntry,
+} from "./harness.js";
 
 describe("adapter-core — dummy adapter lifecycle (e2e)", () => {
 	it("round-trips the full NDJSON protocol over mocked stdio", async () => {
@@ -35,7 +40,7 @@ describe("adapter-core — dummy adapter lifecycle (e2e)", () => {
 			},
 		};
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl: dummy,
 			stdin,
 			stdout: stdout.stream,
