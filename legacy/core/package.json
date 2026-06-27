@@ -1,7 +1,7 @@
 {
   "name": "@sumeru/core",
-  "description": "Shared type definitions for Sumeru (zero runtime deps)",
-  "version": "0.1.0",
+  "description": "Core type definitions for Sumeru (Adapter, Turn, Session types)",
+  "version": "0.2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

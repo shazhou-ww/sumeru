@@ -116,15 +116,17 @@ session 历史可读但不可继续发新消息，`POST .../messages` 会返回
 
 ## Packages
 
+Active v2 packages (build-dependency order):
+
 | Package | Description |
 |---------|-------------|
-| `@sumeru/core` | Core type definitions (Adapter, Turn, Session types) |
-| `@sumeru/server` | HTTP service (Instance, Gateway, Session management) |
-| `@sumeru/adapter-hermes` | Adapter for Hermes Agent |
-| `@sumeru/adapter-claude-code` | Adapter for Claude Code CLI |
-| `@sumeru/adapter-cursor-agent` | Adapter for Cursor Agent CLI |
-| `@sumeru/adapter-codex` | Adapter for OpenAI Codex CLI |
-| `@sumeru/cli` | CLI tool (`sumeru start`) |
+| `@sumeru/core` | Shared type definitions (zero runtime deps) |
+| `@sumeru/adapter-core` | Adapter common framework (cli-kit NDJSON entrypoint) |
+| `@sumeru/adapter-claude-code` | Claude Code adapter |
+| `@sumeru/host` | Host HTTP service + Transport layer |
+
+> The previous v1 implementation is frozen under `legacy/` and is excluded from
+> the workspace, build, lint, and publish.
 
 ## Configuration
 

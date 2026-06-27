@@ -1,6 +1,6 @@
 {
-  "name": "@sumeru/core",
-  "description": "Shared type definitions for Sumeru (zero runtime deps)",
+  "name": "@sumeru/adapter-core",
+  "description": "Adapter common framework for Sumeru (cli-kit NDJSON entrypoint)",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -15,6 +15,9 @@
     "dist"
   ],
   "license": "MIT",
+  "dependencies": {
+    "@sumeru/core": "workspace:*"
+  },
   "scripts": {
     "test:ci": "npx vitest run"
   }
