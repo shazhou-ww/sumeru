@@ -5,6 +5,9 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "sumeru-adapter-claude-code": "./dist/main.js"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
