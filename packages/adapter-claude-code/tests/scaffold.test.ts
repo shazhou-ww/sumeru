@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { VERSION } from "../src/index.js";
+import { createClaudeCodeAdapter } from "../src/adapter.js";
+import { parseStreamJson } from "../src/stream-parser.js";
 
-describe("@sumeru/adapter-claude-code — package scaffold", () => {
-	it("exposes a named VERSION export at 0.1.0", () => {
-		expect(VERSION).toBe("0.1.0");
+describe("@sumeru/adapter-claude-code — package surface", () => {
+	it("exports createClaudeCodeAdapter returning AdapterImpl shape", () => {
+		const adapter = createClaudeCodeAdapter();
+		expect(typeof adapter.init).toBe("function");
+		expect(typeof adapter.handle).toBe("function");
+	});
+
+	it("parseStreamJson is exported from the package barrel", () => {
+		expect(typeof parseStreamJson).toBe("function");
 	});
 });

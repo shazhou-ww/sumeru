@@ -1,4 +1,17 @@
-// @sumeru/adapter-claude-code — Claude Code adapter (v2 scaffold).
-// Placeholder export so the package compiles as a workspace member.
-// The concrete Claude Code adapter implementation lands in later M1 issues.
-export const VERSION = "0.1.0";
+export { createClaudeCodeAdapter } from "./adapter.js";
+export { defaultStreamingSpawn } from "./spawn.js";
+export {
+	doneValueFromResultLine,
+	parseStreamJson,
+	parseStreamJsonIncremental,
+} from "./stream-parser.js";
+export type {
+	ClaudeCodeOptions,
+	ClaudeCodeParsedResult,
+	ClaudeCodeResultSubtype,
+	SpawnArgs,
+	SpawnExitInfo,
+	SpawnStreamResult,
+	StreamingSpawnFn,
+	StreamParseEvent,
+} from "./types.js";
