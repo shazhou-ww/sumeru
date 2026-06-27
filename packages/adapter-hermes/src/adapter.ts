@@ -121,6 +121,7 @@ export function createHermesAdapter(
 		const args = [
 			"chat",
 			"-q",
+			message.content,
 			"--pass-session-id",
 			"--quiet",
 			"--source",
@@ -179,9 +180,22 @@ export function createHermesAdapter(
 		const after = (await jsonlReader(resolveSessionsDir(), sessionId)) ?? [];
 		const delta = after.filter((turn) => turn.index > highWater);
 		const filtered = delta.filter((turn) => turn.role !== "system");
-		for (const turn of filtered) {
-			const mapped: TurnValue = { ...turn, index: nextTurnIndex++ };
-			yield mapped;
+		// Fallback: if no turns from jsonl/db, use stdout as single assistant turn
+		if (filtered.length === 0 && result.stdout.trim().length > 0) {
+			const fallbackTurn: TurnValue = {
+				index: nextTurnIndex++,
+				role: "assistant",
+				content: result.stdout.trim(),
+				timestamp: new Date().toISOString(),
+				toolCalls: null,
+				tokens: null,
+			};
+			yield fallbackTurn;
+		} else {
+			for (const turn of filtered) {
+				const mapped: TurnValue = { ...turn, index: nextTurnIndex++ };
+				yield mapped;
+			}
 		}
 
 		return {

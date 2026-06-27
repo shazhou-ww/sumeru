@@ -95,6 +95,7 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 		expect(spawnCalls[0]?.args).toEqual([
 			"chat",
 			"-q",
+			"ping",
 			"--pass-session-id",
 			"--quiet",
 			"--source",
