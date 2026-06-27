@@ -1,0 +1,29 @@
+#!/bin/bash
+# Sumeru launchd wrapper — macOS equivalent of systemd's EnvironmentFile=.
+#
+# Why a wrapper instead of putting env directly in the plist:
+#   - launchd has no `EnvironmentFile=` directive, and gives services a minimal
+#     environment (it does NOT inherit the login shell).
+#   - Sumeru spawns CLI adapter subprocesses (hermes / claude-code) that need
+#     PATH (node, hermes, claude, sumeru) and — for claude-code — ANTHROPIC_*.
+#   - This wrapper sets PATH, sources the 0600 env file, then exec's sumeru,
+#     keeping secrets out of the world-readable plist.
+#
+# NOTE: the hermes adapter spawns `hermes chat`, which reads its credentials
+# from ~/.hermes/config.yaml — NOT from the environment. So a hermes-only node
+# can run with an empty / missing env file. Only the claude-code adapter needs
+# ANTHROPIC_* (mirrors the systemd unit's optional `EnvironmentFile=-`).
+set -euo pipefail
+
+# Adjust for your install. Homebrew (Apple Silicon) + pnpm global bin shown.
+export PATH="/opt/homebrew/bin:$HOME/Library/pnpm:$HOME/.bun/bin:$HOME/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+ENV_FILE="$HOME/.config/sumeru/env"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
+exec sumeru start --config "$HOME/.config/sumeru/sumeru.yaml" --port 7900

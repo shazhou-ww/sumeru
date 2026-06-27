@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sumeru launchd agent — macOS equivalent of deploy/sumeru.service (systemd).
+
+  macOS has no systemd. This LaunchAgent runs Sumeru as a per-user service with
+  the same guarantees as the systemd unit: start at login (RunAtLoad), restart
+  on crash (KeepAlive.SuccessfulExit=false), own process tree (decoupled from
+  hermes-gateway, see issue #40).
+
+  SETUP
+    1. cp deploy/sumeru.plist.example ~/Library/LaunchAgents/work.shazhou.sumeru.plist
+    2. cp deploy/sumeru-launchd-run.sh.example ~/.config/sumeru/launchd-run.sh
+       chmod 755 ~/.config/sumeru/launchd-run.sh
+    3. Place your instance config at ~/.config/sumeru/sumeru.yaml
+    4. (CLI adapters only) cp deploy/sumeru.env.example ~/.config/sumeru/env
+       chmod 600 ~/.config/sumeru/env   # then fill in real values
+    5. Replace EVERY __HOME__ below with your absolute home dir (echo $HOME).
+       launchd does NOT expand ~ or $HOME inside the plist.
+    6. launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/work.shazhou.sumeru.plist
+       launchctl kickstart -k gui/$(id -u)/work.shazhou.sumeru
+
+  MANAGE
+    launchctl print   gui/$(id -u)/work.shazhou.sumeru   # state / pid / last exit
+    launchctl kickstart -k gui/$(id -u)/work.shazhou.sumeru   # restart
+    launchctl bootout gui/$(id -u)/work.shazhou.sumeru   # stop + unload
+    tail -f __HOME__/.config/sumeru/sumeru.log           # logs (no journald)
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>work.shazhou.sumeru</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__HOME__/.config/sumeru/launchd-run.sh</string>
+    </array>
+
+    <!-- Start at login -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart on crash / non-zero exit (≈ systemd Restart=always) -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Min interval between restarts (≈ systemd RestartSec=5) -->
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <key>WorkingDirectory</key>
+    <string>__HOME__/.config/sumeru</string>
+
+    <!-- launchd has no journald — log to a file -->
+    <key>StandardOutPath</key>
+    <string>__HOME__/.config/sumeru/sumeru.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.config/sumeru/sumeru.log</string>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>

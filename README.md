@@ -177,10 +177,11 @@ uwf/broker (session 路由层)
 
 ## 部署
 
-Sumeru 以 **systemd user service** 运行，与 `hermes-gateway.service` 完全解耦。
-gateway 重启不再影响 Sumeru。
+Sumeru 作为**用户级常驻服务**运行，与 `hermes-gateway.service` 完全解耦，gateway
+重启不再影响 Sumeru。Linux 用 **systemd user service**，macOS 用 **launchd
+LaunchAgent** —— 两者保证对等：登录自启 + 崩溃自愈 + 独立进程树。
 
-### 安装服务
+### Linux：systemd user service
 
 ```bash
 # 1. 复制或符号链接 unit 文件
@@ -228,6 +229,55 @@ systemctl --user restart sumeru
 ```bash
 systemctl --user status sumeru
 ```
+
+### macOS：launchd LaunchAgent
+
+macOS 没有 systemd，用 launchd LaunchAgent 跑同等服务。因为 launchd 没有
+`EnvironmentFile=` 指令、且不继承 login shell 环境，而 Sumeru 会 spawn 外部
+adapter 二进制（需要 PATH，claude-code 还需 `ANTHROPIC_*`），所以这套是
+**plist + wrapper 脚本 + 0600 env 文件** 三件套（wrapper 负责设 PATH、加载凭证后
+exec sumeru，等价于 systemd 的 `EnvironmentFile=`）。
+
+```bash
+# 1. 安装 wrapper 脚本（设 PATH + 加载凭证 + exec sumeru）
+mkdir -p ~/.config/sumeru
+cp deploy/sumeru-launchd-run.sh.example ~/.config/sumeru/launchd-run.sh
+chmod 755 ~/.config/sumeru/launchd-run.sh
+
+# 2. 放置实例配置
+$EDITOR ~/.config/sumeru/sumeru.yaml     # name + gateways
+
+# 3. 配置 adapter 认证（仅当用 claude-code 等 CLI adapter）
+cp deploy/sumeru.env.example ~/.config/sumeru/env
+chmod 600 ~/.config/sumeru/env           # 仅 owner 可读
+$EDITOR ~/.config/sumeru/env             # 填入真实 ANTHROPIC_API_KEY 等
+#    只用 hermes adapter 的节点可跳过这步（hermes 从 ~/.hermes/config.yaml 读凭证，不靠环境变量）。
+
+# 4. 安装 LaunchAgent，并把 plist 里所有 __HOME__ 替换为绝对 home（launchd 不展开 ~ / $HOME）
+sed "s|__HOME__|$HOME|g" deploy/sumeru.plist.example > ~/Library/LaunchAgents/work.shazhou.sumeru.plist
+
+# 5. 加载并启动
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/work.shazhou.sumeru.plist
+launchctl kickstart -k gui/$(id -u)/work.shazhou.sumeru
+```
+
+> **PATH 与认证**：与 systemd 同理 —— launchd 给的环境极精简。wrapper 脚本里用
+> `export PATH=...` 声明 homebrew / pnpm / local bin（否则 `spawn claude` →
+> `ENOENT`），并 source `~/.config/sumeru/env` 提供 `ANTHROPIC_*`。凭证只放在
+> `~/.config/sumeru/env`（0600，**不进 git**），repo 里只有占位的
+> `deploy/sumeru.env.example`（systemd / launchd 共享同一份格式）。
+
+管理命令：
+
+```bash
+launchctl print   gui/$(id -u)/work.shazhou.sumeru   # 状态 / pid / 上次退出码
+launchctl kickstart -k gui/$(id -u)/work.shazhou.sumeru   # 重启
+launchctl bootout gui/$(id -u)/work.shazhou.sumeru   # 停止 + 卸载
+tail -f ~/.config/sumeru/sumeru.log                  # 日志（launchd 无 journald）
+```
+
+> 迁移提示：切到 launchd 前先停掉手动起的 `sumeru`（释放 7900），否则 pid 文件
+> （`~/.sumeru/sumeru.pid`）单实例锁会让 launchd 实例因端口占用 crash-loop。
 
 ### 为什么是独立 service
 
