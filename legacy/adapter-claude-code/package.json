@@ -1,7 +1,7 @@
 {
-  "name": "@sumeru/core",
-  "description": "Shared type definitions for Sumeru (zero runtime deps)",
-  "version": "0.1.0",
+  "name": "@sumeru/adapter-claude-code",
+  "description": "Sumeru adapter for Claude Code",
+  "version": "0.2.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,7 +15,11 @@
     "dist"
   ],
   "license": "MIT",
+  "dependencies": {
+    "@sumeru/core": "workspace:*"
+  },
   "scripts": {
+    "build": "tsc -b",
     "test:ci": "npx vitest run"
   }
 }
