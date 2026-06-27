@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadHostConfig } from "../src/config.js";
 import { generateInstanceId, MASTER_INSTANCE_ID } from "../src/id.js";
 import { createInstanceManager } from "../src/instance-manager.js";
+import { createOcasRecorder } from "../src/ocas-recorder.js";
 import type { Transport, TransportExecSession } from "../src/types.js";
 
 function writeHostFixture(rootDir: string, maxInstances = 2): void {
@@ -47,11 +48,14 @@ function writeHostFixture(rootDir: string, maxInstances = 2): void {
 function createInteractiveTransport(): {
 	transport: Transport;
 	calls: Array<string>;
+	upComposeContents: Array<string>;
 } {
 	const calls: Array<string> = [];
+	const upComposeContents: Array<string> = [];
 	const transport: Transport = {
 		async up(input) {
 			calls.push(`up:${input.projectName}`);
+			upComposeContents.push(readFileSync(input.composePath, "utf-8"));
 			return { containerId: `container-${input.projectName}` };
 		},
 		async down(input) {
@@ -104,7 +108,7 @@ function createInteractiveTransport(): {
 			return "running";
 		},
 	};
-	return { transport, calls };
+	return { transport, calls, upComposeContents };
 }
 
 describe("instance-manager", () => {
@@ -270,23 +274,79 @@ describe("instance-manager", () => {
 		expect(events[1]?.id).toBe(2);
 	});
 
-	it("resetInstance recreates the container", async () => {
+	it("resetInstance recreates the container, clears history, and stops", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
 		const { transport, calls } = createInteractiveTransport();
-		const manager = createInstanceManager({ hostConfig, transport });
+		const recorder = createOcasRecorder(hostConfig.dataDir);
+		const manager = createInstanceManager({ hostConfig, transport, recorder });
 		const created = await manager.createInstance({
 			prototype: "claude-code",
 			projects: null,
 		});
+		await manager.submitInbox(created.id, {
+			messageId: "msg_1",
+			content: "hello",
+			project: null,
+		});
+		await waitUntil(() => recorder.getTurnTotal(created.id) > 0);
+		expect(
+			readFileSync(join(hostConfig.dataDir, `${created.id}.jsonl`), "utf-8")
+				.length,
+		).toBeGreaterThan(0);
+
 		const reset = await manager.resetInstance(created.id);
 		expect(reset.id).toBe(created.id);
+		expect(reset.status).toBe("stopped");
+		expect(reset.initVersion).toBeNull();
 		expect(
 			calls.filter((call) => call.startsWith("down:")).length,
 		).toBeGreaterThan(0);
 		expect(
 			calls.filter((call) => call.startsWith("up:")).length,
 		).toBeGreaterThan(1);
+		expect(recorder.getTurnTotal(created.id)).toBe(0);
+		expect(() =>
+			readFileSync(join(hostConfig.dataDir, `${created.id}.jsonl`), "utf-8"),
+		).toThrow();
+	});
+
+	it("uses updated compose.yaml image for newly created instances", async () => {
+		const rootDir = setup();
+		let hostConfig = await loadHostConfig(rootDir);
+		const firstTransport = createInteractiveTransport();
+		const firstManager = createInstanceManager({
+			hostConfig,
+			transport: firstTransport.transport,
+		});
+		const first = await firstManager.createInstance({
+			prototype: "claude-code",
+			projects: null,
+		});
+		expect(firstTransport.upComposeContents[0]).toContain("image: example\n");
+
+		writeFileSync(
+			join(rootDir, "prototypes", "claude-code", "compose.yaml"),
+			"services:\n  agent:\n    image: example-v2\n",
+		);
+		hostConfig = await loadHostConfig(rootDir);
+		const secondTransport = createInteractiveTransport();
+		const secondManager = createInstanceManager({
+			hostConfig,
+			transport: secondTransport.transport,
+		});
+		const second = await secondManager.createInstance({
+			prototype: "claude-code",
+			projects: null,
+		});
+
+		expect(secondTransport.upComposeContents[0]).toContain(
+			"image: example-v2\n",
+		);
+		expect(first.containerId).not.toBe(second.containerId);
+		expect(firstManager.getInstance(first.id)?.composePath).toBe(
+			second.composePath,
+		);
 	});
 
 	it("generateInstanceId produces unique inst_ ids", () => {

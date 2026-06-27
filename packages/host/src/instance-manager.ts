@@ -84,6 +84,7 @@ export function createInstanceManager(input: {
 		containerId: null,
 		projectName: projectNameFromInstanceId(MASTER_INSTANCE_ID),
 		composePath: "",
+		initVersion: null,
 	};
 	instances.set(MASTER_INSTANCE_ID, master);
 
@@ -99,8 +100,7 @@ export function createInstanceManager(input: {
 		body: CreateInstanceRequest,
 	): Promise<ManagedInstance> {
 		const runningCount = [...instances.values()].filter(
-			(item) =>
-				item.id !== MASTER_INSTANCE_ID && item.status === "running",
+			(item) => item.id !== MASTER_INSTANCE_ID && item.status === "running",
 		).length;
 		if (runningCount >= input.hostConfig.config.resources.maxInstances) {
 			throw new Error("resource_exhausted");
@@ -125,6 +125,7 @@ export function createInstanceManager(input: {
 			containerId: up.containerId,
 			projectName,
 			composePath: prototype.composePath,
+			initVersion: null,
 		};
 		instances.set(id, record);
 		return record;
@@ -160,21 +161,31 @@ export function createInstanceManager(input: {
 		if (record === undefined) {
 			throw new Error("instance_not_found");
 		}
+		if (record.prototype === null) {
+			throw new Error("prototype_not_found");
+		}
+		const prototype = input.hostConfig.prototypes.get(record.prototype);
+		if (prototype === undefined) {
+			throw new Error("prototype_not_found");
+		}
 		stopAdapter(id);
 		await input.transport.down({
 			projectName: record.projectName,
 			composePath: record.composePath,
 			workDir: input.hostConfig.rootDir,
 		});
+		recorder.clear(id);
 		const up = await input.transport.up({
 			projectName: record.projectName,
-			composePath: record.composePath,
+			composePath: prototype.composePath,
 			workDir: input.hostConfig.rootDir,
 		});
 		const updated: ManagedInstance = {
 			...record,
 			containerId: up.containerId,
-			status: "running",
+			composePath: prototype.composePath,
+			initVersion: null,
+			status: "stopped",
 		};
 		instances.set(id, updated);
 		return updated;
@@ -299,22 +310,37 @@ export function createInstanceManager(input: {
 		id: InstanceId,
 		record: ManagedInstance,
 	): Promise<void> {
+		if (record.prototype === null) {
+			throw new Error("prototype_not_found");
+		}
+		const currentHash = getPrototypeHash(record.prototype);
 		let runtime = adapters.get(id);
 		if (runtime === undefined) {
-			runtime = createAdapterRuntime(
-				await buildInitConfig(record.prototype as string),
-			);
+			runtime = createAdapterRuntime(await buildInitConfig(record.prototype));
 			adapters.set(id, runtime);
+		}
+		const versionStale = record.initVersion !== currentHash;
+		if (
+			versionStale &&
+			runtime.session !== null &&
+			runtime.initialized &&
+			record.status !== "suspended"
+		) {
+			await invalidateAdapterSession(runtime, record.prototype);
 		}
 		if (
 			runtime.session !== null &&
 			runtime.initialized &&
-			record.status !== "suspended"
+			record.status !== "suspended" &&
+			!versionStale
 		) {
 			return;
 		}
 		if (record.containerId === null) {
 			throw new Error("instance_not_running");
+		}
+		if (versionStale) {
+			runtime.initConfig = await buildInitConfig(record.prototype);
 		}
 		runtime.initialized = false;
 		const session = input.transport.exec({
@@ -328,6 +354,19 @@ export function createInstanceManager(input: {
 			`${JSON.stringify({ type: "init", value: runtime.initConfig })}\n`,
 		);
 		await waitForReady(id);
+		record.initVersion = currentHash;
+	}
+
+	async function invalidateAdapterSession(
+		runtime: AdapterRuntime,
+		prototypeName: string,
+	): Promise<void> {
+		if (runtime.session !== null) {
+			runtime.session.stdin.end();
+			runtime.session = null;
+		}
+		runtime.initialized = false;
+		runtime.initConfig = await buildInitConfig(prototypeName);
 	}
 
 	async function waitForReady(id: InstanceId): Promise<void> {
@@ -417,6 +456,14 @@ export function createInstanceManager(input: {
 			skills,
 			model: prototype.manifest.model,
 		};
+	}
+
+	function getPrototypeHash(prototypeName: string): string {
+		const prototype = input.hostConfig.prototypes.get(prototypeName);
+		if (prototype === undefined) {
+			throw new Error("prototype_not_found");
+		}
+		return prototype.prototypeHash;
 	}
 
 	function getHistory(

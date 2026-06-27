@@ -113,8 +113,9 @@ export function createInstancesHandler(manager: InstanceManager) {
 			params: Record<string, string>,
 		): Promise<void> {
 			try {
-				const updated = await manager.resetInstance(params.id ?? "");
-				writeJson(res, 200, instanceEnvelope(toInstanceInfo(updated)));
+				await manager.resetInstance(params.id ?? "");
+				res.statusCode = 204;
+				res.end();
 			} catch (err) {
 				writeInstanceError(res, err);
 			}
@@ -160,7 +161,10 @@ function writeInstanceError(res: ServerResponse, err: unknown): void {
 			writeJson(
 				res,
 				503,
-				errorEnvelope("resource_exhausted", "Maximum running instances reached"),
+				errorEnvelope(
+					"resource_exhausted",
+					"Maximum running instances reached",
+				),
 			);
 			return;
 		case "cannot_delete_master":

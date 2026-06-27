@@ -1,4 +1,8 @@
-export { loadHostConfig, loadPrototypeInitSkills } from "./config.js";
+export {
+	computePrototypeHash,
+	loadHostConfig,
+	loadPrototypeInitSkills,
+} from "./config.js";
 export type { InstanceManager } from "./instance-manager.js";
 export { createInstanceManager } from "./instance-manager.js";
 export type { Router } from "./router.js";
