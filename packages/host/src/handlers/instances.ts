@@ -156,11 +156,11 @@ function writeInstanceError(res: ServerResponse, err: unknown): void {
 				errorEnvelope("instance_not_found", "Instance not found"),
 			);
 			return;
-		case "max_instances_reached":
+		case "resource_exhausted":
 			writeJson(
 				res,
-				409,
-				errorEnvelope("max_instances_reached", "Maximum instances reached"),
+				503,
+				errorEnvelope("resource_exhausted", "Maximum running instances reached"),
 			);
 			return;
 		case "cannot_delete_master":

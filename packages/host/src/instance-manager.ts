@@ -98,11 +98,12 @@ export function createInstanceManager(input: {
 	async function createInstance(
 		body: CreateInstanceRequest,
 	): Promise<ManagedInstance> {
-		const childCount = [...instances.values()].filter(
-			(item) => item.id !== MASTER_INSTANCE_ID,
+		const runningCount = [...instances.values()].filter(
+			(item) =>
+				item.id !== MASTER_INSTANCE_ID && item.status === "running",
 		).length;
-		if (childCount >= input.hostConfig.config.resources.maxInstances) {
-			throw new Error("max_instances_reached");
+		if (runningCount >= input.hostConfig.config.resources.maxInstances) {
+			throw new Error("resource_exhausted");
 		}
 		const prototype = input.hostConfig.prototypes.get(body.prototype);
 		if (prototype === undefined) {

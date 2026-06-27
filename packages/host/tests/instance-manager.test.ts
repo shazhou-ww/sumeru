@@ -9,7 +9,7 @@ import { generateInstanceId, MASTER_INSTANCE_ID } from "../src/id.js";
 import { createInstanceManager } from "../src/instance-manager.js";
 import type { Transport, TransportExecSession } from "../src/types.js";
 
-function writeHostFixture(rootDir: string): void {
+function writeHostFixture(rootDir: string, maxInstances = 2): void {
 	writeFileSync(
 		join(rootDir, "host.yaml"),
 		[
@@ -20,7 +20,7 @@ function writeHostFixture(rootDir: string): void {
 			"resources:",
 			"  maxMemory: 4g",
 			"  maxCpus: 2",
-			"  maxInstances: 2",
+			`  maxInstances: ${maxInstances}`,
 		].join("\n"),
 	);
 	const prototypeDir = join(rootDir, "prototypes", "claude-code");
@@ -64,6 +64,7 @@ function createInteractiveTransport(): {
 			calls.push(`exec:${containerId}:${command.join(" ")}`);
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();
+			const instanceKey = containerId.replace("container-", "");
 			stdin.on("data", (chunk: Buffer | string) => {
 				const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
 				if (text.includes('"init"')) {
@@ -76,7 +77,7 @@ function createInteractiveTransport(): {
 							value: {
 								index: 0,
 								role: "assistant",
-								content: "pong",
+								content: `pong:${instanceKey}`,
 								timestamp: "2026-06-27T00:00:00.000Z",
 								toolCalls: null,
 								tokens: null,
@@ -154,7 +155,7 @@ describe("instance-manager", () => {
 		expect(calls.some((call) => call.startsWith("rm:"))).toBe(true);
 	});
 
-	it("enforces maxInstances from host config", async () => {
+	it("enforces maxInstances from host config for running instances", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
 		const { transport } = createInteractiveTransport();
@@ -163,7 +164,78 @@ describe("instance-manager", () => {
 		await manager.createInstance({ prototype: "claude-code", projects: null });
 		await expect(
 			manager.createInstance({ prototype: "claude-code", projects: null }),
-		).rejects.toThrow("max_instances_reached");
+		).rejects.toThrow("resource_exhausted");
+	});
+
+	it("allows new instances when existing ones are suspended", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		const { transport } = createInteractiveTransport();
+		const manager = createInstanceManager({ hostConfig, transport });
+		const first = await manager.createInstance({
+			prototype: "claude-code",
+			projects: null,
+		});
+		await manager.createInstance({ prototype: "claude-code", projects: null });
+		const record = manager.getInstance(first.id);
+		if (record !== null) {
+			record.status = "suspended";
+		}
+		const third = await manager.createInstance({
+			prototype: "claude-code",
+			projects: null,
+		});
+		expect(third.id.startsWith("inst_")).toBe(true);
+	});
+
+	it("runs three instances in parallel without shared state contamination", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-host-"));
+		tempDirs.push(rootDir);
+		writeHostFixture(rootDir, 10);
+		const hostConfig = await loadHostConfig(rootDir);
+		const { transport } = createInteractiveTransport();
+		const manager = createInstanceManager({ hostConfig, transport });
+
+		const created = await Promise.all([
+			manager.createInstance({ prototype: "claude-code", projects: null }),
+			manager.createInstance({ prototype: "claude-code", projects: null }),
+			manager.createInstance({ prototype: "claude-code", projects: null }),
+		]);
+		expect(new Set(created.map((item) => item.id)).size).toBe(3);
+
+		const turnContents = new Map<string, string>();
+		const unsubscribes = created.map((instance) => {
+			return manager.subscribeOutbox(instance.id, (event) => {
+				if (event.event !== "turn") return;
+				const data = JSON.parse(event.data) as {
+					value: { content: string };
+				};
+				turnContents.set(instance.id, data.value.content);
+			});
+		});
+
+		await Promise.all(
+			created.map((instance, index) =>
+				manager.submitInbox(instance.id, {
+					messageId: `msg_${index}`,
+					content: `hello-${index}`,
+					project: null,
+				}),
+			),
+		);
+
+		await waitUntil(() =>
+			created.every((instance) => turnContents.has(instance.id)),
+		);
+		for (const unsubscribe of unsubscribes) {
+			unsubscribe();
+		}
+
+		for (const instance of created) {
+			const projectName = instance.projectName;
+			expect(turnContents.get(instance.id)).toBe(`pong:${projectName}`);
+		}
+		expect(new Set(turnContents.values()).size).toBe(3);
 	});
 
 	it("routes inbox through docker exec adapter process", async () => {
@@ -176,9 +248,9 @@ describe("instance-manager", () => {
 			projects: null,
 		});
 
-		const events: Array<{ event: string; id: number }> = [];
+		const events: Array<{ event: string; id: number; data: string }> = [];
 		const unsubscribe = manager.subscribeOutbox(created.id, (event) => {
-			events.push({ event: event.event, id: event.id });
+			events.push({ event: event.event, id: event.id, data: event.data });
 		});
 
 		await manager.submitInbox(created.id, {
@@ -191,6 +263,9 @@ describe("instance-manager", () => {
 		unsubscribe();
 		expect(calls.some((call) => call.startsWith("exec:"))).toBe(true);
 		expect(events.map((event) => event.event)).toEqual(["turn", "done"]);
+		expect(JSON.parse(events[0]?.data ?? "{}")).toMatchObject({
+			value: { content: expect.stringMatching(/^pong:/) },
+		});
 		expect(events[0]?.id).toBe(1);
 		expect(events[1]?.id).toBe(2);
 	});

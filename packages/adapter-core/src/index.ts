@@ -3,6 +3,7 @@
 export { createAdapterEntry, runAdapterEntry } from "./entrypoint.js";
 export type {
 	AdapterEntryOptions,
+	AdapterHandleYield,
 	AdapterImpl,
 	AdapterInboxMessage,
 	AdapterInitConfig,
