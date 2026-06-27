@@ -2,7 +2,6 @@
 
 import type { AdapterInitConfig } from "@sumeru/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { runAdapterEntry } from "../src/index.js";
 import type { AdapterImpl } from "../src/types.js";
 import {
 	createDeferred,
@@ -10,6 +9,7 @@ import {
 	makeSigtermHook,
 	makeStdin,
 	makeStdout,
+	runTestEntry,
 } from "./harness.js";
 
 const INIT_LINE = JSON.stringify({
@@ -48,7 +48,7 @@ describe("adapter-core — init/ready handshake", () => {
 			},
 		};
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl,
 			stdin,
 			stdout: stdout.stream,
@@ -81,7 +81,7 @@ describe("adapter-core — init/ready handshake", () => {
 			},
 		};
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl,
 			stdin,
 			stdout: stdout.stream,
@@ -115,7 +115,7 @@ describe("adapter-core — init/ready handshake", () => {
 			},
 		};
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl,
 			stdin,
 			stdout: stdout.stream,
@@ -154,7 +154,7 @@ describe("adapter-core — init/ready handshake", () => {
 			},
 		};
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl,
 			stdin,
 			stdout: stdout.stream,

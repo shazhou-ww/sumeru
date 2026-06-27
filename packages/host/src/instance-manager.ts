@@ -34,6 +34,7 @@ type AdapterRuntime = {
 	readTask: Promise<void> | null;
 	subscribers: Set<(event: SseEvent) => void>;
 	sseBuffer: SseBuffer;
+	resumeNativeId: string | null;
 	session: {
 		stdin: NodeJS.WritableStream;
 		waitForExit(): Promise<{ exitCode: number | null; stderr: string }>;
@@ -209,9 +210,16 @@ export function createInstanceManager(input: {
 		if (runtime === null || runtime === undefined || runtime.session === null) {
 			throw new Error("adapter_unavailable");
 		}
+		const resumeNativeId = runtime.resumeNativeId;
 		runtime.session.stdin.write(
-			`${JSON.stringify({ type: "message", value: message })}\n`,
+			`${JSON.stringify({
+				type: "message",
+				value: { ...message, resumeNativeId },
+			})}\n`,
 		);
+		if (record.status === "suspended") {
+			record.status = "running";
+		}
 	}
 
 	function getSseBuffer(id: InstanceId): SseBuffer {
@@ -278,18 +286,24 @@ export function createInstanceManager(input: {
 			);
 			adapters.set(id, runtime);
 		}
-		if (runtime.session !== null && runtime.initialized) {
+		if (
+			runtime.session !== null &&
+			runtime.initialized &&
+			record.status !== "suspended"
+		) {
 			return;
 		}
 		if (record.containerId === null) {
 			throw new Error("instance_not_running");
 		}
+		runtime.initialized = false;
 		const session = input.transport.exec({
 			containerId: record.containerId,
 			command: defaultAdapterCommand(),
 		});
 		runtime.session = session;
-		runtime.readTask = readAdapterOutput(id, session.lines);
+		const activeSession = session;
+		runtime.readTask = readAdapterOutput(id, session.lines, activeSession);
 		runtime.session.stdin.write(
 			`${JSON.stringify({ type: "init", value: runtime.initConfig })}\n`,
 		);
@@ -309,6 +323,7 @@ export function createInstanceManager(input: {
 	async function readAdapterOutput(
 		id: InstanceId,
 		lines: AsyncIterable<string>,
+		activeSession: NonNullable<AdapterRuntime["session"]>,
 	): Promise<void> {
 		const runtime = adapters.get(id);
 		if (runtime === undefined) return;
@@ -331,6 +346,15 @@ export function createInstanceManager(input: {
 				}
 				const frame = parseOutboxLine(line);
 				if (frame === null) continue;
+				if (frame.type === "suspend") {
+					const record = instances.get(id);
+					if (record !== undefined) {
+						record.status = "suspended";
+					}
+					runtime.resumeNativeId = extractSuspendNativeId(parsed);
+					runtime.session = null;
+					runtime.initialized = false;
+				}
 				appendOutboxEvent(runtime, frame);
 			}
 		} catch {
@@ -339,6 +363,11 @@ export function createInstanceManager(input: {
 				value: { code: "adapter_io_error", message: "adapter stdout closed" },
 			};
 			appendOutboxEvent(runtime, errorFrame);
+		} finally {
+			if (runtime.session === activeSession) {
+				runtime.session = null;
+				runtime.initialized = false;
+			}
 		}
 	}
 
@@ -411,8 +440,22 @@ function createAdapterRuntime(
 		readTask: null,
 		subscribers: new Set(),
 		sseBuffer: createSseBuffer(),
+		resumeNativeId: null,
 		session: null,
 	};
+}
+
+function extractSuspendNativeId(parsed: unknown): string | null {
+	if (!isRecord(parsed) || parsed.type !== "suspend") return null;
+	const value = parsed.value;
+	if (!isRecord(value)) return null;
+	const nativeId = value.nativeId;
+	if (typeof nativeId !== "string" || nativeId.length === 0) return null;
+	return nativeId;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
 }
 
 function toInstanceInfo(record: ManagedInstance): InstanceInfo {

@@ -1,15 +1,17 @@
 // @sumeru/adapter-core — cli-kit NDJSON entrypoint.
 // Reads init/message frames from stdin (NDJSON), drives an AdapterImpl, and
-// writes ready/turn/done/error frames to stdout. Authoritative source:
+// writes ready/turn/done/suspend/error frames to stdout. Authoritative source:
 // package-design wiki §4 "@sumeru/adapter-core — Adapter 公共框架".
 
-import type { InboxMessage } from "@sumeru/core";
 import type {
 	AdapterEntryOptions,
 	AdapterImpl,
+	AdapterInboxMessage,
 	AdapterInitConfig,
 	OutboundFrame,
 } from "./types.js";
+
+const DEFAULT_SEND_TIMEOUT_MS = 7_200_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
@@ -19,16 +21,59 @@ function errorMessage(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);
 }
 
+function parseAdapterInboxMessage(value: unknown): AdapterInboxMessage | null {
+	if (!isRecord(value)) return null;
+	if (typeof value.messageId !== "string") return null;
+	if (typeof value.content !== "string") return null;
+	const project = value.project;
+	if (project !== null && typeof project !== "string") return null;
+	const resumeNativeId =
+		typeof value.resumeNativeId === "string" ? value.resumeNativeId : null;
+	return {
+		messageId: value.messageId,
+		content: value.content,
+		project: project as string | null,
+		resumeNativeId,
+	};
+}
+
+function resolveNativeId(
+	impl: AdapterImpl,
+	storedNativeId: string | null,
+): string | null {
+	const fromImpl = impl.getNativeId?.() ?? null;
+	if (fromImpl !== null && fromImpl.length > 0) return fromImpl;
+	return storedNativeId;
+}
+
+async function abortGenerator(
+	generator: AsyncGenerator<unknown, unknown>,
+): Promise<void> {
+	try {
+		await generator.return(undefined as never);
+	} catch {
+		// Generator may reject on forced return; timeout suspend is terminal.
+	}
+}
+
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => {
+		setTimeout(resolve, ms);
+	});
+}
+
 // Serial NDJSON entrypoint loop over an injectable stdin/stdout seam.
 // Resolves (graceful shutdown) on stdin EOF or SIGTERM; never rejects for
 // protocol/handler failures — those surface as a terminal `error` frame.
 export async function runAdapterEntry(
 	options: AdapterEntryOptions,
 ): Promise<void> {
-	const { impl, stdin, stdout, onSigterm } = options;
+	const { impl, stdin, stdout, onSigterm, sendTimeoutMs = null } = options;
+	const handleTimeoutMs = sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
 
 	let initialized = false;
 	let stopRequested = false;
+	let storedNativeId: string | null = null;
 
 	const write = (frame: OutboundFrame): void => {
 		stdout.write(`${JSON.stringify(frame)}\n`);
@@ -80,15 +125,47 @@ export async function runAdapterEntry(
 		wake();
 	});
 
-	const handleMessage = async (message: InboxMessage): Promise<void> => {
+	const handleMessage = async (
+		message: AdapterInboxMessage,
+	): Promise<"exit" | undefined> => {
+		if (message.resumeNativeId !== null) {
+			storedNativeId = message.resumeNativeId;
+		}
+
 		const generator = impl.handle(message);
+		const startedAt = Date.now();
+		const timeoutPromise = delay(handleTimeoutMs).then(() => ({
+			kind: "timeout" as const,
+		}));
+
 		try {
-			let step = await generator.next();
-			while (step.done !== true) {
+			while (true) {
+				const raced = await Promise.race([
+					generator.next().then((step) => ({ kind: "next" as const, step })),
+					timeoutPromise,
+				]);
+
+				if (raced.kind === "timeout") {
+					write({
+						type: "suspend",
+						value: {
+							reason: "timeout",
+							elapsedMs: Date.now() - startedAt,
+							nativeId: resolveNativeId(impl, storedNativeId),
+						},
+					});
+					void abortGenerator(generator);
+					return "exit";
+				}
+
+				const step = raced.step;
+				if (step.done === true) {
+					write({ type: "done", value: step.value });
+					storedNativeId = resolveNativeId(impl, storedNativeId);
+					return;
+				}
 				write({ type: "turn", value: step.value });
-				step = await generator.next();
 			}
-			write({ type: "done", value: step.value });
 		} catch (err) {
 			write({
 				type: "error",
@@ -97,7 +174,7 @@ export async function runAdapterEntry(
 		}
 	};
 
-	const processLine = async (line: string): Promise<void> => {
+	const processLine = async (line: string): Promise<"exit" | undefined> => {
 		let frame: unknown;
 		try {
 			frame = JSON.parse(line);
@@ -156,8 +233,18 @@ export async function runAdapterEntry(
 				});
 				return;
 			}
-			await handleMessage(frame.value as InboxMessage);
-			return;
+			const message = parseAdapterInboxMessage(frame.value);
+			if (message === null) {
+				write({
+					type: "error",
+					value: {
+						code: "protocol_error",
+						message: "invalid message frame value",
+					},
+				});
+				return;
+			}
+			return handleMessage(message);
 		}
 
 		write({
@@ -184,7 +271,8 @@ export async function runAdapterEntry(
 			}
 			const line = lineQueue.shift() as string;
 			if (line.trim() === "") continue;
-			await processLine(line);
+			const result = await processLine(line);
+			if (result === "exit") break;
 		}
 	} finally {
 		disposeSigterm();
@@ -205,6 +293,7 @@ export function createAdapterEntry(impl: AdapterImpl): void {
 				process.removeListener("SIGTERM", handler);
 			};
 		},
+		sendTimeoutMs: null,
 	}).catch((err: unknown) => {
 		process.stdout.write(
 			`${JSON.stringify({

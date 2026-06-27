@@ -8,14 +8,15 @@ import type {
 	TurnValue,
 } from "@sumeru/core";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import {
-	type AdapterImpl,
-	type AdapterInitConfig,
-	createAdapterEntry,
-	type InboundFrame,
-	type OutboundFrame,
-	type SkillContent,
+import type {
+	AdapterImpl,
+	AdapterInboxMessage,
+	AdapterInitConfig,
+	InboundFrame,
+	OutboundFrame,
+	SkillContent,
 } from "../src/index.js";
+import { createAdapterEntry } from "../src/index.js";
 
 describe("@sumeru/adapter-core — types contract", () => {
 	it("exports createAdapterEntry as a named function (impl) => void", () => {
@@ -61,13 +62,18 @@ describe("@sumeru/adapter-core — types contract", () => {
 		expectTypeOf(skill).toEqualTypeOf<{ name: string; content: string }>();
 	});
 
-	it("InboundFrame narrows on type", () => {
+	it("InboundFrame message carries resumeNativeId", () => {
 		const frame: InboundFrame = {
 			type: "message",
-			value: { messageId: "m", content: "c", project: null },
+			value: {
+				messageId: "m",
+				content: "c",
+				project: null,
+				resumeNativeId: "native-1",
+			},
 		};
 		if (frame.type === "message") {
-			expectTypeOf(frame.value).toEqualTypeOf<InboxMessage>();
+			expectTypeOf(frame.value).toEqualTypeOf<AdapterInboxMessage>();
 		}
 	});
 

@@ -5,8 +5,12 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AdapterImpl, AdapterInitConfig } from "@sumeru/adapter-core";
-import type { DoneValue, InboxMessage, TurnValue } from "@sumeru/core";
+import type {
+	AdapterImpl,
+	AdapterInboxMessage,
+	AdapterInitConfig,
+} from "@sumeru/adapter-core";
+import type { DoneValue, TurnValue } from "@sumeru/core";
 import { defaultStreamingSpawn } from "./spawn.js";
 import {
 	doneValueFromResultLine,
@@ -71,7 +75,7 @@ export function createClaudeCodeAdapter(
 		}
 	}
 
-	function resolveCwd(message: InboxMessage): string {
+	function resolveCwd(message: AdapterInboxMessage): string {
 		if (message.project !== null && message.project.length > 0) {
 			return message.project;
 		}
@@ -107,13 +111,16 @@ export function createClaudeCodeAdapter(
 	}
 
 	async function* handle(
-		message: InboxMessage,
+		message: AdapterInboxMessage,
 	): AsyncGenerator<TurnValue, DoneValue> {
 		if (initConfig === null) {
 			throw new Error("handle called before init");
 		}
 		if (typeof message.content !== "string" || message.content.length === 0) {
 			throw new Error("handle: content must be a non-empty string");
+		}
+		if (message.resumeNativeId !== null) {
+			sessionId = message.resumeNativeId;
 		}
 
 		const prev = handleLock;
@@ -131,7 +138,7 @@ export function createClaudeCodeAdapter(
 	}
 
 	async function* runHandle(
-		message: InboxMessage,
+		message: AdapterInboxMessage,
 	): AsyncGenerator<TurnValue, DoneValue> {
 		const config = initConfig as AdapterInitConfig;
 		const cwd = resolveCwd(message);
@@ -206,7 +213,7 @@ export function createClaudeCodeAdapter(
 		return doneValueFromResultLine(resultLine);
 	}
 
-	return { init, handle };
+	return { init, handle, getNativeId: () => sessionId };
 }
 
 function makeExitError(

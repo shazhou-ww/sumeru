@@ -2,7 +2,6 @@
 
 import type { DoneValue, TurnValue } from "@sumeru/core";
 import { describe, expect, it } from "vitest";
-import { runAdapterEntry } from "../src/index.js";
 import type { AdapterImpl } from "../src/types.js";
 import {
 	createDeferred,
@@ -10,6 +9,7 @@ import {
 	makeSigtermHook,
 	makeStdin,
 	makeStdout,
+	runTestEntry,
 } from "./harness.js";
 
 const INIT_LINE = JSON.stringify({
@@ -37,7 +37,7 @@ describe("adapter-core — shutdown & errors", () => {
 		const stdout = makeStdout();
 		const impl: AdapterImpl = { async init() {}, handle: noopHandle };
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl,
 			stdin,
 			stdout: stdout.stream,
@@ -72,7 +72,7 @@ describe("adapter-core — shutdown & errors", () => {
 			},
 		};
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl,
 			stdin,
 			stdout: stdout.stream,
@@ -115,7 +115,7 @@ describe("adapter-core — shutdown & errors", () => {
 		const sigterm = makeSigtermHook();
 		const impl: AdapterImpl = { async init() {}, handle: noopHandle };
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl,
 			stdin,
 			stdout: stdout.stream,
@@ -140,7 +140,7 @@ describe("adapter-core — shutdown & errors", () => {
 		const stdout = makeStdout();
 		const impl: AdapterImpl = { async init() {}, handle: noopHandle };
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl,
 			stdin,
 			stdout: stdout.stream,
@@ -165,7 +165,7 @@ describe("adapter-core — shutdown & errors", () => {
 		const stdout = makeStdout();
 		const impl: AdapterImpl = { async init() {}, handle: noopHandle };
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl,
 			stdin,
 			stdout: stdout.stream,
@@ -198,7 +198,7 @@ describe("adapter-core — shutdown & errors", () => {
 			},
 		};
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl,
 			stdin,
 			stdout: stdout.stream,
@@ -238,7 +238,7 @@ describe("adapter-core — shutdown & errors", () => {
 			},
 		};
 
-		const done = runAdapterEntry({
+		const done = runTestEntry({
 			impl,
 			stdin,
 			stdout: stdout.stream,

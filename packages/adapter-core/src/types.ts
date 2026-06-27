@@ -7,6 +7,7 @@ import type {
 	ErrorValue,
 	InboxMessage,
 	ModelConfig,
+	SuspendValue,
 	TurnValue,
 } from "@sumeru/core";
 
@@ -27,11 +28,18 @@ export type AdapterInitConfig = {
 	model: ModelConfig;
 };
 
+// Inbox payload on the wire: core fields plus resume hint from Host after suspend.
+export type AdapterInboxMessage = InboxMessage & {
+	resumeNativeId: string | null;
+};
+
 // The contract an adapter author implements. `handle` is an AsyncGenerator
 // whose yield type is TurnValue and whose return type is DoneValue.
 export type AdapterImpl = {
 	init(config: AdapterInitConfig): Promise<void>;
-	handle(message: InboxMessage): AsyncGenerator<TurnValue, DoneValue>;
+	handle(message: AdapterInboxMessage): AsyncGenerator<TurnValue, DoneValue>;
+	// Optional: expose the agent-native session id for timeout suspend + resume.
+	getNativeId?: () => string | null;
 };
 
 // === NDJSON wire frames ===
@@ -39,15 +47,20 @@ export type AdapterImpl = {
 // Inbound frames read from stdin (discriminated union on `type`).
 export type InboundFrame =
 	| { type: "init"; value: AdapterInitConfig }
-	| { type: "message"; value: InboxMessage };
+	| { type: "message"; value: AdapterInboxMessage };
 
 // Outbound frames written to stdout (discriminated union on `type`).
 // `ready` is local to adapter-core (core's OutboxFrame has no `ready` member);
 // `turn`/`done`/`error` reuse the payload types from @sumeru/core.
+export type SuspendOutboundValue = SuspendValue & {
+	nativeId: string | null;
+};
+
 export type OutboundFrame =
 	| { type: "ready"; value: Record<string, never> }
 	| { type: "turn"; value: TurnValue }
 	| { type: "done"; value: DoneValue }
+	| { type: "suspend"; value: SuspendOutboundValue }
 	| { type: "error"; value: ErrorValue };
 
 // === Entrypoint run options (injectable I/O seam for unit testing) ===
@@ -61,4 +74,6 @@ export type AdapterEntryOptions = {
 	// Registers a SIGTERM-style shutdown hook; returns a disposer that removes it.
 	// Defaults to a real process.on("SIGTERM", ...) registration.
 	onSigterm: (handler: () => void) => () => void;
+	// Wall-clock limit for a single handle() invocation (null = default 2 h).
+	sendTimeoutMs: number | null;
 };
