@@ -1,0 +1,31 @@
+# Dependencies (dist/ is copied explicitly; source node_modules are not needed)
+node_modules
+**/node_modules
+
+# VCS and editor
+.git
+.gitignore
+.cursor
+
+# Legacy v1 tree — excluded from workspace build
+legacy
+
+# Build artifacts outside the three runtime packages
+packages/host
+
+# Dev / CI / docs (not required in the image build context)
+.changeset
+specs
+**/*.md
+!packages/**/README.md
+coverage
+*.log
+.env
+.env.*
+
+# Tests
+**/tests
+**/*.test.ts
+**/*.spec.ts
+vitest.config.ts
+biome.json
