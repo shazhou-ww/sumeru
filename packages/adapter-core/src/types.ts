@@ -33,11 +33,18 @@ export type AdapterInboxMessage = InboxMessage & {
 	resumeNativeId: string | null;
 };
 
+// Yield from `handle`: streaming turns, or an impl-initiated suspend checkpoint.
+export type AdapterHandleYield =
+	| TurnValue
+	| { type: "suspend"; value: SuspendValue };
+
 // The contract an adapter author implements. `handle` is an AsyncGenerator
-// whose yield type is TurnValue and whose return type is DoneValue.
+// whose yield type is AdapterHandleYield and whose return type is DoneValue.
 export type AdapterImpl = {
 	init(config: AdapterInitConfig): Promise<void>;
-	handle(message: AdapterInboxMessage): AsyncGenerator<TurnValue, DoneValue>;
+	handle(
+		message: AdapterInboxMessage,
+	): AsyncGenerator<AdapterHandleYield, DoneValue>;
 	// Optional: expose the agent-native session id for timeout suspend + resume.
 	getNativeId?: () => string | null;
 };

@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { InstanceId, OutboxFrame, TurnValue } from "@sumeru/core";
 
@@ -22,6 +22,7 @@ export type OcasRecorder = {
 		offset: number,
 	): Array<TurnRecord>;
 	getTurnTotal(instanceId: InstanceId): number;
+	clear(instanceId: InstanceId): void;
 };
 
 export function createOcasRecorder(dataDir: string): OcasRecorder {
@@ -73,6 +74,14 @@ export function createOcasRecorder(dataDir: string): OcasRecorder {
 			.length;
 	}
 
+	function clear(instanceId: InstanceId): void {
+		try {
+			unlinkSync(filePath(instanceId));
+		} catch {
+			// file may not exist yet
+		}
+	}
+
 	function getTurns(
 		instanceId: InstanceId,
 		limit: number,
@@ -89,6 +98,7 @@ export function createOcasRecorder(dataDir: string): OcasRecorder {
 		record,
 		getTurns,
 		getTurnTotal,
+		clear,
 	};
 }
 

@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import type { SkillContent } from "@sumeru/adapter-core";
 import type { HostConfig, Manifest, ModelConfig } from "@sumeru/core";
 import { parse as parseYaml } from "yaml";
@@ -44,12 +45,17 @@ async function scanPrototypes(
 		const composePath = join(prototypeDir, "compose.yaml");
 		const manifest = await loadManifest(manifestPath);
 		const adapter = resolveAdapterName(manifest.name, entry.name);
+		const prototypeHash = await computePrototypeHash(
+			manifestPath,
+			join(prototypeDir, "skills"),
+		);
 		prototypes.set(entry.name, {
 			name: entry.name,
 			adapter,
 			manifest,
 			composePath,
 			manifestPath,
+			prototypeHash,
 		});
 	}
 	return prototypes;
@@ -59,6 +65,60 @@ async function loadManifest(manifestPath: string): Promise<Manifest> {
 	const raw = await readFileSafely(manifestPath);
 	const doc = parseYamlSafely(raw, manifestPath);
 	return validateManifest(doc, manifestPath);
+}
+
+export async function computePrototypeHash(
+	manifestPath: string,
+	skillsDir: string,
+): Promise<string> {
+	const hash = createHash("sha256");
+	const manifestRaw = await readFile(manifestPath, "utf-8");
+	hash.update("manifest\0");
+	hash.update(manifestRaw);
+	await hashSkillsDirectory(hash, skillsDir);
+	return hash.digest("hex");
+}
+
+async function hashSkillsDirectory(
+	hash: ReturnType<typeof createHash>,
+	skillsDir: string,
+): Promise<void> {
+	let entries: Array<{ name: string; isDirectory: () => boolean }>;
+	try {
+		entries = await readdir(skillsDir, { withFileTypes: true });
+	} catch {
+		return;
+	}
+	const skillNames = entries
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => entry.name)
+		.sort();
+	for (const skillName of skillNames) {
+		const skillRoot = join(skillsDir, skillName);
+		const files = await collectSkillFiles(skillRoot);
+		for (const filePath of files) {
+			const relPath = relative(skillsDir, filePath);
+			const content = await readFile(filePath);
+			hash.update(`skill:${relPath}\0`);
+			hash.update(content);
+		}
+	}
+}
+
+async function collectSkillFiles(dir: string): Promise<Array<string>> {
+	const entries = await readdir(dir, { withFileTypes: true });
+	const files: Array<string> = [];
+	for (const entry of entries) {
+		const fullPath = join(dir, entry.name);
+		if (entry.isDirectory()) {
+			files.push(...(await collectSkillFiles(fullPath)));
+			continue;
+		}
+		if (entry.isFile()) {
+			files.push(fullPath);
+		}
+	}
+	return files.sort();
 }
 
 export async function loadPrototypeInitSkills(

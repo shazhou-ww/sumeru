@@ -160,6 +160,7 @@ function minimalInstance(id: string): ManagedInstance {
 		containerId: "container-1",
 		projectName: "proj",
 		composePath: "/compose.yaml",
+		initVersion: null,
 	};
 }
 

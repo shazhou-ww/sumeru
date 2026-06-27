@@ -3,8 +3,10 @@
 // writes ready/turn/done/suspend/error frames to stdout. Authoritative source:
 // package-design wiki §4 "@sumeru/adapter-core — Adapter 公共框架".
 
+import type { SuspendValue } from "@sumeru/core";
 import type {
 	AdapterEntryOptions,
+	AdapterHandleYield,
 	AdapterImpl,
 	AdapterInboxMessage,
 	AdapterInitConfig,
@@ -44,6 +46,17 @@ function resolveNativeId(
 	const fromImpl = impl.getNativeId?.() ?? null;
 	if (fromImpl !== null && fromImpl.length > 0) return fromImpl;
 	return storedNativeId;
+}
+
+function isImplSuspendYield(
+	value: AdapterHandleYield,
+): value is { type: "suspend"; value: SuspendValue } {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"type" in value &&
+		value.type === "suspend"
+	);
 }
 
 async function abortGenerator(
@@ -163,6 +176,16 @@ export async function runAdapterEntry(
 					write({ type: "done", value: step.value });
 					storedNativeId = resolveNativeId(impl, storedNativeId);
 					return;
+				}
+				if (isImplSuspendYield(step.value)) {
+					write({
+						type: "suspend",
+						value: {
+							...step.value.value,
+							nativeId: resolveNativeId(impl, storedNativeId),
+						},
+					});
+					return "exit";
 				}
 				write({ type: "turn", value: step.value });
 			}

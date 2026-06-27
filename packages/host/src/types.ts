@@ -33,6 +33,7 @@ export type PrototypeInfo = {
 	manifest: Manifest;
 	composePath: string;
 	manifestPath: string;
+	prototypeHash: string;
 };
 
 export type LoadedHostConfig = {
@@ -48,6 +49,7 @@ export type ManagedInstance = InstanceInfo & {
 	containerId: string | null;
 	projectName: string;
 	composePath: string;
+	initVersion: string | null;
 };
 
 export type CreateInstanceRequest = {

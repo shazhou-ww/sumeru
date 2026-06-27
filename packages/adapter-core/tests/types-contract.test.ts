@@ -9,6 +9,7 @@ import type {
 } from "@sumeru/core";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type {
+	AdapterHandleYield,
 	AdapterImpl,
 	AdapterInboxMessage,
 	AdapterInitConfig,
@@ -26,7 +27,7 @@ describe("@sumeru/adapter-core — types contract", () => {
 		>();
 	});
 
-	it("AdapterImpl.handle is AsyncGenerator<TurnValue, DoneValue>", () => {
+	it("AdapterImpl.handle is AsyncGenerator<AdapterHandleYield, DoneValue>", () => {
 		const impl: AdapterImpl = {
 			async init() {},
 			// biome-ignore lint/correctness/useYield: type-shape conformance only
@@ -36,7 +37,7 @@ describe("@sumeru/adapter-core — types contract", () => {
 			},
 		};
 		expectTypeOf(impl.handle).returns.toEqualTypeOf<
-			AsyncGenerator<TurnValue, DoneValue>
+			AsyncGenerator<AdapterHandleYield, DoneValue>
 		>();
 		expect(typeof impl.init).toBe("function");
 	});
