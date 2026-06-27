@@ -1,14 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { OutboxFrame } from "@sumeru/core";
 import { errorEnvelope, inboxAcceptedEnvelope } from "../envelope.js";
-import {
-	readJsonBody,
-	writeJson,
-	writeSseEvent,
-	writeSseHeaders,
-} from "../http-utils.js";
+import { readJsonBody, writeJson } from "../http-utils.js";
 import type { InstanceManager } from "../instance-manager.js";
-import { outboxFrameToSseEvent } from "../outbox.js";
 import type { InboxRequest } from "../types.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -58,40 +51,6 @@ export function createInboxHandler(manager: InstanceManager) {
 	};
 }
 
-export function createOutboxHandler(manager: InstanceManager) {
-	return (
-		_req: IncomingMessage,
-		res: ServerResponse,
-		params: Record<string, string>,
-	): void => {
-		const id = params.id ?? "";
-		writeSseHeaders(res);
-		let unsubscribe: (() => void) | null = null;
-		const onClose = (): void => {
-			if (unsubscribe !== null) unsubscribe();
-		};
-		reqOnClose(_req, onClose);
-
-		try {
-			unsubscribe = manager.subscribeOutbox(id, (frame: OutboxFrame) => {
-				const evt = outboxFrameToSseEvent(frame);
-				writeSseEvent(res, evt.event, evt.data);
-				if (frame.type === "done" || frame.type === "error") {
-					res.end();
-					onClose();
-				}
-			});
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			writeSseEvent(res, "error", {
-				type: "error",
-				value: { code: message, message },
-			});
-			res.end();
-		}
-	};
-}
-
 function parseInboxBody(body: unknown): InboxRequest | null {
 	if (!isRecord(body)) return null;
 	const messageId = body.messageId;
@@ -131,8 +90,4 @@ function writeInboxError(res: ServerResponse, err: unknown): void {
 		default:
 			writeJson(res, 500, errorEnvelope("internal_error", message));
 	}
-}
-
-function reqOnClose(req: IncomingMessage, onClose: () => void): void {
-	req.on("close", onClose);
 }

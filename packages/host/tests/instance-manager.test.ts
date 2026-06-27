@@ -176,9 +176,9 @@ describe("instance-manager", () => {
 			projects: null,
 		});
 
-		const frames: Array<{ type: string }> = [];
-		const unsubscribe = manager.subscribeOutbox(created.id, (frame) => {
-			frames.push({ type: frame.type });
+		const events: Array<{ event: string; id: number }> = [];
+		const unsubscribe = manager.subscribeOutbox(created.id, (event) => {
+			events.push({ event: event.event, id: event.id });
 		});
 
 		await manager.submitInbox(created.id, {
@@ -187,10 +187,12 @@ describe("instance-manager", () => {
 			project: null,
 		});
 
-		await waitUntil(() => frames.some((frame) => frame.type === "done"));
+		await waitUntil(() => events.some((event) => event.event === "done"));
 		unsubscribe();
 		expect(calls.some((call) => call.startsWith("exec:"))).toBe(true);
-		expect(frames.map((frame) => frame.type)).toEqual(["turn", "done"]);
+		expect(events.map((event) => event.event)).toEqual(["turn", "done"]);
+		expect(events[0]?.id).toBe(1);
+		expect(events[1]?.id).toBe(2);
 	});
 
 	it("resetInstance recreates the container", async () => {

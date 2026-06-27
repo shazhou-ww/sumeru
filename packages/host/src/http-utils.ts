@@ -47,3 +47,12 @@ export function writeSseEvent(
 	res.write(`event: ${event}\n`);
 	res.write(`data: ${payload}\n\n`);
 }
+
+export function writeRawSseEvent(
+	res: ServerResponse,
+	evt: { id: number; event: string; data: string },
+): void {
+	res.write(`id: ${evt.id}\n`);
+	res.write(`event: ${evt.event}\n`);
+	res.write(`data: ${evt.data}\n\n`);
+}
