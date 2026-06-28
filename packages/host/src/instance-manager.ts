@@ -348,7 +348,7 @@ export function createInstanceManager(input: {
 		}
 		const session = input.transport.exec({
 			containerId: record.containerId,
-			command: defaultAdapterCommand(prototype.adapter),
+			command: defaultAdapterCommand(prototype.name),
 		});
 		runtime.session = session;
 		const activeSession = session;
