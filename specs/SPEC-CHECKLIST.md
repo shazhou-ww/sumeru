@@ -26,7 +26,7 @@
 | # | 场景 | 验证什么（覆盖的卡） | 依赖 | docker | 真 agent | 状态 |
 |---|------|------|------|--------|---------|------|
 | **S1** | **Host bootstrap & discovery** | 从零写最小 `host.yaml` + 一个 `prototypes/<n>/{manifest,compose}.yaml` → `sumeru start` → `GET /` 返回 host 身份信封、master `inst_0` 在列（architecture-overview, host-service, manifest-schema, master-agent） | — | no | no | ✅ |
-| **S2** | **Master agent roundtrip** | 向 `inst_0` 投 inbox → 订阅 outbox → 收到 turn/done。验证 local transport + master adapter（hermes，读 ~/.hermes/config）（master-agent, transport-layer/local, adapter-hermes） | S1 | no | yes | ⬜ |
+| **S2** | **Master agent roundtrip** | 向 `inst_0` 投 inbox → 订阅 outbox → 收到 turn/done。验证 local transport + master adapter（hermes，读 ~/.hermes/config）（master-agent, transport-layer/local, adapter-hermes） | S1 | no | yes | ✅ |
 | **S3** | **Inbox→Outbox SSE 管道** | POST inbox 生成 messageId → GET outbox SSE 流（turn/done/suspend/error 帧 + heartbeat），replay/reconnect（host-service, sse-reliability） | S2 | no | yes | ⬜ |
 | **S4** | **Suspend / Resume** | 触发 timeout suspend → 状态翻 suspended → 下次 inbox 注入 resumeNativeId 续上（suspend-resume, adapter-contract） | S3 | no | yes | ⬜ |
 | **S5** | **Adapter 契约一致性** | 直接喂 NDJSON（init→ready→message→turn→done）给每个 adapter 二进制，验证协议序与错误帧。逐个：hermes(ACP) / claude-code / codex（adapter-contract, adapter-*） | S1 | no | yes | ⬜ |
@@ -54,3 +54,4 @@
 |------|------|--------------|----------|-----------|
 | 2026-06-28 | 准备 | recon + 115 v1 specs → legacy/ + build 修复 + checklist | 本文件 | #148(host CAS), #149(eval RFC) |
 | 2026-06-28 | S1 | subagent 超时(无总结)但产物真实 → 星月独立复跑 port 7912 逐条核验，5 端点+4 invariant byte-exact 复现 → 采纳 | examples/minimal/ + specs/host/host-bootstrap-discovery.md | 无 bug。⚠️旁现：:7900 有陈旧 v1 服务(跑1.5天)，待主人确认是否清理 |
+| 2026-06-28 | S2 | subagent 完成(有总结) → 星月独立复跑 port 7913，自发消息'verify'→agent回'verify'(非预录)，帧 byte-exact 复现；两个 gap/bug 均亲手复现核实 → 采纳 | specs/host/master-roundtrip.md | **#152**(退出泄漏 adapter 子进程树)。GAP: token/summary 全 null，已在 spec 标注 |
