@@ -1,6 +1,6 @@
 /**
  * Hermes adapter (v2) — implements `AdapterImpl` from `@sumeru/adapter-core`
- * by shelling out to `hermes chat -q --pass-session-id --source sumeru`.
+ * via Hermes ACP (`hermes acp --accept-hooks`) JSON-RPC over stdin/stdout.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -12,16 +12,18 @@ import type {
 	AdapterInboxMessage,
 	AdapterInitConfig,
 } from "@sumeru/adapter-core";
-import type { DoneValue, TokenUsage, TurnValue } from "@sumeru/core";
-import { readTurnsFromJsonl } from "./jsonl.js";
-import { defaultSpawn } from "./spawn.js";
-import type { HermesAdapterOptions, SpawnFn } from "./types.js";
+import type { DoneValue, ToolCall, TurnValue } from "@sumeru/core";
+import { createAcpClient } from "./acp-client.js";
+import type {
+	AcpClient,
+	AcpSessionUpdate,
+	AcpStreamState,
+	HermesAdapterOptions,
+} from "./types.js";
 
 const DEFAULT_HERMES_BIN = "hermes";
-const DEFAULT_SOURCE_TAG = "sumeru";
 const DEFAULT_SEND_TIMEOUT_MS = 2 * 60 * 60_000;
-const SESSION_ID_RE = /^[0-9]{8}_[0-9]{6}_[0-9a-f]+$/;
-const SESSION_LINE_RE = /(?:^|\n)(?:Session:|session_id:)\s+(\S+)\s*$/m;
+const ACP_ARGS = ["acp", "--accept-hooks"] as const;
 
 export function createHermesAdapter(
 	options: Partial<HermesAdapterOptions> = {},
@@ -29,14 +31,24 @@ export function createHermesAdapter(
 	const _profile = options.profile ?? "default";
 	const hermesBin = options.hermesBin ?? DEFAULT_HERMES_BIN;
 	const configuredHermesDir = options.hermesDir ?? null;
-	const spawnFn: SpawnFn = options.spawnFn ?? defaultSpawn;
-	const jsonlReader = options.jsonlReader ?? readTurnsFromJsonl;
 	const sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
 
 	let initConfig: AdapterInitConfig | null = null;
 	let sessionId: string | null = null;
+	let activeSessionId: string | null = null;
+	let acpClient: AcpClient | null = null;
+	let acpCwd: string | null = null;
 	let nextTurnIndex = 0;
 	let handleLock: Promise<void> = Promise.resolve();
+
+	const acpClientFactory =
+		options.acpClientFactory ??
+		((createOptions) =>
+			createAcpClient({
+				...createOptions,
+				clientInfo: { name: "sumeru-adapter", version: "0.1.0" },
+				spawnProcess: null,
+			}));
 
 	function resolveHermesDir(): string {
 		if (configuredHermesDir !== null) return configuredHermesDir;
@@ -45,10 +57,6 @@ export function createHermesAdapter(
 
 	function resolveSkillsDir(): string {
 		return join(resolveHermesDir(), "skills");
-	}
-
-	function resolveSessionsDir(): string {
-		return join(resolveHermesDir(), "sessions");
 	}
 
 	function resolveCwd(message: AdapterInboxMessage): string {
@@ -73,6 +81,40 @@ export function createHermesAdapter(
 	async function init(config: AdapterInitConfig): Promise<void> {
 		initConfig = config;
 		await writeInitArtifacts(config);
+	}
+
+	async function ensureAcpClient(cwd: string): Promise<AcpClient> {
+		if (acpClient !== null) {
+			return acpClient;
+		}
+		acpCwd = cwd;
+		acpClient = acpClientFactory({
+			command: hermesBin,
+			args: [...ACP_ARGS],
+			cwd,
+		});
+		await acpClient.initialize();
+		return acpClient;
+	}
+
+	async function ensureSession(
+		client: AcpClient,
+		cwd: string,
+		targetSessionId: string | null,
+	): Promise<void> {
+		if (targetSessionId !== null) {
+			if (activeSessionId !== targetSessionId) {
+				await client.resumeSession(targetSessionId);
+				activeSessionId = targetSessionId;
+				sessionId = targetSessionId;
+			}
+			return;
+		}
+		if (activeSessionId === null) {
+			const result = await client.newSession(cwd);
+			activeSessionId = result.sessionId;
+			sessionId = result.sessionId;
+		}
 	}
 
 	async function* handle(
@@ -105,103 +147,92 @@ export function createHermesAdapter(
 	async function* runHandle(
 		message: AdapterInboxMessage,
 	): AsyncGenerator<AdapterHandleYield, DoneValue> {
-		const resumeId = sessionId;
-		const before =
-			resumeId === null
-				? []
-				: ((await jsonlReader(resolveSessionsDir(), resumeId)) ?? []);
-		const highWater =
-			before.length === 0
-				? -1
-				: before.reduce(
-						(max, turn) => (turn.index > max ? turn.index : max),
-						-1,
-					);
-
-		const args = [
-			"chat",
-			"-q",
-			message.content,
-			"--pass-session-id",
-			"--quiet",
-			"--source",
-			DEFAULT_SOURCE_TAG,
-		];
-		if (resumeId !== null) {
-			args.push("--resume", resumeId);
+		const cwd = resolveCwd(message);
+		if (acpCwd !== null && acpCwd !== cwd && acpClient !== null) {
+			throw new Error(
+				`hermes ACP client cwd mismatch: expected ${acpCwd}, got ${cwd}`,
+			);
 		}
 
-		let result: Awaited<ReturnType<SpawnFn>>;
+		let client: AcpClient;
 		try {
-			result = await spawnFn({
-				command: hermesBin,
-				args,
-				stdin: message.content,
-				timeoutMs: sendTimeoutMs,
-				cwd: resolveCwd(message),
-			});
+			client = await ensureAcpClient(cwd);
+			await ensureSession(client, cwd, sessionId);
 		} catch (err) {
 			const detail = err instanceof Error ? err.message : String(err);
 			throw new Error(
-				`hermes adapter failed to spawn '${hermesBin}': ${detail}`,
+				`hermes adapter failed to start ACP client '${hermesBin}': ${detail}`,
 			);
 		}
 
-		if (result.timedOut) {
-			yield {
-				type: "suspend",
-				value: { reason: "timeout", elapsedMs: result.durationMs },
-			};
-			return { summary: null, tokenUsage: null };
-		}
-		if (result.exitCode !== 0) {
-			throw makeExitError(
-				result.stderr,
-				result.stdout,
-				result.exitCode,
-				sessionId,
-			);
-		}
-
-		const merged = `${result.stderr}\n${result.stdout}`;
-		const match = merged.match(SESSION_LINE_RE);
-		if (match !== null && match[1] !== undefined) {
-			const parsedId = match[1];
-			if (SESSION_ID_RE.test(parsedId)) {
-				sessionId = parsedId;
-			}
-		}
 		if (sessionId === null) {
-			throw new Error(
-				`failed to parse Hermes session id from stderr+stdout: ${tail(merged, 500)}`,
-			);
+			throw new Error("hermes ACP session id is missing after session setup");
 		}
 
-		const after = (await jsonlReader(resolveSessionsDir(), sessionId)) ?? [];
-		const delta = after.filter((turn) => turn.index > highWater);
-		const filtered = delta.filter((turn) => turn.role !== "system");
-		// Fallback: if no turns from jsonl/db, use stdout as single assistant turn
-		if (filtered.length === 0 && result.stdout.trim().length > 0) {
-			const fallbackTurn: TurnValue = {
-				index: nextTurnIndex++,
-				role: "assistant",
-				content: result.stdout.trim(),
-				timestamp: new Date().toISOString(),
-				toolCalls: null,
-				tokens: null,
-			};
-			yield fallbackTurn;
-		} else {
-			for (const turn of filtered) {
-				const mapped: TurnValue = { ...turn, index: nextTurnIndex++ };
-				yield mapped;
-			}
-		}
-
-		return {
-			summary: null,
-			tokenUsage: aggregateTokens(filtered),
+		const state: AcpStreamState = {
+			pendingToolCalls: [],
+			usage: null,
+			nextIndex: nextTurnIndex,
 		};
+		const turnQueue: Array<TurnValue> = [];
+		let wakeup: (() => void) | null = null;
+
+		const onUpdate = (update: AcpSessionUpdate): void => {
+			for (const turn of mapUpdateToTurns(update, state)) {
+				turnQueue.push(turn);
+			}
+			if (wakeup !== null) {
+				const resume = wakeup;
+				wakeup = null;
+				resume();
+			}
+		};
+
+		const promptPromise = client.prompt(sessionId, message.content, onUpdate);
+		const timeoutPromise = delay(sendTimeoutMs).then(() => "timeout" as const);
+
+		while (true) {
+			while (turnQueue.length > 0) {
+				const turn = turnQueue.shift() as TurnValue;
+				yield turn;
+			}
+
+			const raced = await Promise.race([
+				promptPromise.then((result) => ({ kind: "done" as const, result })),
+				new Promise<{ kind: "tick" }>((resolve) => {
+					wakeup = () => resolve({ kind: "tick" });
+				}),
+				timeoutPromise.then((reason) => ({ kind: reason })),
+			]);
+
+			if (raced.kind === "timeout") {
+				yield {
+					type: "suspend",
+					value: { reason: "timeout", elapsedMs: sendTimeoutMs },
+				};
+				return { summary: null, tokenUsage: null };
+			}
+
+			if (raced.kind === "tick") {
+				continue;
+			}
+
+			while (turnQueue.length > 0) {
+				const turn = turnQueue.shift() as TurnValue;
+				yield turn;
+			}
+
+			const trailing = flushPendingToolCalls(state);
+			if (trailing !== null) {
+				yield trailing;
+			}
+
+			nextTurnIndex = state.nextIndex;
+			return {
+				summary: null,
+				tokenUsage: state.usage,
+			};
+		}
 	}
 
 	return {
@@ -211,41 +242,64 @@ export function createHermesAdapter(
 	};
 }
 
-function makeExitError(
-	stderr: string,
-	stdout: string,
-	exitCode: number | null,
-	sessionId: string | null,
-): Error {
-	const merged = `${stderr}\n${stdout}`.trim();
-	const stderrLower = stderr.toLowerCase();
-	if (
-		sessionId !== null &&
-		(stderrLower.includes("not found") ||
-			stderrLower.includes("no such session"))
-	) {
-		return new Error(
-			`hermes session ${sessionId} not found: ${tail(merged, 500)}`,
-		);
+function mapUpdateToTurns(
+	update: AcpSessionUpdate,
+	state: AcpStreamState,
+): Array<TurnValue> {
+	if (update.sessionUpdate === "tool_call") {
+		state.pendingToolCalls.push(mapToolCall(update));
+		return [];
 	}
-	const codeText = exitCode === null ? "null" : String(exitCode);
-	return new Error(`hermes exited with code ${codeText}: ${tail(merged, 500)}`);
+	if (update.sessionUpdate === "usage_update") {
+		state.usage = {
+			input: update.input_tokens,
+			output: update.output_tokens,
+		};
+		return [];
+	}
+	const toolCalls =
+		state.pendingToolCalls.length > 0 ? [...state.pendingToolCalls] : null;
+	state.pendingToolCalls = [];
+	return [
+		{
+			index: state.nextIndex++,
+			role: "assistant",
+			content: update.content.text,
+			timestamp: new Date().toISOString(),
+			toolCalls,
+			tokens: null,
+		},
+	];
 }
 
-function tail(value: string, limit: number): string {
-	if (value.length <= limit) return value;
-	return value.slice(value.length - limit);
+function flushPendingToolCalls(state: AcpStreamState): TurnValue | null {
+	if (state.pendingToolCalls.length === 0) return null;
+	const toolCalls = [...state.pendingToolCalls];
+	state.pendingToolCalls = [];
+	return {
+		index: state.nextIndex++,
+		role: "assistant",
+		content: "",
+		timestamp: new Date().toISOString(),
+		toolCalls,
+		tokens: null,
+	};
 }
 
-function aggregateTokens(turns: Array<TurnValue>): TokenUsage | null {
-	let any = false;
-	let input = 0;
-	let output = 0;
-	for (const turn of turns) {
-		if (turn.tokens === null) continue;
-		any = true;
-		input += turn.tokens.input;
-		output += turn.tokens.output;
-	}
-	return any ? { input, output } : null;
+function mapToolCall(
+	update: Extract<AcpSessionUpdate, { sessionUpdate: "tool_call" }>,
+): ToolCall {
+	return {
+		tool: update.name,
+		input: update.input,
+		output: null,
+		durationMs: null,
+		exitCode: null,
+	};
+}
+
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => {
+		setTimeout(resolve, ms);
+	});
 }
