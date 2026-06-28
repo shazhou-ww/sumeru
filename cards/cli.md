@@ -1,64 +1,89 @@
 ---
 id: cli
-title: "CLI Adapter Wiring"
+title: "CLI Tool"
 sources:
-  - packages/cli/src/build-adapters.ts
-  - packages/cli/package.json
-  - packages/cli/tests/build-adapters.test.ts
-  - packages/cli/tests/start-with-gateway-config.test.ts
-tags: [architecture, cli, adapters, config]
-created: 2026-06-15
-updated: 2026-06-23
+  - packages/cli/src/main.ts
+  - packages/cli/src/http-client.ts
+  - packages/cli/src/format.ts
+  - packages/cli/src/pid-file.ts
+tags: [sumeru, cli]
+created: 2026-06-28
+updated: 2026-06-28
 ---
 
-# CLI Adapter Wiring
+# CLI Tool
 
-The CLI builds the runtime adapter registry from gateway config using `buildAdapters()`.
+> `sumeru` CLI wraps host API and local process utilities for common operator workflows.
 
-## Factory Registry
+## Overview
 
-`DEFAULT_ADAPTER_FACTORIES` now includes four built-in adapter keys:
+The CLI parses a two-token command namespace (`<cmd> [sub]`) plus positional/flag arguments, then dispatches into HTTP client calls or local process actions. It uses `SUMERU_HOST`/`SUMERU_PORT` to resolve API base URL and stores host PID file for start/stop management.
 
-- `hermes`
-- `claude-code`
-- `codex`
-- `cursor-agent`
+Output formatting is intentionally plain text (tables and status blocks) for terminal-first operations.
 
-Each key maps to the corresponding package factory:
+## Command Surface
 
-- `createHermesAdapter`
-- `createClaudeCodeAdapter`
-- `createCodexAdapter`
-- `createCursorAgentAdapter`
+```mermaid
+flowchart TB
+  A[server start|stop|status] --> B[process + host root]
+  C[prototypes] --> D[list prototypes]
+  E[instances] --> F[list instances]
+  G[create/delete/reset] --> H[instance lifecycle APIs]
+  I[send] --> J[inbox API]
+  K[logs --follow] --> L[outbox SSE stream]
+  M[images] --> N[docker images sumeru/*]
+```
 
-The CLI package also depends on all four adapter packages in `packages/cli/package.json`.
+Implemented commands in `main.ts`:
 
-## Config Propagation Semantics
+- `server start [--config <path>] [--host <host>] [--port <port>]`
+- `server stop`
+- `server status`
+- `prototypes`
+- `instances`
+- `create <prototype> [--project <path>...]`
+- `delete <instance_id>`
+- `send <instance_id> <message>`
+- `logs <instance_id> [--follow]`
+- `reset <instance_id>`
+- `images`
 
-`buildAdapters(gateways, factories?)` behavior:
+## HTTP Client Wrapper
 
-1. Iterate every configured gateway.
-2. Resolve `factory = factories[gw.adapter]`.
-3. If no factory exists, skip gateway silently.
-4. Pass `gw.config ?? {}` verbatim to the factory.
-5. Store adapter instance under the gateway name.
+`createHostClient()` provides typed methods:
 
-This means:
+- `getRoot`, `listPrototypes`, `listInstances`
+- `createInstance`, `deleteInstance`, `resetInstance`
+- `submitInbox`
+- `streamOutbox` (SSE parser over fetch stream)
 
-- The CLI does not validate adapter-specific config keys.
-- Multiple gateways sharing one adapter type still receive independent option blobs and independent adapter instances.
-- Unknown adapters do not crash startup; they remain unavailable at server surface.
+Error responses are mapped into `HostClientError(status, code, message)`.
 
-## Test Coverage Highlights
+## PID File Management
 
-`packages/cli/tests/build-adapters.test.ts` verifies:
+`server start/stop` uses PID helpers:
 
-- no-config gateways call factories with `{}`
-- populated config blobs are forwarded unchanged
-- duplicate adapter types produce separate instances
-- unknown adapters are skipped without throw
-- arbitrary/unknown config keys are still forwarded
-- cursor-agent config forwarding works
-- default registry includes cursor-agent wiring
+- default PID path: `~/.sumeru/sumeru.pid` (or `SUMERU_PID_FILE`).
+- secure permission best-effort (`0700` dir, `0600` file).
+- stale pid cleanup when process is not alive.
+- `server start` fails if recorded PID is alive.
 
-`packages/cli/tests/start-with-gateway-config.test.ts` verifies end-to-end that parsed YAML gateway config reaches adapter factories through `loadConfig(...) -> buildAdapters(...)`, preserving configured timeout values and per-gateway differences.
+## Environment Variables
+
+- `SUMERU_HOST`: API host (default `127.0.0.1`).
+- `SUMERU_PORT`: API port (default `7900`).
+- `SUMERU_PID_FILE`: PID file override.
+- `SUMERU_HOST_BIN`: host executable used by `server start` (default `sumeru-host`).
+
+## Code Pointers
+
+| Package | File | What it does |
+|---------|------|--------------|
+| `@sumeru/cli` | `packages/cli/src/main.ts` | Argument parsing and command dispatch implementation. |
+| `@sumeru/cli` | `packages/cli/src/http-client.ts` | Typed HTTP/SSE client wrapper for host API calls. |
+| `@sumeru/cli` | `packages/cli/src/format.ts` | Table and status renderers for CLI output. |
+| `@sumeru/cli` | `packages/cli/src/pid-file.ts` | PID file path, read/write/remove, and process-alive checks. |
+
+## See Also
+
+- [Host HTTP Service](./host-service.md) — API endpoints the CLI consumes.

@@ -1,91 +1,83 @@
 ---
 id: adapter-hermes
-title: "Hermes Adapter"
+title: "Hermes Adapter (ACP)"
 sources:
   - packages/adapter-hermes/src/adapter.ts
-  - packages/adapter-hermes/src/spawn.ts
-  - packages/adapter-hermes/src/types.ts
-tags: [architecture, adapter, hermes, session]
-created: 2026-06-15
-updated: 2026-06-23
+  - packages/adapter-hermes/src/acp-client.ts
+tags: [sumeru, hermes]
+created: 2026-06-28
+updated: 2026-06-28
 ---
 
-# Hermes Adapter
+# Hermes Adapter (ACP)
 
-`@sumeru/adapter-hermes` implements the `Adapter` contract by spawning `hermes chat -q ...`, reading turn history (JSONL-first with DB fallback via injected readers), and emitting send results as async `SendEvent` streams.
+> The Hermes adapter maintains a long-lived ACP JSON-RPC process and translates `session/update` notifications into turn streams.
 
-## Identity and Storage Model
+## Overview
 
-- `name`: `hermes`
-- Resume model: `--resume <nativeId>`
-- Turn history source: read from external Hermes session storage (via `jsonlReader` then `turnsReader`), not in-memory cache
-- Streaming behavior: `send()` returns `AsyncIterable<SendEvent>` but emits after spawn/read cycle (not incremental line streaming)
+`createHermesAdapter()` uses an ACP client abstraction (`initialize`, `newSession`, `resumeSession`, `prompt`, `setMode`) over stdin/stdout JSON-RPC. Unlike spawn-per-message adapters, Hermes keeps one process alive and sends multiple prompts into ACP sessions.
 
-## Factory Options
+The adapter writes init artifacts into Hermes home (`SOUL.md` and `skills/*/SKILL.md`) and enforces a serialized `handle()` lock to avoid interleaving prompt streams.
 
-`createHermesAdapter(options)` supports:
+## ACP Interaction Model
 
-- `hermesBin` (default `hermes`)
-- `sourceTag` (default `sumeru`)
-- `cwd` (adapter fallback cwd)
-- `dbPath`, `sessionsDir`
-- `createSessionTimeoutMs` (default 60s)
-- `sendTimeoutMs` (default 5m)
-- `includeSystemTurns` (default `false`)
-- `spawnFn`, `turnsReader`, `jsonlReader` (test seams)
+```mermaid
+sequenceDiagram
+  participant Adapter
+  participant ACP as hermes acp --accept-hooks
 
-## CWD Resolution (Per Call)
+  Adapter->>ACP: initialize
+  Adapter->>ACP: session/new or session/resume
+  Adapter->>ACP: session/set_mode dont_ask
+  Adapter->>ACP: session/prompt
+  ACP-->>Adapter: session/update notifications
+  ACP-->>Adapter: prompt result
+```
 
-The adapter resolves cwd per invocation:
+## Session + Resume Behavior
 
-- `createSession`: non-empty `config.cwd` wins; otherwise adapter `cwd`; otherwise `process.cwd()`
-- `send`: non-empty `ref.meta.cwd` wins; otherwise adapter `cwd`; otherwise `process.cwd()`
+- `sessionId` is persistent adapter state and exposed via `getNativeId()`.
+- incoming `resumeNativeId` sets target resume session.
+- `ensureSession()` either resumes explicit session or creates one when absent.
+- after resume/new, adapter always calls `session/set_mode` with `dont_ask`.
 
-The resolved value is passed to `spawn` `cwd`, and session creation stores it in `meta.cwd` so resume uses the original session cwd.
+## Turn Accumulation
 
-## createSession Flow
+`session/update` notifications are mapped as follows:
 
-1. Validates `config.cwd` type (`string | null`).
-2. Spawns `hermes chat -q ping --pass-session-id --quiet --source <tag> [--model]` with resolved cwd.
-3. Handles timeout and non-zero exits.
-4. Parses session id from merged `stderr + stdout` using either `Session:` or `session_id:` line forms.
-5. Validates native id shape `YYYYMMDD_HHMMSS_<hex>`.
-6. Returns `NativeSessionRef` with meta including `sourceTag`, `cwd`, `model`, `createdAt`.
+- `agent_message_chunk`: appends text to pending assistant content.
+- `tool_call`: flushes pending text to turn, then accumulates tool call metadata.
+- `usage_update`: stores input/output token counters.
 
-## send Flow and Concurrency Fix
+On prompt completion, trailing buffered content and tool calls are flushed into final turns.
 
-`send(ref, content)`:
+## Timeout Suspend
 
-- Performs synchronous prechecks (valid ref, not closed, non-empty content).
-- Serializes operations per `nativeId` via `sendLocks` promise chaining (`withRefLock`), preventing overlap/races.
-- Inside lock:
-  1. Reads pre-send turns (`before`) and computes high-water index.
-  2. Spawns resume command in resolved send cwd.
-  3. On success, reads post-send turns (`after`), computes delta (`index > highWater`).
-  4. Optionally filters system turns.
-  5. Emits one `turn` event per delta turn, then `done` with aggregated token usage.
-- On failure/timeout/closed state/session missing, emits a single `error` event.
+If prompt duration exceeds `sendTimeoutMs` (default 2 hours), adapter yields suspend frame:
 
-## close and getTurns
+- `reason: "timeout"`
+- `elapsedMs: sendTimeoutMs`
 
-- `close(ref)`: logical close only; adds `nativeId` to `closedRefs`.
-- `getTurns(ref)`: reads all turns through JSONL-first/fallback readers and applies optional system-turn filtering.
+and returns `DoneValue` with null summary/token usage.
 
-Close does not mutate Hermes storage or spawn a process.
+## ACP Client Details
 
-## Spawn Contract
+`createAcpClient()` implements:
 
-`defaultSpawn` wraps `child_process.spawn` with:
+- request id sequencing and pending map.
+- line-buffered stdout parsing.
+- response/error routing.
+- notification routing for `session/update`.
+- process lifecycle rejection on close/error.
 
-- explicit argv array (`shell: false`)
-- explicit `cwd`
-- timeout escalation (`SIGTERM`, then `SIGKILL` after 5s)
-- result shape `{ stdout, stderr, exitCode, signal, timedOut, durationMs }`
+## Code Pointers
 
-## Error Mapping Highlights
+| Package | File | What it does |
+|---------|------|--------------|
+| `@sumeru/adapter-hermes` | `packages/adapter-hermes/src/adapter.ts` | Hermes adapter state machine, session orchestration, and turn mapping. |
+| `@sumeru/adapter-hermes` | `packages/adapter-hermes/src/acp-client.ts` | ACP JSON-RPC transport client over stdin/stdout. |
+| `@sumeru/adapter-hermes` | `packages/adapter-hermes/src/types.ts` | ACP update and client interface types used by adapter/client. |
 
-- spawn failures: `hermes adapter failed to spawn ...`
-- timeout: `createSession/send timed out ...`
-- resume session missing: `hermes session <id> not found: ...`
-- generic exit errors: `hermes exited with code ...`
-- invalid refs: throws `close: invalid NativeSessionRef` from shared guard
+## See Also
+
+- [Adapter Unified I/O Contract](./adapter-contract.md) — adapter-core contract implemented by Hermes adapter.

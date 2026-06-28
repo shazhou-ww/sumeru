@@ -2,86 +2,85 @@
 id: architecture-overview
 title: "Architecture Overview"
 sources:
-  - README.md
-  - packages/core/src/adapter.ts
-  - packages/server/src/types.ts
-  - packages/cli/src/build-adapters.ts
-tags: [architecture, monorepo, server, adapters]
-created: 2026-06-17
-updated: 2026-06-23
+  - packages/core/src/types.ts
+  - packages/host/src/server.ts
+tags: [sumeru, architecture]
+created: 2026-06-28
+updated: 2026-06-28
 ---
 
 # Architecture Overview
 
-Sumeru is an HTTP "agent house" that normalizes multiple agent backends behind a shared gateway/session model and records interactions in OCAS.
+> Sumeru v2 runs a Host-managed multi-agent runtime where instances execute adapter processes through a unified message contract.
 
-## Layered Structure
+## Overview
 
-Monorepo dependency direction:
+Sumeru models runtime concerns in three layers: **Image**, **Prototype**, and **Instance**. An image is the runtime environment (container image or local runtime command). A prototype is declarative configuration plus adapter-facing instructions/skills. An instance is the live, addressable runtime object that receives inbox messages and emits outbox events.
 
-- `@sumeru/core` (shared contract/types)
-- `@sumeru/server` (HTTP instance/gateway/session/SSE/search/OCAS integration)
-- `@sumeru/adapter-*` (backend-specific adapter implementations)
-- `@sumeru/cli` (startup/config wiring and adapter registry construction)
+`@sumeru/core` is the type backbone: manifests, model config, instance status, inbox payloads, and outbox frame unions (`turn`, `done`, `suspend`, `error`). `@sumeru/host` exposes an HTTP control plane, boots `inst_0` as the reserved master, and routes all traffic into transport + adapter execution.
 
-## Runtime Model
+The host runtime path is: HTTP request enters the route handler, instance manager ensures transport/runtime readiness, host writes NDJSON frames to adapter stdin, adapter streams NDJSON back, host maps frames into SSE events, and optional OCAS JSONL recording persists history.
 
-Core runtime entities:
+## Layer Model
 
-- `Instance`: one process, one HTTP endpoint
-- `Gateway`: named entry with configured adapter + capabilities
-- `Session`: server session id (`ses_...`) mapped to adapter-native session ref
-- `Turn`: canonical message/tool event unit
+```mermaid
+flowchart TB
+  A[Image\nDocker image or local runtime] --> B[Prototype\nmanifest.yaml + compose.yaml + skills]
+  B --> C[Instance\ninst_* runtime record]
+  C --> D[Inbox\nPOST /instances/:id/inbox]
+  D --> E[Adapter process\nstdin/stdout NDJSON]
+  E --> F[Outbox SSE\nGET /instances/:id/outbox]
+```
 
-Server gateway config carries:
+## Runtime Responsibilities
 
-- adapter name
-- gateway capabilities (`resume`, `streaming`)
-- optional opaque adapter config blob
+- Host HTTP service registers all control/data routes and serializes envelope responses.
+- Instance manager owns lifecycle, adapter process sessions, status updates, and suspend/resume state.
+- Transport abstraction isolates execution backend: local for master, Docker for workers.
+- Adapter core enforces a single unified stdin/stdout contract across providers.
+- SSE buffering adds reconnect/replay behavior for outbox consumers.
 
-## Core Adapter Contract (Current)
+## Master vs Worker Instances
 
-`@sumeru/core` defines a streaming-first adapter interface:
+- `inst_0` is created implicitly at manager boot and has `prototype: null`.
+- Master uses routing transport to run locally (`LOCAL_MASTER_HANDLE`) instead of Docker.
+- Worker instances are created from prototype names via API and are subject to resource limits.
+- Worker adapter command defaults to the Claude adapter entrypoint in container runtime.
+- Master adapter command is resolved from `host.yaml` master config or fallback Hermes adapter.
 
-- `createSession(config: { model: string | null; cwd: string | null })`
-- `send(ref, content): AsyncIterable<SendEvent>`
-- `close(ref)`
-- `getTurns(ref)`
+## Message Pipeline
 
-`SendEvent` union:
+```mermaid
+sequenceDiagram
+  participant Client as HTTP Client
+  participant Host as Host Router/Handlers
+  participant IM as Instance Manager
+  participant T as Transport
+  participant A as Adapter CLI
+  participant SSE as SSE Outbox
 
-- `turn`
-- `done` (duration + optional tokens)
-- `error`
+  Client->>Host: POST /instances/:id/inbox
+  Host->>IM: submitInbox()
+  IM->>T: exec(...)
+  T->>A: spawn/exec adapter
+  IM->>A: {type:"init"} then {type:"message"}
+  A-->>IM: turn/done/suspend/error frames
+  IM-->>SSE: append + broadcast events
+  Client->>Host: GET /instances/:id/outbox
+  Host-->>Client: replay + live SSE stream
+```
 
-This replaces older single-response send contracts and enables incremental server SSE emission.
+## Code Pointers
 
-## Active Adapter Set
+| Package | File | What it does |
+|---------|------|--------------|
+| `@sumeru/core` | `packages/core/src/types.ts` | Defines canonical manifest, model, instance, inbox/outbox, suspend, and token usage types. |
+| `@sumeru/host` | `packages/host/src/server.ts` | Builds HTTP host handler, wires routes, transport stack, and manager boot flow. |
+| `@sumeru/host` | `packages/host/src/instance-manager.ts` | Owns instance lifecycle, adapter readiness, frame ingestion, and SSE broadcast. |
+| `@sumeru/host` | `packages/host/src/local-transport.ts` | Chooses local runtime for master and docker runtime for workers via routing transport. |
 
-CLI default factories currently wire:
+## See Also
 
-- `hermes`
-- `claude-code`
-- `codex`
-- `cursor-agent`
-
-`buildAdapters()` forwards each gateway's `config` blob verbatim to the matching adapter factory and skips unknown adapter names safely.
-
-## Server Envelope and State
-
-`@sumeru/server` uses envelope responses (`{ type, value }`) and tracks session status via `idle | active | closed` transitions.
-
-Server config includes an OCAS slice with:
-
-- store handle
-- registered turn/session-meta schema hashes
-- schema aliases
-- search index handle
-
-This supports persisted turn/session metadata, `/ocas/:hash` reads, and search rebuild/index operations.
-
-## Persistence and Restart Semantics
-
-Turn nodes, session-meta, and ordered turn-hash pointers persist in OCAS/SQLite-backed storage. On restart, session store rehydrates persisted sessions/turn lists.
-
-Native adapter refs are runtime-only, so historical reads remain available after restart while new sends may be unavailable for sessions lacking re-established adapter refs.
+- [Host HTTP Service](./host-service.md) — route surface and envelope contract.
+- [Adapter Unified I/O Contract](./adapter-contract.md) — NDJSON frame protocol.
+- [Instance Lifecycle](./instance-lifecycle.md) — creation/reset/deletion/state behavior.

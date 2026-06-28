@@ -3,108 +3,81 @@ id: adapter-claude-code
 title: "Claude Code Adapter"
 sources:
   - packages/adapter-claude-code/src/adapter.ts
-  - packages/adapter-claude-code/src/spawn.ts
   - packages/adapter-claude-code/src/stream-parser.ts
-  - packages/adapter-claude-code/src/types.ts
-tags: [architecture, adapter, claude-code, streaming]
-created: 2026-06-15
-updated: 2026-06-23
+  - packages/adapter-claude-code/src/spawn.ts
+tags: [sumeru, claude]
+created: 2026-06-28
+updated: 2026-06-28
 ---
 
 # Claude Code Adapter
 
-`@sumeru/adapter-claude-code` implements the `Adapter` contract by spawning the `claude` CLI in `stream-json` mode and maintaining per-session turns in memory.
+> The Claude adapter shells out to `claude -p` stream-json mode and maps CLI events into unified turn/done outputs.
 
-## Identity and Capabilities
+## Overview
 
-- `name`: `"claude-code"`
-- Session persistence: in-memory only (`Map<string, Turn[]>`)
-- Resume support: yes (`--resume <nativeId>`)
-- Streaming support: yes (`send()` yields incremental `SendEvent`s)
+`createClaudeCodeAdapter()` implements `AdapterImpl` with a serialized `handle()` lock, local session id retention, and incremental NDJSON parsing. It persists initialization artifacts (`CLAUDE.md` and skill files) before message handling.
 
-## Factory and Options
+Command execution is delegated to a streaming spawn helper with timeout and forced kill fallback. Stream parser emits incremental `meta`, `turn`, and `result` events.
 
-`createClaudeCodeAdapter(options)` resolves defaults:
+## Spawn Command
 
-- `claudeBin`: `claude`
-- `maxTurns`: `90`
-- `createSessionTimeoutMs`: `5m`
-- `sendTimeoutMs`: `30m`
-- `cwd`: optional adapter-level fallback cwd
-- `spawnFn`: full-buffer spawn seam (used by `createSession`)
-- `streamingSpawnFn`: incremental spawn seam (used by `send`)
+For each handle call, arguments are built as:
 
-## createSession Flow
+- `-p <prompt>`
+- optional `--resume <sessionId>`
+- `--output-format stream-json --verbose`
+- `--dangerously-skip-permissions`
+- `--max-turns <N>` (default 90)
+- optional `--model <model>`
 
-`createSession(config)`:
+## Streaming Parse Behavior
 
-1. Validates `config.cwd` is `string | null`.
-2. Resolves model from `config.model` then adapter default.
-3. Resolves cwd per call: `config.cwd` (non-empty) or adapter fallback (`options.cwd` or `process.cwd()`).
-4. Spawns `claude -p ping ... --output-format stream-json --verbose --dangerously-skip-permissions --max-turns ...`.
-5. Parses stdout via `parseStreamJson` and requires a non-empty `session_id`.
-6. Rewrites parsed turn indices to start from 0 and stores them in cache.
-7. Returns `{ nativeId, meta }` where meta includes `cwd`, model, `createdAt`, subtype.
+```mermaid
+flowchart TB
+  A[stream-json lines] --> B{type}
+  B -- system --> C[update model/session_id]
+  B -- assistant --> D[emit assistant turn + tool_use capture]
+  B -- user/tool_result --> E[attach tool output or user turn]
+  B -- result --> F[capture done summary + usage]
+```
 
-## send Flow (Incremental Streaming)
+Parser details:
 
-`send(ref, content)` returns an async iterable of `SendEvent`:
+- assistant `tool_use` blocks become `ToolCall` entries.
+- user `tool_result` blocks attach output back to pending tool calls by `tool_use_id`.
+- session id is sourced from system line first, then fallback from result line.
+- done token usage maps from `usage.input_tokens` and `usage.output_tokens`.
 
-- Pre-checks validate ref/content and reject closed sessions.
-- A per-`nativeId` promise lock serializes concurrent sends.
-- CWD/model are resolved from `ref.meta` first, then adapter defaults.
-- Uses `streamingSpawnFn` so stdout is consumed line-by-line.
-- Feeds lines into `parseStreamJsonIncremental`:
-  - `turn` events are index-rewritten to global monotonic order and appended to cache immediately.
-  - `result` line is captured for token derivation.
-- Awaits process exit and emits:
-  - `error` on spawn/read/exit/timeout/non-zero exit failures.
-  - `done` with `durationMs` and optional tokens on success.
+## Session Continuity
 
-This is a true incremental path: turns are emitted before process exit, not only after full stdout capture.
+- adapter stores `sessionId` internally.
+- incoming `resumeNativeId` overrides current session id before spawn.
+- `getNativeId()` returns current session id for host suspend/resume persistence.
 
-## close and getTurns
+## Init Artifacts
 
-- `close(ref)`: logical close only; adds native id to a closed set.
-- `getTurns(ref)`: returns a defensive copy of cached turns, `[]` if unknown.
+On `init(config)`:
 
-No on-disk session DB is used; restarting the adapter loses cached history.
-
-## Parser Behavior
-
-`parseStreamJson` and `parseStreamJsonIncremental` interpret NDJSON `type` lines:
-
-- `system`: captures session/model metadata.
-- `assistant`: emits assistant turns with extracted tool calls.
-- `user`:
-  - plain text becomes a user turn,
-  - `tool_result` updates pending tool-call output (no separate turn).
-- `result`: captures subtype/usage summary.
-
-Notable semantics:
-
-- Malformed/unrecognized lines are skipped (tolerant parse).
-- Missing `result` with known `session_id` synthesizes subtype `incomplete`.
-- Unknown subtype values are coerced to `incomplete`.
-- Incremental parser can emit `meta`, `turn`, and `result` events.
-
-## Spawning and Timeouts
-
-`defaultSpawn` and `defaultStreamingSpawn` use `child_process.spawn` with:
-
-- `shell: false`
-- explicit `cwd`
-- timeout escalation: `SIGTERM`, then `SIGKILL` after 5s grace
-- duration and timeout metadata surfaced to adapter logic
+- writes `CLAUDE.md` in home dir with instructions.
+- writes `.cursor/skills/<name>/SKILL.md` for each skill.
+- when message uses non-home project cwd, artifacts are also written into that cwd.
 
 ## Error Mapping
 
-`makeUnparseableOrExitError` prioritizes:
+- login errors (`not logged in`) are normalized with a guidance message.
+- API key/auth patterns are normalized to explicit API key guidance.
+- missing resumed session errors mention session id context.
+- stderr is truncated to tail length for large outputs.
 
-1. not-logged-in stderr patterns
-2. API key/auth stderr patterns
-3. resume session not found patterns
-4. generic non-zero exits
-5. unparseable stream-json output (including stdout/stderr snippets)
+## Code Pointers
 
-This keeps operator-facing failures specific before falling back to generic parse/exit errors.
+| Package | File | What it does |
+|---------|------|--------------|
+| `@sumeru/adapter-claude-code` | `packages/adapter-claude-code/src/adapter.ts` | Adapter implementation, spawn arg assembly, init artifact writes, and error handling. |
+| `@sumeru/adapter-claude-code` | `packages/adapter-claude-code/src/stream-parser.ts` | Parses stream-json lines into turns, tool calls, session metadata, and done summary. |
+| `@sumeru/adapter-claude-code` | `packages/adapter-claude-code/src/spawn.ts` | Streaming process wrapper with timeout and exit metadata capture. |
+
+## See Also
+
+- [Adapter Unified I/O Contract](./adapter-contract.md) — host-facing contract this adapter satisfies.
