@@ -509,10 +509,13 @@ describe("instance-manager", () => {
 
 		expect(execCount).toBe(2);
 		expect(manager.getInstance(created.id)?.status).toBe("running");
+		// Container = session: no resumeNativeId is sent on the wire.
+		// The second adapter process starts fresh and the agent CLI inside
+		// the container auto-resumes its only session.
 		const resumeWrite = stdinWrites.find((line) =>
 			line.includes("native-resume-abc"),
 		);
-		expect(resumeWrite).toBeDefined();
+		expect(resumeWrite).toBeUndefined();
 		expect(events.map((event) => event.event)).toEqual([
 			"suspend",
 			"turn",

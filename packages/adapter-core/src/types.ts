@@ -28,10 +28,9 @@ export type AdapterInitConfig = {
 	model: ModelConfig;
 };
 
-// Inbox payload on the wire: core fields plus resume hint from Host after suspend.
-export type AdapterInboxMessage = InboxMessage & {
-	resumeNativeId: string | null;
-};
+// Inbox payload on the wire. Container = session, so no resume hint needed —
+// the agent CLI inside the container auto-resumes its only session.
+export type AdapterInboxMessage = InboxMessage;
 
 // Yield from `handle`: streaming turns, or an impl-initiated suspend checkpoint.
 export type AdapterHandleYield =

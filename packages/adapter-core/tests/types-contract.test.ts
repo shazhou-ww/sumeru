@@ -63,14 +63,13 @@ describe("@sumeru/adapter-core — types contract", () => {
 		expectTypeOf(skill).toEqualTypeOf<{ name: string; content: string }>();
 	});
 
-	it("InboundFrame message carries resumeNativeId", () => {
+	it("InboundFrame message carries core fields", () => {
 		const frame: InboundFrame = {
 			type: "message",
 			value: {
 				messageId: "m",
 				content: "c",
 				project: null,
-				resumeNativeId: "native-1",
 			},
 		};
 		if (frame.type === "message") {

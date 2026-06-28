@@ -76,7 +76,6 @@ describe("@sumeru/adapter-codex — adapter", () => {
 			messageId: "msg_1",
 			content: "ping",
 			project: null,
-			resumeNativeId: null,
 		});
 
 		const turns = [];

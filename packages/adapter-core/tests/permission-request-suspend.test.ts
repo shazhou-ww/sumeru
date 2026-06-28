@@ -68,7 +68,6 @@ describe("adapter-core — permissionRequest suspend", () => {
 					messageId: "m",
 					content: "c",
 					project: null,
-					resumeNativeId: null,
 				},
 			})}\n`,
 		);
@@ -90,54 +89,4 @@ describe("adapter-core — permissionRequest suspend", () => {
 			},
 		});
 	}, 1_000);
-
-	it("passes resumeNativeId to handle after permissionRequest suspend", async () => {
-		const stdin = makeStdin();
-		const stdout = makeStdout();
-		const seen: Array<string | null> = [];
-		const impl: AdapterImpl = {
-			async init() {},
-			// biome-ignore lint/correctness/useYield: resume-only handle path
-			async *handle(message): AsyncGenerator<AdapterHandleYield, DoneValue> {
-				seen.push(message.resumeNativeId);
-				return { summary: null, tokenUsage: null };
-			},
-		};
-
-		const done = runTestEntry({
-			impl,
-			stdin,
-			stdout: stdout.stream,
-			onSigterm: makeSigtermHook().hook,
-		});
-
-		stdin.write(`${INIT_LINE}\n`);
-		stdin.write(
-			`${JSON.stringify({
-				type: "message",
-				value: {
-					messageId: "m1",
-					content: "first",
-					project: null,
-					resumeNativeId: null,
-				},
-			})}\n`,
-		);
-		stdin.write(
-			`${JSON.stringify({
-				type: "message",
-				value: {
-					messageId: "m2",
-					content: "resume",
-					project: null,
-					resumeNativeId: "native-permission-resume-3",
-				},
-			})}\n`,
-		);
-		await flush();
-		stdin.end();
-		await done;
-
-		expect(seen).toEqual([null, "native-permission-resume-3"]);
-	});
 });

@@ -75,7 +75,6 @@ describe("adapter-core — message handling", () => {
 			messageId: "msg_01JXYZ",
 			content: "hello",
 			project: null,
-			resumeNativeId: null,
 		});
 
 		const frames = stdout.frames();

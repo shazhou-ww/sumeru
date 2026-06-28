@@ -29,23 +29,15 @@ function parseAdapterInboxMessage(value: unknown): AdapterInboxMessage | null {
 	if (typeof value.content !== "string") return null;
 	const project = value.project;
 	if (project !== null && typeof project !== "string") return null;
-	const resumeNativeId =
-		typeof value.resumeNativeId === "string" ? value.resumeNativeId : null;
 	return {
 		messageId: value.messageId,
 		content: value.content,
 		project: project as string | null,
-		resumeNativeId,
 	};
 }
 
-function resolveNativeId(
-	impl: AdapterImpl,
-	storedNativeId: string | null,
-): string | null {
-	const fromImpl = impl.getNativeId?.() ?? null;
-	if (fromImpl !== null && fromImpl.length > 0) return fromImpl;
-	return storedNativeId;
+function resolveNativeId(impl: AdapterImpl): string | null {
+	return impl.getNativeId?.() ?? null;
 }
 
 function isImplSuspendYield(
@@ -86,7 +78,6 @@ export async function runAdapterEntry(
 
 	let initialized = false;
 	let stopRequested = false;
-	let storedNativeId: string | null = null;
 
 	const write = (frame: OutboundFrame): void => {
 		stdout.write(`${JSON.stringify(frame)}\n`);
@@ -141,10 +132,6 @@ export async function runAdapterEntry(
 	const handleMessage = async (
 		message: AdapterInboxMessage,
 	): Promise<"exit" | undefined> => {
-		if (message.resumeNativeId !== null) {
-			storedNativeId = message.resumeNativeId;
-		}
-
 		const generator = impl.handle(message);
 		const startedAt = Date.now();
 		const timeoutPromise = delay(handleTimeoutMs).then(() => ({
@@ -164,7 +151,7 @@ export async function runAdapterEntry(
 						value: {
 							reason: "timeout",
 							elapsedMs: Date.now() - startedAt,
-							nativeId: resolveNativeId(impl, storedNativeId),
+							nativeId: resolveNativeId(impl),
 						},
 					});
 					void abortGenerator(generator);
@@ -174,7 +161,6 @@ export async function runAdapterEntry(
 				const step = raced.step;
 				if (step.done === true) {
 					write({ type: "done", value: step.value });
-					storedNativeId = resolveNativeId(impl, storedNativeId);
 					return;
 				}
 				if (isImplSuspendYield(step.value)) {
@@ -182,7 +168,7 @@ export async function runAdapterEntry(
 						type: "suspend",
 						value: {
 							...step.value.value,
-							nativeId: resolveNativeId(impl, storedNativeId),
+							nativeId: resolveNativeId(impl),
 						},
 					});
 					return "exit";
@@ -305,6 +291,7 @@ export async function runAdapterEntry(
 }
 
 // Public entrypoint: wires an AdapterImpl to the real process stdio + SIGTERM.
+// Calls process.exit() on completion — one process = one ReAct loop (#146).
 export function createAdapterEntry(impl: AdapterImpl): void {
 	void runAdapterEntry({
 		impl,
@@ -317,13 +304,17 @@ export function createAdapterEntry(impl: AdapterImpl): void {
 			};
 		},
 		sendTimeoutMs: null,
-	}).catch((err: unknown) => {
-		process.stdout.write(
-			`${JSON.stringify({
-				type: "error",
-				value: { code: "fatal_error", message: errorMessage(err) },
-			})}\n`,
-		);
-		process.exitCode = 1;
-	});
+	})
+		.then(() => {
+			process.exit(0);
+		})
+		.catch((err: unknown) => {
+			process.stdout.write(
+				`${JSON.stringify({
+					type: "error",
+					value: { code: "fatal_error", message: errorMessage(err) },
+				})}\n`,
+			);
+			process.exit(1);
+		});
 }

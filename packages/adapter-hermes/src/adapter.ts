@@ -128,9 +128,6 @@ export function createHermesAdapter(
 		if (typeof message.content !== "string" || message.content.length === 0) {
 			throw new Error("handle: content must be a non-empty string");
 		}
-		if (message.resumeNativeId !== null) {
-			sessionId = message.resumeNativeId;
-		}
 
 		const prev = handleLock;
 		let release: () => void = () => {};

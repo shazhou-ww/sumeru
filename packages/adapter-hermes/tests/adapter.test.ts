@@ -206,7 +206,6 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 			messageId: "msg_1",
 			content: "ping",
 			project: "/tmp/project",
-			resumeNativeId: null,
 		});
 		const turns = [];
 		let tokenUsage = null;
@@ -264,7 +263,6 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 				messageId: `msg_${i}`,
 				content: `ping-${i}`,
 				project: null,
-				resumeNativeId: null,
 			});
 			while (true) {
 				const step = await generator.next();
@@ -279,45 +277,6 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 			"prompt",
 			"prompt",
 		]);
-	});
-
-	it("resume_session is used when resumeNativeId is provided", async () => {
-		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-resume-"));
-		const nativeId = "20260627_140000_abcd12";
-		const acpClientFactory = createRecordingAcpClientFactory({
-			sessionId: nativeId,
-			onPrompt: (_content, emit) => {
-				emit({
-					sessionUpdate: "agent_message_chunk",
-					content: { type: "text", text: "resumed" },
-				});
-			},
-		});
-		const adapter = createHermesAdapter({
-			profile: "test",
-			hermesDir,
-			acpClientFactory,
-		});
-		await adapter.init(INIT_CONFIG);
-
-		const generator = adapter.handle({
-			messageId: "msg_resume",
-			content: "continue",
-			project: null,
-			resumeNativeId: nativeId,
-		});
-		while (true) {
-			const step = await generator.next();
-			if (step.done === true) break;
-		}
-
-		expect(acpClientFactory.calls.map((call) => call.method)).toEqual([
-			"initialize",
-			"resumeSession",
-			"setMode",
-			"prompt",
-		]);
-		expect(acpClientFactory.calls[1]?.args[0]).toBe(nativeId);
 	});
 
 	it("accumulates tool_call updates and yields them with the next message chunk", async () => {
@@ -349,7 +308,6 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 			messageId: "msg_tools",
 			content: "list files",
 			project: null,
-			resumeNativeId: null,
 		});
 		const turns = [];
 		while (true) {

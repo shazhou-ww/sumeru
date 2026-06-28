@@ -41,7 +41,6 @@ type AdapterRuntime = {
 	readTask: Promise<void> | null;
 	subscribers: Set<(event: SseEvent) => void>;
 	sseBuffer: SseBuffer;
-	resumeNativeId: string | null;
 	session: {
 		stdin: NodeJS.WritableStream;
 		waitForExit(): Promise<{ exitCode: number | null; stderr: string }>;
@@ -231,11 +230,10 @@ export function createInstanceManager(input: {
 		if (runtime === null || runtime === undefined || runtime.session === null) {
 			throw new Error("adapter_unavailable");
 		}
-		const resumeNativeId = runtime.resumeNativeId;
 		runtime.session.stdin.write(
 			`${JSON.stringify({
 				type: "message",
-				value: { ...message, resumeNativeId },
+				value: message,
 			})}\n`,
 		);
 		recorder.record(id, {
@@ -470,7 +468,6 @@ export function createInstanceManager(input: {
 					if (record !== undefined) {
 						record.status = "suspended";
 					}
-					runtime.resumeNativeId = extractSuspendNativeId(parsed);
 					runtime.session = null;
 					runtime.initialized = false;
 				}
@@ -601,22 +598,8 @@ function createAdapterRuntime(
 		readTask: null,
 		subscribers: new Set(),
 		sseBuffer: createSseBuffer(),
-		resumeNativeId: null,
 		session: null,
 	};
-}
-
-function extractSuspendNativeId(parsed: unknown): string | null {
-	if (!isRecord(parsed) || parsed.type !== "suspend") return null;
-	const value = parsed.value;
-	if (!isRecord(value)) return null;
-	const nativeId = value.nativeId;
-	if (typeof nativeId !== "string" || nativeId.length === 0) return null;
-	return nativeId;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 
 function toInstanceInfo(record: ManagedInstance): InstanceInfo {
