@@ -20,7 +20,7 @@
 ### Prompt
 
 ```
-Create a CLI calculator in TypeScript at /home/sumeru/project.
+Create a CLI calculator in TypeScript at /workspace.
 
 Requirements:
 1. Initialize a Node.js project with TypeScript
@@ -80,13 +80,14 @@ curl -sN "http://127.0.0.1:7902/instances/$INST/outbox"
 
 ```bash
 docker run -d --name eval-test \
-  -v /tmp/sumeru-eval:/home/sumeru/project \
-  -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+  --user "$(id -u):$(id -g)" \
+  --network host \
+  -v /tmp/sumeru-eval:/workspace \
   sumeru/claude-code:dev
 
 docker exec eval-test node /opt/sumeru/adapter-claude-code/dist/main.js <<'JSONL'
 {"type":"init","value":{"instructions":"","skills":[],"model":{"provider":"anthropic","name":"claude-sonnet-4-20250514","apiKeyEnv":"ANTHROPIC_API_KEY","contextWindow":200000}}}
-{"type":"message","value":{"messageId":"eval-1","content":"<prompt>","project":"/home/sumeru/project","resumeNativeId":null}}
+{"type":"message","value":{"messageId":"eval-1","content":"<prompt>","project":"/workspace","resumeNativeId":null}}
 JSONL
 ```
 

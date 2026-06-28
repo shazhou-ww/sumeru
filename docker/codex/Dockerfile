@@ -2,7 +2,7 @@
 #
 # Sumeru Codex adapter runtime image (v2).
 # Built from monorepo dist/ artifacts — packages are not published to npm yet.
-FROM node:22-slim
+FROM node:24-slim
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
@@ -35,10 +35,16 @@ RUN mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/adapter-core node_modules/@sumeru/adapter-core \
 	&& ln -s /opt/sumeru/adapter-codex node_modules/@sumeru/adapter-codex
 
-RUN useradd -u 10001 -m sumeru \
-	&& chown -R 10001:10001 /opt/sumeru /usr/local/uv
+# Use the built-in node user (uid 1000) from node:24-slim.
+# Most Linux hosts have uid 1000 as first user — volume files align naturally.
+RUN chown -R node:node /opt/sumeru /usr/local/uv \
+	&& mkdir -p /workspace && chown node:node /workspace \
+	&& mkdir -p /home/node/.codex && chown node:node /home/node/.codex
 
-USER sumeru
-WORKDIR /home/sumeru
+# Sticky HOME — survives --user overrides (Docker resolves HOME from /etc/passwd
+# for the numeric uid, which may differ when host passes --user).
+ENV HOME=/home/node
+USER node
+WORKDIR /workspace
 
 CMD ["sleep", "infinity"]

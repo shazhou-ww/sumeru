@@ -2,7 +2,7 @@
 #
 # Sumeru Hermes adapter runtime image (v2).
 # Built from monorepo dist/ artifacts — packages are not published to npm yet.
-FROM node:22-slim
+FROM node:24-slim
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
@@ -39,10 +39,11 @@ RUN mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/adapter-core node_modules/@sumeru/adapter-core \
 	&& ln -s /opt/sumeru/adapter-hermes node_modules/@sumeru/adapter-hermes
 
-RUN useradd -u 10001 -m sumeru \
-	&& chown -R 10001:10001 /opt/sumeru /opt/hermes-venv /usr/local/uv
+RUN chown -R node:node /opt/sumeru /opt/hermes-venv /usr/local/uv \
+	&& mkdir -p /workspace && chown node:node /workspace
 
-USER sumeru
-WORKDIR /home/sumeru
+ENV HOME=/home/node
+USER node
+WORKDIR /workspace
 
 CMD ["sleep", "infinity"]
