@@ -171,6 +171,7 @@ export function createHermesAdapter(
 
 		const state: AcpStreamState = {
 			pendingToolCalls: [],
+			pendingText: "",
 			usage: null,
 			nextIndex: nextTurnIndex,
 		};
@@ -222,9 +223,9 @@ export function createHermesAdapter(
 				yield turn;
 			}
 
-			const trailing = flushPendingToolCalls(state);
-			if (trailing !== null) {
-				yield trailing;
+			const trailing = flushPending(state);
+			for (const turn of trailing) {
+				yield turn;
 			}
 
 			nextTurnIndex = state.nextIndex;
@@ -247,8 +248,21 @@ function mapUpdateToTurns(
 	state: AcpStreamState,
 ): Array<TurnValue> {
 	if (update.sessionUpdate === "tool_call") {
+		// Flush accumulated text before yielding tool call
+		const results: Array<TurnValue> = [];
+		if (state.pendingText.length > 0) {
+			results.push({
+				index: state.nextIndex++,
+				role: "assistant",
+				content: state.pendingText,
+				timestamp: new Date().toISOString(),
+				toolCalls: null,
+				tokens: null,
+			});
+			state.pendingText = "";
+		}
 		state.pendingToolCalls.push(mapToolCall(update));
-		return [];
+		return results;
 	}
 	if (update.sessionUpdate === "usage_update") {
 		state.usage = {
@@ -257,33 +271,39 @@ function mapUpdateToTurns(
 		};
 		return [];
 	}
-	const toolCalls =
-		state.pendingToolCalls.length > 0 ? [...state.pendingToolCalls] : null;
-	state.pendingToolCalls = [];
-	return [
-		{
+	// agent_message_chunk — accumulate text, don't yield yet
+	state.pendingText += update.content.text;
+	return [];
+}
+
+function flushPending(state: AcpStreamState): Array<TurnValue> {
+	const results: Array<TurnValue> = [];
+	if (state.pendingText.length > 0) {
+		const toolCalls =
+			state.pendingToolCalls.length > 0 ? [...state.pendingToolCalls] : null;
+		state.pendingToolCalls = [];
+		results.push({
 			index: state.nextIndex++,
 			role: "assistant",
-			content: update.content.text,
+			content: state.pendingText,
 			timestamp: new Date().toISOString(),
 			toolCalls,
 			tokens: null,
-		},
-	];
-}
-
-function flushPendingToolCalls(state: AcpStreamState): TurnValue | null {
-	if (state.pendingToolCalls.length === 0) return null;
-	const toolCalls = [...state.pendingToolCalls];
-	state.pendingToolCalls = [];
-	return {
-		index: state.nextIndex++,
-		role: "assistant",
-		content: "",
-		timestamp: new Date().toISOString(),
-		toolCalls,
-		tokens: null,
-	};
+		});
+		state.pendingText = "";
+	} else if (state.pendingToolCalls.length > 0) {
+		const toolCalls = [...state.pendingToolCalls];
+		state.pendingToolCalls = [];
+		results.push({
+			index: state.nextIndex++,
+			role: "assistant",
+			content: "",
+			timestamp: new Date().toISOString(),
+			toolCalls,
+			tokens: null,
+		});
+	}
+	return results;
 }
 
 function mapToolCall(

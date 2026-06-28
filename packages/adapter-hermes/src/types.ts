@@ -116,6 +116,7 @@ export type AcpClientOptions = AcpClientCreateOptions & {
 
 export type AcpStreamState = {
 	pendingToolCalls: Array<ToolCall>;
+	pendingText: string;
 	usage: { input: number; output: number } | null;
 	nextIndex: number;
 };
