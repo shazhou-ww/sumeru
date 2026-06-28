@@ -33,6 +33,7 @@ export type {
 	HostRootValue,
 	HostServerOptions,
 	InboxAcceptedValue,
+	InboxBody,
 	InboxRequest,
 	InstanceStatusValue,
 	LoadedHostConfig,

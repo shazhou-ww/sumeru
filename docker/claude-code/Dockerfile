@@ -41,4 +41,4 @@ RUN useradd -u 10001 -m sumeru \
 USER sumeru
 WORKDIR /home/sumeru
 
-ENTRYPOINT ["node", "/opt/sumeru/adapter-claude-code/dist/main.js"]
+CMD ["sleep", "infinity"]

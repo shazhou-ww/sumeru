@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import {
 	formatDockerImagesOutput,
@@ -305,7 +304,6 @@ async function runSend(
 	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 	try {
 		const envelope = await client.submitInbox(instanceId, {
-			messageId: `msg_${randomUUID()}`,
 			content: message,
 			project: null,
 		});

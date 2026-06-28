@@ -192,6 +192,10 @@ export function createAcpClient(options: AcpClientOptions): AcpClient {
 			return parseSessionIdResult(result, "session/resume");
 		},
 
+		async setMode(sessionId: string, modeId: string): Promise<void> {
+			await writeRequest("session/set_mode", { sessionId, modeId });
+		},
+
 		async prompt(
 			sessionId: string,
 			content: string,

@@ -33,7 +33,7 @@ export type HostClient = {
 	deleteInstance(id: string): Promise<void>;
 	submitInbox(
 		id: string,
-		body: { messageId: string; content: string; project: string | null },
+		body: { content: string; project: string | null },
 	): Promise<Envelope<{ instanceId: string; messageId: string }>>;
 	resetInstance(id: string): Promise<void>;
 	streamOutbox(

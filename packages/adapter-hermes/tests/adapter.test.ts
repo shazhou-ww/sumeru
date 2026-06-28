@@ -56,7 +56,7 @@ function createMockAcpProcess(options: MockServerOptions): AcpProcess {
 		stdout.write(
 			`${JSON.stringify({
 				jsonrpc: "2.0",
-				method: "session_update",
+				method: "session/update",
 				params: { sessionId: options.sessionId, update },
 			})}\n`,
 		);
@@ -72,24 +72,28 @@ function createMockAcpProcess(options: MockServerOptions): AcpProcess {
 			writeResponse(parsed.id, { capabilities: {} });
 			return;
 		}
-		if (parsed.method === "new_session") {
+		if (parsed.method === "session/new") {
 			writeResponse(parsed.id, { sessionId: options.sessionId });
 			return;
 		}
-		if (parsed.method === "resume_session") {
+		if (parsed.method === "session/resume") {
 			writeResponse(parsed.id, { sessionId: options.sessionId });
 			return;
 		}
-		if (parsed.method === "prompt") {
-			const contentBlocks = parsed.params.content;
+		if (parsed.method === "session/set_mode") {
+			writeResponse(parsed.id, {});
+			return;
+		}
+		if (parsed.method === "session/prompt") {
+			const promptBlocks = parsed.params.prompt;
 			const text =
-				Array.isArray(contentBlocks) &&
-				contentBlocks[0] !== undefined &&
-				typeof contentBlocks[0] === "object" &&
-				contentBlocks[0] !== null &&
-				"text" in contentBlocks[0] &&
-				typeof contentBlocks[0].text === "string"
-					? contentBlocks[0].text
+				Array.isArray(promptBlocks) &&
+				promptBlocks[0] !== undefined &&
+				typeof promptBlocks[0] === "object" &&
+				promptBlocks[0] !== null &&
+				"text" in promptBlocks[0] &&
+				typeof promptBlocks[0].text === "string"
+					? promptBlocks[0].text
 					: "";
 			options.onPrompt(text, writeNotification);
 			writeResponse(parsed.id, { stopReason: "end_turn" });
@@ -141,6 +145,10 @@ function wrapClientWithCallLog(
 		async resumeSession(sessionId: string) {
 			calls.push({ method: "resumeSession", args: [sessionId] });
 			return client.resumeSession(sessionId);
+		},
+		async setMode(sessionId: string, modeId: string) {
+			calls.push({ method: "setMode", args: [sessionId, modeId] });
+			return client.setMode(sessionId, modeId);
 		},
 		async prompt(sessionId, content, onUpdate) {
 			calls.push({ method: "prompt", args: [sessionId, content] });
@@ -221,6 +229,7 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 		expect(acpClientFactory.calls.map((call) => call.method)).toEqual([
 			"initialize",
 			"newSession",
+			"setMode",
 			"prompt",
 		]);
 		expect(acpClientFactory.calls[1]?.args[0]).toBe("/tmp/project");
@@ -266,6 +275,7 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 		expect(acpClientFactory.calls.map((call) => call.method)).toEqual([
 			"initialize",
 			"newSession",
+			"setMode",
 			"prompt",
 			"prompt",
 		]);
@@ -304,6 +314,7 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 		expect(acpClientFactory.calls.map((call) => call.method)).toEqual([
 			"initialize",
 			"resumeSession",
+			"setMode",
 			"prompt",
 		]);
 		expect(acpClientFactory.calls[1]?.args[0]).toBe(nativeId);

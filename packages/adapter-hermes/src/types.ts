@@ -85,6 +85,7 @@ export type AcpClient = {
 	initialize(): Promise<AcpInitializeResult>;
 	newSession(cwd: string): Promise<AcpNewSessionResult>;
 	resumeSession(sessionId: string): Promise<AcpResumeSessionResult>;
+	setMode(sessionId: string, modeId: string): Promise<void>;
 	prompt(
 		sessionId: string,
 		content: string,

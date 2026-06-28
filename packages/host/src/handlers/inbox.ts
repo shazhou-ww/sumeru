@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { errorEnvelope, inboxAcceptedEnvelope } from "../envelope.js";
 import { readJsonBody, writeJson } from "../http-utils.js";
+import { generateMessageId } from "../id.js";
 import type { InstanceManager } from "../instance-manager.js";
-import type { InboxRequest } from "../types.js";
+import type { InboxBody, InboxRequest } from "../types.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -33,36 +34,32 @@ export function createInboxHandler(manager: InstanceManager) {
 				400,
 				errorEnvelope(
 					"invalid_request",
-					'Body must include "messageId" and "content" strings',
+					'Body must include a non-empty "content" string',
 				),
 			);
 			return;
 		}
+		const messageId = generateMessageId();
+		const request: InboxRequest = { ...parsed, messageId };
 		try {
-			await manager.submitInbox(id, parsed);
-			writeJson(
-				res,
-				202,
-				inboxAcceptedEnvelope({ instanceId: id, messageId: parsed.messageId }),
-			);
+			await manager.submitInbox(id, request);
+			writeJson(res, 202, inboxAcceptedEnvelope({ instanceId: id, messageId }));
 		} catch (err) {
 			writeInboxError(res, err);
 		}
 	};
 }
 
-function parseInboxBody(body: unknown): InboxRequest | null {
+function parseInboxBody(body: unknown): InboxBody | null {
 	if (!isRecord(body)) return null;
-	const messageId = body.messageId;
 	const content = body.content;
-	if (typeof messageId !== "string" || messageId.length === 0) return null;
 	if (typeof content !== "string" || content.length === 0) return null;
 	const projectRaw = body.project;
 	if (projectRaw === undefined || projectRaw === null) {
-		return { messageId, content, project: null };
+		return { content, project: null };
 	}
 	if (typeof projectRaw !== "string") return null;
-	return { messageId, content, project: projectRaw };
+	return { content, project: projectRaw };
 }
 
 function writeInboxError(res: ServerResponse, err: unknown): void {

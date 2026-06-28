@@ -107,6 +107,7 @@ export function createHermesAdapter(
 				await client.resumeSession(targetSessionId);
 				activeSessionId = targetSessionId;
 				sessionId = targetSessionId;
+				await client.setMode(targetSessionId, "dont_ask");
 			}
 			return;
 		}
@@ -114,6 +115,7 @@ export function createHermesAdapter(
 			const result = await client.newSession(cwd);
 			activeSessionId = result.sessionId;
 			sessionId = result.sessionId;
+			await client.setMode(result.sessionId, "dont_ask");
 		}
 	}
 

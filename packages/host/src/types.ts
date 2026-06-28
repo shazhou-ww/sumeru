@@ -58,10 +58,13 @@ export type CreateInstanceRequest = {
 	projects: Array<string> | null;
 };
 
-export type InboxRequest = {
-	messageId: string;
+export type InboxBody = {
 	content: string;
 	project: string | null;
+};
+
+export type InboxRequest = InboxBody & {
+	messageId: string;
 };
 
 export type InboxAcceptedValue = {
