@@ -63,7 +63,6 @@ describe("sarsapa loop", () => {
 			messageId: "msg_1",
 			content: "echo hello",
 			project: null,
-			resumeNativeId: null,
 		};
 		const gen = adapter.handle(msg);
 		const turns: unknown[] = [];
