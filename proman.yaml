@@ -27,6 +27,10 @@ packages:
     path: packages/host
     type: lib
 
+  - name: "@sumeru/sarsapa"
+    path: packages/sarsapa
+    type: lib
+
 release:
   registry: https://registry.npmjs.org
   access: public

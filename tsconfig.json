@@ -22,7 +22,8 @@
     { "path": "packages/adapter-codex" },
     { "path": "packages/adapter-hermes" },
     { "path": "packages/cli" },
-    { "path": "packages/host" }
+    { "path": "packages/host" },
+    { "path": "packages/sarsapa" }
   ],
   "files": []
 }
