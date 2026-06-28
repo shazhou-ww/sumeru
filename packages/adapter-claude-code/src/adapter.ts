@@ -96,6 +96,7 @@ export function createClaudeCodeAdapter(
 			"stream-json",
 			"--verbose",
 			"--dangerously-skip-permissions",
+			"--bare",
 			"--max-turns",
 			String(maxTurns),
 		);

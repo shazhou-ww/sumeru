@@ -21,7 +21,7 @@ RUN uv python install 3.12 \
 # Hermes is a Python package — install into a shared venv accessible by non-root user.
 ENV HERMES_VENV=/opt/hermes-venv
 RUN uv venv "$HERMES_VENV" --python 3.12 \
-	&& uv pip install --python "$HERMES_VENV/bin/python" hermes-agent \
+	&& uv pip install --python "$HERMES_VENV/bin/python" "hermes-agent[acp]" \
 	&& ln -sf "$HERMES_VENV/bin/hermes" /usr/local/bin/hermes
 
 WORKDIR /opt/sumeru
@@ -40,7 +40,8 @@ RUN mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/adapter-hermes node_modules/@sumeru/adapter-hermes
 
 RUN chown -R node:node /opt/sumeru /opt/hermes-venv /usr/local/uv \
-	&& mkdir -p /workspace && chown node:node /workspace
+	&& mkdir -p /workspace && chown node:node /workspace \
+	&& mkdir -p /home/node/.hermes && chown node:node /home/node/.hermes
 
 ENV HOME=/home/node
 USER node

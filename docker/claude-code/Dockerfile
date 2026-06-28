@@ -36,7 +36,8 @@ RUN mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/adapter-claude-code node_modules/@sumeru/adapter-claude-code
 
 RUN chown -R node:node /opt/sumeru /usr/local/uv \
-	&& mkdir -p /workspace && chown node:node /workspace
+	&& mkdir -p /workspace && chown node:node /workspace \
+	&& mkdir -p /home/node/.claude && chown node:node /home/node/.claude
 
 ENV HOME=/home/node
 USER node
