@@ -7,7 +7,7 @@ const execAsync = promisify(exec);
 export const terminalTool: Tool = {
 	name: "terminal",
 	description:
-		"Execute a shell command (foreground). Returns stdout (and stderr if any). Use timeout to limit.",
+		"Execute a shell command (foreground, via shell). Returns stdout (and stderr if any). Use timeout to limit. Note: in worker context the LLM may run arbitrary commands anyway, so shell injection is by-design, not a vulnerability.",
 	parameters: {
 		type: "object",
 		properties: {

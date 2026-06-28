@@ -27,6 +27,9 @@ function toOpenAiMessage(msg: LlmMessage): OpenAiMessage {
 const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 
+// Reserved for future known-provider base url routing (e.g. openrouter).
+// Not yet wired into chat(): LlmRequest does not carry the provider string,
+// so KnownProvider callers must currently supply baseUrl via CustomProvider.
 function providerDefaultBaseUrl(provider: string): string {
 	if (provider === "openrouter") return OPENROUTER_DEFAULT_BASE_URL;
 	return OPENAI_DEFAULT_BASE_URL;
@@ -60,7 +63,7 @@ export async function chat(request: LlmRequest): Promise<LlmResponse> {
 	});
 
 	if (!res.ok) {
-		const text = await res.text();
+		const text = (await res.text()).slice(0, 500);
 		throw new Error(`sarsapa: llm chat failed (${res.status}): ${text}`);
 	}
 
