@@ -4,7 +4,7 @@ import { PassThrough } from "node:stream";
 import type { InstanceStatus } from "@sumeru/core";
 import type { Transport, TransportExecSession } from "./types.js";
 
-const ADAPTER_ENTRYPOINT = "/opt/sumeru/adapter-claude-code/dist/main.js";
+const ADAPTER_BASE = "/opt/sumeru";
 
 function runCommand(
 	args: Array<string>,
@@ -162,8 +162,8 @@ export function createDockerTransport(
 	};
 }
 
-export function defaultAdapterCommand(): Array<string> {
-	return ["node", ADAPTER_ENTRYPOINT];
+export function defaultAdapterCommand(adapter: string): Array<string> {
+	return ["node", `${ADAPTER_BASE}/adapter-${adapter}/dist/main.js`];
 }
 
 export type MockTransportCall =

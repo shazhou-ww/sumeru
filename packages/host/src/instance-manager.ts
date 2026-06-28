@@ -342,9 +342,13 @@ export function createInstanceManager(input: {
 			runtime.initConfig = await buildInitConfig(record.prototype);
 		}
 		runtime.initialized = false;
+		const prototype = input.hostConfig.prototypes.get(record.prototype);
+		if (prototype === undefined) {
+			throw new Error("prototype_not_found");
+		}
 		const session = input.transport.exec({
 			containerId: record.containerId,
-			command: defaultAdapterCommand(),
+			command: defaultAdapterCommand(prototype.adapter),
 		});
 		runtime.session = session;
 		const activeSession = session;
