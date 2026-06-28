@@ -29,10 +29,21 @@ async function executeToolCall(
 ): Promise<ToolCall> {
 	const tool = tools.find((t) => t.name === call.name) ?? null;
 	let parsedArgs: Record<string, unknown>;
+	let parseError: string | null = null;
 	try {
 		parsedArgs = JSON.parse(call.arguments) as Record<string, unknown>;
-	} catch {
+	} catch (err) {
 		parsedArgs = {};
+		parseError = err instanceof Error ? err.message : String(err);
+	}
+	if (parseError !== null) {
+		return {
+			tool: call.name,
+			input: parsedArgs,
+			output: `Error: arguments is not valid JSON (${parseError}). Make sure string values escape newlines as \\n and quotes as \\". Raw (first 300 chars): ${call.arguments.slice(0, 300)}`,
+			durationMs: null,
+			exitCode: 1,
+		};
 	}
 	if (tool === null) {
 		return {
@@ -43,14 +54,27 @@ async function executeToolCall(
 			exitCode: null,
 		};
 	}
-	const result = await tool.execute(parsedArgs, ctx);
-	return {
-		tool: call.name,
-		input: parsedArgs,
-		output: result.output,
-		durationMs: result.durationMs,
-		exitCode: result.exitCode,
-	};
+	const start = Date.now();
+	try {
+		const result = await tool.execute(parsedArgs, ctx);
+		return {
+			tool: call.name,
+			input: parsedArgs,
+			output: result.output,
+			durationMs: result.durationMs,
+			exitCode: result.exitCode,
+		};
+	} catch (err) {
+		// surface the real error to the LLM — do not swallow or guess.
+		const msg = err instanceof Error ? err.message : String(err);
+		return {
+			tool: call.name,
+			input: parsedArgs,
+			output: `Error: tool '${call.name}' threw (${msg})`,
+			durationMs: Date.now() - start,
+			exitCode: 1,
+		};
+	}
 }
 
 export async function* runLoop(
@@ -96,12 +120,16 @@ export async function* runLoop(
 		// assistant message (with tool_calls) must precede tool results
 		pushAssistant(conversation, res.content, res.toolCalls);
 
-		const executed: Array<ToolCall> = [];
-		for (const call of res.toolCalls) {
-			const tc = await executeToolCall(call, tools, ctx);
-			executed.push(tc);
-			pushToolResult(conversation, call.id, tc.output ?? "");
+		// Tool calls issued in one turn are independent — execute them in
+		// parallel. The LLM decides whether to batch; the runtime should not
+		// artificially serialize. Promise.all preserves tool-call order.
+		const results = await Promise.all(
+			res.toolCalls.map((call) => executeToolCall(call, tools, ctx)),
+		);
+		for (const [i, call] of res.toolCalls.entries()) {
+			pushToolResult(conversation, call.id, results[i].output ?? "");
 		}
+		const executed: Array<ToolCall> = results;
 
 		const turn: TurnValue = {
 			index,
