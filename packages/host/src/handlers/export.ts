@@ -1,12 +1,12 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { join } from "node:path";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import type { InstanceId } from "@sumeru/core";
 import { errorEnvelope } from "../envelope.js";
 import { writeJson } from "../http-utils.js";
 import type { InstanceManager } from "../instance-manager.js";
+import { openOcasStore, readChain } from "../ocas-recorder.js";
 
 export function createExportHandler(manager: InstanceManager, dataDir: string) {
 	return async (
@@ -27,44 +27,49 @@ export function createExportHandler(manager: InstanceManager, dataDir: string) {
 			return;
 		}
 
-		const filePath = join(dataDir, `${id}.jsonl`);
-		if (!hasHistory(filePath)) {
-			writeJson(
-				res,
-				404,
-				errorEnvelope("no_history", "No history for instance"),
-			);
-			return;
-		}
-
-		res.statusCode = 200;
-		res.setHeader("Content-Type", "application/gzip");
-		res.setHeader(
-			"Content-Disposition",
-			`attachment; filename="${id}.jsonl.gz"`,
-		);
-
-		const gzip = createGzip();
-		const source = createReadStream(filePath);
+		const handle = openOcasStore(dataDir);
 		try {
-			await pipeline(source, gzip, res);
-		} catch {
-			if (!res.headersSent) {
+			const chain = readChain(handle.store, id);
+			if (chain.length === 0) {
 				writeJson(
 					res,
-					500,
-					errorEnvelope("export_failed", "Failed to export instance history"),
+					404,
+					errorEnvelope("no_history", "No history for instance"),
 				);
+				return;
 			}
+
+			const ndjson = `${chain
+				.map((entry) =>
+					JSON.stringify({
+						hash: entry.hash,
+						...entry.payload,
+					}),
+				)
+				.join("\n")}\n`;
+
+			res.statusCode = 200;
+			res.setHeader("Content-Type", "application/gzip");
+			res.setHeader(
+				"Content-Disposition",
+				`attachment; filename="${id}.ndjson.gz"`,
+			);
+
+			const source = Readable.from([ndjson]);
+			const gzip = createGzip();
+			try {
+				await pipeline(source, gzip, res);
+			} catch {
+				if (!res.headersSent) {
+					writeJson(
+						res,
+						500,
+						errorEnvelope("export_failed", "Failed to export instance history"),
+					);
+				}
+			}
+		} finally {
+			handle.close();
 		}
 	};
-}
-
-function hasHistory(filePath: string): boolean {
-	if (!existsSync(filePath)) return false;
-	try {
-		return statSync(filePath).size > 0;
-	} catch {
-		return false;
-	}
 }

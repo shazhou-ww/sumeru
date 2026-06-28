@@ -344,10 +344,6 @@ describe("instance-manager", () => {
 			project: null,
 		});
 		await waitUntil(() => recorder.getTurnTotal(created.id) > 0);
-		expect(
-			readFileSync(join(hostConfig.dataDir, `${created.id}.jsonl`), "utf-8")
-				.length,
-		).toBeGreaterThan(0);
 
 		const reset = await manager.resetInstance(created.id);
 		expect(reset.id).toBe(created.id);
@@ -360,9 +356,6 @@ describe("instance-manager", () => {
 			calls.filter((call) => call.startsWith("up:")).length,
 		).toBeGreaterThan(1);
 		expect(recorder.getTurnTotal(created.id)).toBe(0);
-		expect(() =>
-			readFileSync(join(hostConfig.dataDir, `${created.id}.jsonl`), "utf-8"),
-		).toThrow();
 	});
 
 	it("uses updated compose.yaml image for newly created instances", async () => {

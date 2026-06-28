@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,14 +7,18 @@ import { createGunzip } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { createExportHandler } from "../src/handlers/export.js";
 import type { InstanceManager } from "../src/instance-manager.js";
+import { createOcasRecorder } from "../src/ocas-recorder.js";
 import type { ManagedInstance } from "../src/types.js";
 
+const HASH_RE = /^[0-9A-HJKMNP-TV-Z]{13}$/;
+
 describe("createExportHandler", () => {
-	it("streams gzipped jsonl for an instance with history", async () => {
+	it("streams gzipped ndjson from CAS chain", async () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "sumeru-export-"));
 		const instanceId = "inst_export";
-		const jsonl = `${JSON.stringify({
-			timestamp: "2026-06-27T00:00:00.000Z",
+
+		const recorder = createOcasRecorder(dataDir);
+		recorder.append(instanceId, {
 			type: "turn",
 			value: {
 				index: 0,
@@ -24,8 +28,11 @@ describe("createExportHandler", () => {
 				toolCalls: null,
 				tokens: null,
 			},
-		})}\n`;
-		writeFileSync(join(dataDir, `${instanceId}.jsonl`), jsonl, "utf-8");
+		});
+		recorder.append(instanceId, {
+			type: "done",
+			value: { summary: "ok", tokenUsage: null },
+		});
 
 		const chunks: Buffer[] = [];
 		const res = createStreamResponse(chunks);
@@ -44,18 +51,26 @@ describe("createExportHandler", () => {
 		expect(res.statusCode).toBe(200);
 		expect(res.headers["content-type"]).toBe("application/gzip");
 		expect(res.headers["content-disposition"]).toBe(
-			`attachment; filename="${instanceId}.jsonl.gz"`,
+			`attachment; filename="${instanceId}.ndjson.gz"`,
 		);
 
-		const gunzip = createGunzip();
-		const decompressed: Buffer[] = [];
-		await new Promise<void>((resolve, reject) => {
-			gunzip.on("data", (chunk: Buffer) => decompressed.push(chunk));
-			gunzip.on("error", reject);
-			gunzip.on("end", () => resolve());
-			gunzip.end(Buffer.concat(chunks));
-		});
-		expect(Buffer.concat(decompressed).toString("utf-8")).toBe(jsonl);
+		const decompressed = await gunzipBuffer(Buffer.concat(chunks));
+		const lines = decompressed
+			.toString("utf-8")
+			.split("\n")
+			.filter((l) => l.length > 0);
+		expect(lines).toHaveLength(2);
+
+		const first = JSON.parse(lines[0] as string);
+		expect(first.hash).toMatch(HASH_RE);
+		expect(first.prev).toBeNull();
+		expect(first.type).toBe("turn");
+		expect(first.value.content).toBe("hello");
+
+		const second = JSON.parse(lines[1] as string);
+		expect(second.hash).toMatch(HASH_RE);
+		expect(second.prev).toBe(first.hash);
+		expect(second.type).toBe("done");
 	});
 
 	it("returns 404 when instance does not exist", async () => {
@@ -80,7 +95,7 @@ describe("createExportHandler", () => {
 		});
 	});
 
-	it("returns 404 when instance has no history file", async () => {
+	it("returns 404 when instance has no chain history", async () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "sumeru-export-"));
 		const instanceId = "inst_empty";
 		const res = createJsonResponse();
@@ -105,35 +120,18 @@ describe("createExportHandler", () => {
 			},
 		});
 	});
-
-	it("returns 404 when history file is empty", async () => {
-		const dataDir = mkdtempSync(join(tmpdir(), "sumeru-export-"));
-		const instanceId = "inst_blank";
-		writeFileSync(join(dataDir, `${instanceId}.jsonl`), "", "utf-8");
-
-		const res = createJsonResponse();
-		const handler = createExportHandler(
-			createMockManager(minimalInstance(instanceId)),
-			dataDir,
-		);
-		await handler(
-			createMockRequest(),
-			res,
-			{ id: instanceId },
-			`/instances/${instanceId}/export`,
-			"",
-		);
-
-		expect(res.statusCode).toBe(404);
-		expect(res.body).toEqual({
-			type: "@sumeru/error",
-			value: {
-				error: "no_history",
-				message: "No history for instance",
-			},
-		});
-	});
 });
+
+function gunzipBuffer(buf: Buffer): Promise<Buffer> {
+	return new Promise((resolve, reject) => {
+		const gunzip = createGunzip();
+		const chunks: Buffer[] = [];
+		gunzip.on("data", (chunk: Buffer) => chunks.push(chunk));
+		gunzip.on("error", reject);
+		gunzip.on("end", () => resolve(Buffer.concat(chunks)));
+		gunzip.end(buf);
+	});
+}
 
 function minimalInstance(id: string): ManagedInstance {
 	return {

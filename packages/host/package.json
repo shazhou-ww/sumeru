@@ -19,6 +19,8 @@
     "sumeru-host": "./dist/main.js"
   },
   "dependencies": {
+    "@ocas/core": "^0.5.0",
+    "@ocas/fs": "^0.4.1",
     "@sumeru/adapter-core": "workspace:*",
     "@sumeru/core": "workspace:*",
     "yaml": "^2.8.0"

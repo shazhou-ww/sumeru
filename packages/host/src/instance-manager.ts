@@ -236,7 +236,7 @@ export function createInstanceManager(input: {
 				value: message,
 			})}\n`,
 		);
-		recorder.record(id, {
+		recorder.append(id, {
 			type: "turn",
 			value: {
 				index: recorder.getTurnTotal(id),
@@ -289,7 +289,7 @@ export function createInstanceManager(input: {
 		frame: OutboxFrame,
 		instanceId: InstanceId,
 	): SseEvent {
-		recorder.record(instanceId, frame);
+		recorder.append(instanceId, frame);
 		const mapped = outboxFrameToSseEvent(frame);
 		const event = runtime.sseBuffer.append({
 			event: mapped.event,

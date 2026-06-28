@@ -47,7 +47,7 @@ describe("createHistoryHandler", () => {
 						toolCalls: null,
 						tokens: null,
 					},
-					hash: null,
+					hash: "ABCDEFGH12345",
 				},
 			],
 		};

@@ -1,7 +1,5 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { InstanceId, TurnValue } from "@sumeru/core";
-import type { TurnRecord } from "./ocas-recorder.js";
+import { openOcasStore, readChain, type TurnRecord } from "./ocas-recorder.js";
 
 export type SearchHit = {
 	instanceId: InstanceId;
@@ -53,70 +51,47 @@ type TurnEntry = {
 	turn: TurnRecord;
 };
 
+const CHAIN_VAR_PREFIX = "@sumeru/chain/";
+
+/**
+ * Load every recorded turn across all instances by walking each instance's
+ * CAS chain. Opens the store read-only, drains it eagerly into memory, then
+ * closes the SQLite handle so the per-request index does not leak connections.
+ */
 function loadTurnEntries(dataDir: string): Array<TurnEntry> {
-	let files: Array<string>;
+	let handle: ReturnType<typeof openOcasStore>;
 	try {
-		files = readdirSync(dataDir).filter((name) => name.endsWith(".jsonl"));
+		handle = openOcasStore(dataDir);
 	} catch {
 		return [];
 	}
 
 	const entries: Array<TurnEntry> = [];
-	for (const fileName of files) {
-		const instanceId = fileName.slice(0, -".jsonl".length);
-		if (instanceId.length === 0) continue;
-
-		let raw = "";
-		try {
-			raw = readFileSync(join(dataDir, fileName), "utf-8");
-		} catch {
-			continue;
-		}
-
-		for (const line of raw.split("\n")) {
-			const trimmed = line.trim();
-			if (trimmed.length === 0) continue;
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(trimmed);
-			} catch {
-				continue;
-			}
-			const turn = parseTurnRecord(parsed);
-			if (turn !== null) {
-				entries.push({ instanceId, turn });
+	try {
+		const heads = handle.store.var.list({ namePrefix: CHAIN_VAR_PREFIX });
+		for (const head of heads) {
+			const instanceId = head.name.slice(CHAIN_VAR_PREFIX.length);
+			if (instanceId.length === 0) continue;
+			for (const entry of readChain(handle.store, instanceId)) {
+				if (entry.payload.type !== "turn") continue;
+				const value = entry.payload.value as TurnValue;
+				if (typeof value.content !== "string") continue;
+				entries.push({
+					instanceId,
+					turn: {
+						timestamp: entry.payload.timestamp,
+						type: "turn",
+						value,
+						hash: entry.hash,
+					},
+				});
 			}
 		}
+	} finally {
+		handle.close();
 	}
 
 	return entries;
-}
-
-function parseTurnRecord(value: unknown): TurnRecord | null {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return null;
-	}
-	const obj = value as Record<string, unknown>;
-	const timestamp = obj.timestamp;
-	const type = obj.type;
-	const eventValue = obj.value;
-	if (typeof timestamp !== "string" || timestamp.length === 0) return null;
-	if (type !== "turn") return null;
-	if (
-		eventValue === null ||
-		typeof eventValue !== "object" ||
-		Array.isArray(eventValue)
-	) {
-		return null;
-	}
-	const turnValue = eventValue as TurnValue;
-	if (typeof turnValue.content !== "string") return null;
-	return {
-		timestamp,
-		type: "turn",
-		value: turnValue,
-		hash: null,
-	};
 }
 
 function buildHighlight(

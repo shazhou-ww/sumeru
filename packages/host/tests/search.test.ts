@@ -1,17 +1,18 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createOcasRecorder } from "../src/ocas-recorder.js";
 import { createSearchIndex } from "../src/search.js";
 
-function writeTurnLine(
+function writeTurn(
 	dataDir: string,
 	instanceId: string,
 	content: string,
 	index: number,
 ): void {
-	const line = JSON.stringify({
-		timestamp: "2026-06-27T00:00:00.000Z",
+	const recorder = createOcasRecorder(dataDir);
+	recorder.append(instanceId, {
 		type: "turn",
 		value: {
 			index,
@@ -22,14 +23,13 @@ function writeTurnLine(
 			tokens: null,
 		},
 	});
-	writeFileSync(join(dataDir, `${instanceId}.jsonl`), `${line}\n`, "utf-8");
 }
 
 describe("createSearchIndex", () => {
 	it("finds turns matching query across instances", () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "sumeru-search-"));
-		writeTurnLine(dataDir, "inst_a", "hello world from alpha", 0);
-		writeTurnLine(dataDir, "inst_b", "goodbye world from beta", 0);
+		writeTurn(dataDir, "inst_a", "hello world from alpha", 0);
+		writeTurn(dataDir, "inst_b", "goodbye world from beta", 0);
 
 		const index = createSearchIndex(dataDir);
 		const hits = index.search("world", null);
@@ -43,8 +43,8 @@ describe("createSearchIndex", () => {
 
 	it("filters by instance when instanceFilter is set", () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "sumeru-search-"));
-		writeTurnLine(dataDir, "inst_a", "keyword in alpha", 0);
-		writeTurnLine(dataDir, "inst_b", "keyword in beta", 0);
+		writeTurn(dataDir, "inst_a", "keyword in alpha", 0);
+		writeTurn(dataDir, "inst_b", "keyword in beta", 0);
 
 		const index = createSearchIndex(dataDir);
 		const hits = index.search("keyword", "inst_a");
@@ -56,7 +56,7 @@ describe("createSearchIndex", () => {
 
 	it("returns empty results for empty query", () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "sumeru-search-"));
-		writeTurnLine(dataDir, "inst_a", "something", 0);
+		writeTurn(dataDir, "inst_a", "something", 0);
 
 		const index = createSearchIndex(dataDir);
 		expect(index.search("", null)).toEqual([]);
@@ -67,7 +67,7 @@ describe("createSearchIndex", () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "sumeru-search-"));
 		const prefix = "x".repeat(50);
 		const content = `${prefix}needle${"y".repeat(50)}`;
-		writeTurnLine(dataDir, "inst_a", content, 0);
+		writeTurn(dataDir, "inst_a", content, 0);
 
 		const index = createSearchIndex(dataDir);
 		const hits = index.search("needle", null);
@@ -80,7 +80,7 @@ describe("createSearchIndex", () => {
 
 	it("matches case-insensitively", () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "sumeru-search-"));
-		writeTurnLine(dataDir, "inst_a", "Hello WORLD", 0);
+		writeTurn(dataDir, "inst_a", "Hello WORLD", 0);
 
 		const index = createSearchIndex(dataDir);
 		const hits = index.search("world", null);

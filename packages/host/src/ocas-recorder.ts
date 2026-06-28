@@ -1,85 +1,162 @@
-import { appendFileSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync } from "node:fs";
+import {
+	bootstrap,
+	type Hash,
+	type JSONSchema,
+	putSchema,
+	type Store,
+} from "@ocas/core";
+import { createFsStore, createSqliteVarStore } from "@ocas/fs";
 import type { InstanceId, OutboxFrame, TurnValue } from "@sumeru/core";
 
-export type RecordedEvent = {
-	timestamp: string;
-	type: OutboxFrame["type"];
-	value: OutboxFrame["value"];
+/**
+ * `@sumeru/chain-node` — one link in an instance's append-only CAS chain.
+ *
+ * Every emitted outbox frame (turn / done / suspend / error) is stored as an
+ * immutable CAS node carrying a `prev` pointer to the node that preceded it.
+ * The newest node's hash is tracked by the per-instance head variable
+ * `@sumeru/chain/<instanceId>`, so the whole chain is recoverable by walking
+ * `prev` from the head back to the first node (where `prev === null`).
+ *
+ * `prev` is declared `format: ocas_ref` so closure / gc traversal follows the
+ * chain edge. `value` is the opaque frame payload — its shape is determined by
+ * the frame `type` and validated upstream by `@sumeru/core`.
+ */
+export const SUMERU_CHAIN_NODE_SCHEMA: JSONSchema = {
+	title: "@sumeru/chain-node",
+	description:
+		"One link in an instance's append-only CAS chain of outbox frames.",
+	type: "object",
+	additionalProperties: false,
+	required: ["prev", "type", "value", "timestamp"],
+	properties: {
+		prev: {
+			anyOf: [{ type: "null" }, { type: "string", format: "ocas_ref" }],
+		},
+		type: { type: "string", enum: ["turn", "done", "suspend", "error"] },
+		value: { type: "object" },
+		timestamp: { type: "string", format: "date-time" },
+	},
 };
 
-export type TurnRecord = RecordedEvent & {
+/** Payload of a `@sumeru/chain-node` CAS node. */
+export type ChainNodePayload = {
+	prev: Hash | null;
+	type: OutboxFrame["type"];
+	value: OutboxFrame["value"];
+	timestamp: string;
+};
+
+/** One decoded chain node paired with its own CAS hash. */
+export type ChainEntry = {
+	hash: Hash;
+	payload: ChainNodePayload;
+};
+
+/** A recorded turn frame, surfaced to history/search with its real CAS hash. */
+export type TurnRecord = {
+	timestamp: string;
 	type: "turn";
 	value: TurnValue;
-	hash: string | null;
+	hash: Hash;
 };
 
 export type OcasRecorder = {
-	record(instanceId: InstanceId, event: OutboxFrame): void;
+	/** Append `frame` to the instance chain; returns the new node's CAS hash. */
+	append(instanceId: InstanceId, frame: OutboxFrame): Hash;
 	getTurns(
 		instanceId: InstanceId,
 		limit: number,
 		offset: number,
 	): Array<TurnRecord>;
 	getTurnTotal(instanceId: InstanceId): number;
+	/** Drop the instance head pointer so its chain is no longer reachable. */
 	clear(instanceId: InstanceId): void;
 };
 
-export function createOcasRecorder(dataDir: string): OcasRecorder {
+/** Handle to an opened on-disk Sumeru CAS store plus its chain schema hash. */
+export type OcasStoreHandle = {
+	store: Store;
+	chainSchemaHash: Hash;
+	close(): void;
+};
+
+/** The head-pointer variable name for an instance's chain. */
+export function chainHeadVarName(instanceId: InstanceId): string {
+	return `@sumeru/chain/${instanceId}`;
+}
+
+/**
+ * Open (or create) the on-disk CAS store at `dataDir`: an `@ocas/fs`
+ * filesystem CAS sub-store plus a SQLite-backed var/tag store. Runs bootstrap
+ * so the schema-of-schemas exists, then registers `@sumeru/chain-node`.
+ *
+ * Synchronous: `@ocas/fs` initialises its hasher at import time, so the FS
+ * store hashes payloads with the synchronous code path.
+ */
+export function openOcasStore(dataDir: string): OcasStoreHandle {
 	mkdirSync(dataDir, { recursive: true });
+	const cas = createFsStore(dataDir);
+	const sqlite = createSqliteVarStore(dataDir, cas);
+	const store: Store = { cas, var: sqlite.var, tag: sqlite.tag };
+	bootstrap(store);
+	const chainSchemaHash = putSchema(store, SUMERU_CHAIN_NODE_SCHEMA);
+	return { store, chainSchemaHash, close: sqlite.close };
+}
 
-	function filePath(instanceId: InstanceId): string {
-		return join(dataDir, `${instanceId}.jsonl`);
+/**
+ * Read an instance's chain in chronological order (oldest first) by walking
+ * `prev` from the head node. A `seen` set guards against cycles or a corrupted
+ * `prev` pointer; a missing node simply terminates the walk.
+ */
+export function readChain(
+	store: Store,
+	instanceId: InstanceId,
+): Array<ChainEntry> {
+	const head = store.var.get(chainHeadVarName(instanceId));
+	let cursor: Hash | null = head?.value ?? null;
+	const seen = new Set<Hash>();
+	const reversed: Array<ChainEntry> = [];
+	while (cursor !== null && !seen.has(cursor)) {
+		seen.add(cursor);
+		const node = store.cas.get(cursor);
+		if (node === null) break;
+		const payload = node.payload as ChainNodePayload;
+		reversed.push({ hash: cursor, payload });
+		cursor = payload.prev;
 	}
+	reversed.reverse();
+	return reversed;
+}
 
-	function appendLine(instanceId: InstanceId, line: RecordedEvent): void {
-		appendFileSync(filePath(instanceId), `${JSON.stringify(line)}\n`, "utf-8");
-	}
+export function createOcasRecorder(dataDir: string): OcasRecorder {
+	const { store, chainSchemaHash } = openOcasStore(dataDir);
 
-	function readEvents(instanceId: InstanceId): Array<RecordedEvent> {
-		let raw = "";
-		try {
-			raw = readFileSync(filePath(instanceId), "utf-8");
-		} catch {
-			return [];
-		}
-		const events: Array<RecordedEvent> = [];
-		for (const line of raw.split("\n")) {
-			const trimmed = line.trim();
-			if (trimmed.length === 0) continue;
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(trimmed);
-			} catch {
-				continue;
-			}
-			const event = parseRecordedEvent(parsed);
-			if (event !== null) {
-				events.push(event);
-			}
-		}
-		return events;
-	}
-
-	function record(instanceId: InstanceId, event: OutboxFrame): void {
-		appendLine(instanceId, {
+	function append(instanceId: InstanceId, frame: OutboxFrame): Hash {
+		const head = store.var.get(chainHeadVarName(instanceId));
+		const payload: ChainNodePayload = {
+			prev: head?.value ?? null,
+			type: frame.type,
+			value: frame.value,
 			timestamp: new Date().toISOString(),
-			type: event.type,
-			value: event.value,
-		});
+		};
+		const hash = store.cas.put(chainSchemaHash, payload);
+		store.var.set(chainHeadVarName(instanceId), hash);
+		return hash;
 	}
 
-	function getTurnTotal(instanceId: InstanceId): number {
-		return readEvents(instanceId).filter((event) => event.type === "turn")
-			.length;
-	}
-
-	function clear(instanceId: InstanceId): void {
-		try {
-			unlinkSync(filePath(instanceId));
-		} catch {
-			// file may not exist yet
+	function turnRecords(instanceId: InstanceId): Array<TurnRecord> {
+		const records: Array<TurnRecord> = [];
+		for (const entry of readChain(store, instanceId)) {
+			if (entry.payload.type !== "turn") continue;
+			records.push({
+				timestamp: entry.payload.timestamp,
+				type: "turn",
+				value: entry.payload.value as TurnValue,
+				hash: entry.hash,
+			});
 		}
+		return records;
 	}
 
 	function getTurns(
@@ -87,59 +164,21 @@ export function createOcasRecorder(dataDir: string): OcasRecorder {
 		limit: number,
 		offset: number,
 	): Array<TurnRecord> {
-		const turns = readEvents(instanceId).filter(
-			(event): event is RecordedEvent & { type: "turn"; value: TurnValue } =>
-				event.type === "turn",
-		);
-		return turns.slice(offset, offset + limit).map(toTurnRecord);
+		return turnRecords(instanceId).slice(offset, offset + limit);
+	}
+
+	function getTurnTotal(instanceId: InstanceId): number {
+		return turnRecords(instanceId).length;
+	}
+
+	function clear(instanceId: InstanceId): void {
+		store.var.remove(chainHeadVarName(instanceId));
 	}
 
 	return {
-		record,
+		append,
 		getTurns,
 		getTurnTotal,
 		clear,
-	};
-}
-
-function toTurnRecord(
-	event: RecordedEvent & { type: "turn"; value: TurnValue },
-): TurnRecord {
-	return {
-		timestamp: event.timestamp,
-		type: "turn",
-		value: event.value,
-		hash: null,
-	};
-}
-
-function parseRecordedEvent(value: unknown): RecordedEvent | null {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return null;
-	}
-	const obj = value as Record<string, unknown>;
-	const timestamp = obj.timestamp;
-	const type = obj.type;
-	const eventValue = obj.value;
-	if (typeof timestamp !== "string" || timestamp.length === 0) return null;
-	if (
-		type !== "turn" &&
-		type !== "done" &&
-		type !== "suspend" &&
-		type !== "error"
-	) {
-		return null;
-	}
-	if (
-		eventValue === null ||
-		typeof eventValue !== "object" ||
-		Array.isArray(eventValue)
-	) {
-		return null;
-	}
-	return {
-		timestamp,
-		type,
-		value: eventValue as OutboxFrame["value"],
 	};
 }
