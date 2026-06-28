@@ -10,8 +10,9 @@ node_modules
 # Legacy v1 tree — excluded from workspace build
 legacy
 
-# Build artifacts outside the three runtime packages
+# Build artifacts outside the runtime packages
 packages/host
+packages/cli
 
 # Dev / CI / docs (not required in the image build context)
 .changeset

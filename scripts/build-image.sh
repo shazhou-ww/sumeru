@@ -1,7 +1,27 @@
 #!/bin/bash
 set -e
 cd "$(dirname "$0")/.."
+
+# Usage: ./scripts/build-image.sh [adapter-name]
+# If no argument, builds all images.
+# Examples:
+#   ./scripts/build-image.sh claude-code
+#   ./scripts/build-image.sh codex
+#   ./scripts/build-image.sh hermes
+#   ./scripts/build-image.sh        # builds all three
+
+ADAPTERS=("claude-code" "codex" "hermes")
+
+if [ -n "$1" ]; then
+	ADAPTERS=("$1")
+fi
+
 pnpm run build
+
 cp docker/.dockerignore .dockerignore
-docker build -t sumeru/claude-code:dev -f docker/claude-code/Dockerfile .
-rm -f .dockerignore
+trap 'rm -f .dockerignore' EXIT
+
+for adapter in "${ADAPTERS[@]}"; do
+	echo "=== Building sumeru/${adapter}:dev ==="
+	docker build -t "sumeru/${adapter}:dev" -f "docker/${adapter}/Dockerfile" .
+done
