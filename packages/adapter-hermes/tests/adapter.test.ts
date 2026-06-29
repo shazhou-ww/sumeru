@@ -6,7 +6,7 @@ import { PassThrough } from "node:stream";
 import type { AdapterInitConfig } from "@sumeru/adapter-core";
 import { describe, expect, it } from "vitest";
 import { createAcpClient } from "../src/acp-client.js";
-import { createHermesAdapter } from "../src/adapter.js";
+import { buildHermesConfig, createHermesAdapter } from "../src/adapter.js";
 import type {
 	AcpClient,
 	AcpClientFactory,
@@ -161,8 +161,71 @@ function wrapClientWithCallLog(
 	};
 }
 
+describe("@sumeru/adapter-hermes — buildHermesConfig", () => {
+	it("builds config for a known provider with apiKey", () => {
+		expect(
+			buildHermesConfig({
+				provider: "anthropic",
+				name: "claude-sonnet-4",
+				apiKey: "test-key",
+			}),
+		).toBe(
+			[
+				"model:",
+				"  provider: anthropic",
+				"  default: claude-sonnet-4",
+				"  api_key: test-key",
+				"",
+			].join("\n"),
+		);
+	});
+
+	it("omits api_key for a known provider when apiKey is null", () => {
+		expect(
+			buildHermesConfig({
+				provider: "openrouter",
+				name: "anthropic/claude-sonnet-4",
+				apiKey: null,
+			}),
+		).toBe(
+			[
+				"model:",
+				"  provider: openrouter",
+				"  default: anthropic/claude-sonnet-4",
+				"",
+			].join("\n"),
+		);
+	});
+
+	it("builds config for a custom provider", () => {
+		expect(
+			buildHermesConfig({
+				provider: {
+					name: "local-llm",
+					endpoint: "http://localhost:8080/v1",
+					apiType: "openai",
+				},
+				name: "gpt-4o-mini",
+				apiKey: "local-key",
+			}),
+		).toBe(
+			[
+				"custom_providers:",
+				"  - name: local-llm",
+				'    endpoint: "http://localhost:8080/v1"',
+				"    api_type: openai",
+				"    api_key: local-key",
+				"model:",
+				"  provider: custom:local-llm",
+				"  default: gpt-4o-mini",
+				"",
+			].join("\n"),
+		);
+	});
+});
+
 describe("@sumeru/adapter-hermes — adapter", () => {
-	it("init writes SOUL.md and skills under the configured hermes dir", async () => {
+	it("init writes SOUL.md, skills, and config.yaml under the configured hermes dir", async () => {
 		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-init-"));
 		const adapter = createHermesAdapter({ profile: "test", hermesDir });
 		await adapter.init(INIT_CONFIG);
@@ -174,6 +237,8 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 			"utf-8",
 		);
 		expect(skill).toBe("demo skill body");
+		const configYaml = await readFile(join(hermesDir, "config.yaml"), "utf-8");
+		expect(configYaml).toBe(buildHermesConfig(INIT_CONFIG.model));
 	});
 
 	it("handle uses ACP prompt and yields streaming assistant turns", async () => {

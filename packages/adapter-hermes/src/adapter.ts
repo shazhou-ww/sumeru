@@ -15,6 +15,7 @@ import type {
 	TurnValue,
 	WireToolCall,
 } from "@sumeru/adapter-core";
+import type { CustomProvider, KnownProvider, ModelConfig } from "@sumeru/core";
 import { createAcpClient } from "./acp-client.js";
 import type {
 	AcpClient,
@@ -78,6 +79,11 @@ export function createHermesAdapter(
 			await mkdir(skillDir, { recursive: true });
 			await writeFile(join(skillDir, "SKILL.md"), skill.content, "utf8");
 		}
+		await writeFile(
+			join(hermesDir, "config.yaml"),
+			buildHermesConfig(config.model),
+			"utf8",
+		);
 	}
 
 	async function init(config: AdapterInitConfig): Promise<void> {
@@ -242,6 +248,53 @@ export function createHermesAdapter(
 		handle,
 		getNativeId: () => sessionId,
 	};
+}
+
+function isCustomProvider(
+	provider: KnownProvider | CustomProvider,
+): provider is CustomProvider {
+	return typeof provider === "object";
+}
+
+function yamlScalar(value: string): string {
+	if (/[:#\n"'\\]|^\s|\s$/.test(value)) {
+		return JSON.stringify(value);
+	}
+	return value;
+}
+
+function appendApiKey(
+	lines: Array<string>,
+	indent: string,
+	apiKey: string | null,
+): void {
+	if (apiKey !== null) {
+		lines.push(`${indent}api_key: ${yamlScalar(apiKey)}`);
+	}
+}
+
+export function buildHermesConfig(model: ModelConfig): string {
+	const lines: Array<string> = [];
+
+	if (isCustomProvider(model.provider)) {
+		const custom = model.provider;
+		lines.push("custom_providers:");
+		lines.push(`  - name: ${yamlScalar(custom.name)}`);
+		lines.push(`    endpoint: ${yamlScalar(custom.endpoint)}`);
+		lines.push(`    api_type: ${yamlScalar(custom.apiType)}`);
+		appendApiKey(lines, "    ", model.apiKey);
+		lines.push("model:");
+		lines.push(`  provider: custom:${yamlScalar(custom.name)}`);
+		lines.push(`  default: ${yamlScalar(model.name)}`);
+		return `${lines.join("\n")}\n`;
+	}
+
+	const provider = model.provider;
+	lines.push("model:");
+	lines.push(`  provider: ${yamlScalar(provider)}`);
+	lines.push(`  default: ${yamlScalar(model.name)}`);
+	appendApiKey(lines, "  ", model.apiKey);
+	return `${lines.join("\n")}\n`;
 }
 
 function mapUpdateToTurns(
