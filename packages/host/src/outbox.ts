@@ -1,4 +1,4 @@
-import type { OutboxFrame } from "@sumeru/core";
+import type { OutboxFrame } from "./legacy-types.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;

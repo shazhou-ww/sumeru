@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { InstanceId } from "@sumeru/core";
 import { envelope, errorEnvelope } from "../envelope.js";
 import { writeJson } from "../http-utils.js";
+import type { InstanceId } from "../legacy-types.js";
 import { createSearchIndex, type SearchHit } from "../search.js";
 
 export type SearchValue = {

@@ -8,54 +8,55 @@ import { computePrototypeHash, loadHostConfig } from "../src/config.js";
 import { createInstanceManager } from "../src/instance-manager.js";
 import type { Transport, TransportExecSession } from "../src/types.js";
 
+function writeV3HostFixture(rootDir: string): void {
+	writeFileSync(
+		join(rootDir, "host.yaml"),
+		[
+			"name: test-host",
+			"maxRunning: 4",
+			"workspaceRoot: /tmp/workspaces",
+			"envFile: /dev/null",
+			"models:",
+			"  anthropic:",
+			"    baseUrl: null",
+			"    apiKey: sk-test",
+			"  openai: null",
+			"  openrouter: null",
+		].join("\n"),
+	);
+}
+
 function writePrototypeFixture(
 	rootDir: string,
 	options: {
 		instructions?: string;
 		skillContent?: string;
 	} = {},
-): string {
-	const prototypeDir = join(rootDir, "prototypes", "claude-code");
-	mkdirSync(join(prototypeDir, "skills", "demo"), { recursive: true });
+): { yamlPath: string; skillsDir: string; composePath: string } {
+	const dataDir = join(rootDir, "data");
+	const skillsDir = join(dataDir, "skills");
+	const prototypesDir = join(dataDir, "prototypes");
+	mkdirSync(skillsDir, { recursive: true });
+	mkdirSync(prototypesDir, { recursive: true });
 	writeFileSync(
-		join(prototypeDir, "compose.yaml"),
-		"services:\n  agent:\n    image: example\n",
+		join(skillsDir, "demo.md"),
+		options.skillContent ?? "demo skill",
 	);
+	const yamlPath = join(prototypesDir, "claude-code.yaml");
 	writeFileSync(
-		join(prototypeDir, "manifest.yaml"),
+		yamlPath,
 		[
 			"name: claude-code",
 			`instructions: ${options.instructions ?? "You are a worker."}`,
 			"skills:",
 			"  - demo",
-			"model:",
-			"  provider: anthropic",
-			"  name: claude-sonnet-4",
-			"  apiKey: test-key",
-			"  contextWindow: 200000",
 		].join("\n"),
 	);
-	writeFileSync(
-		join(prototypeDir, "skills", "demo", "SKILL.md"),
-		options.skillContent ?? "demo skill",
-	);
-	return prototypeDir;
-}
-
-function writeHostFixture(rootDir: string): void {
-	writeFileSync(
-		join(rootDir, "host.yaml"),
-		[
-			"name: test-host",
-			"master:",
-			"  adapter: claude-code",
-			"  config: {}",
-			"resources:",
-			"  maxMemory: 4g",
-			"  maxCpus: 2",
-			"  maxInstances: 4",
-		].join("\n"),
-	);
+	const legacyPrototypeDir = join(rootDir, "prototypes", "claude-code");
+	mkdirSync(legacyPrototypeDir, { recursive: true });
+	const composePath = join(legacyPrototypeDir, "compose.yaml");
+	writeFileSync(composePath, "services:\n  agent:\n    image: example\n");
+	return { yamlPath, skillsDir, composePath };
 }
 
 function createInitTrackingTransport(): {
@@ -112,56 +113,73 @@ describe("computePrototypeHash", () => {
 		tempDirs.length = 0;
 	});
 
-	it("changes when manifest.yaml content changes", async () => {
+	it("changes when prototype yaml content changes", async () => {
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-proto-hash-"));
 		tempDirs.push(rootDir);
-		const prototypeDir = writePrototypeFixture(rootDir, {
+		writeV3HostFixture(rootDir);
+		const { yamlPath, skillsDir } = writePrototypeFixture(rootDir, {
 			instructions: "Version one.",
 		});
-		const manifestPath = join(prototypeDir, "manifest.yaml");
-		const skillsDir = join(prototypeDir, "skills");
-		const first = await computePrototypeHash(manifestPath, skillsDir);
+		const hostConfig = await loadHostConfig(rootDir);
+		const prototype = hostConfig.prototypes.get("claude-code");
+		if (prototype === undefined) throw new Error("prototype missing");
+		const first = await computePrototypeHash(
+			yamlPath,
+			skillsDir,
+			prototype.prototype,
+		);
 		writeFileSync(
-			manifestPath,
+			yamlPath,
 			[
 				"name: claude-code",
 				"instructions: Version two.",
 				"skills:",
 				"  - demo",
-				"model:",
-				"  provider: anthropic",
-				"  name: claude-sonnet-4",
-				"  apiKey: test-key",
-				"  contextWindow: 200000",
 			].join("\n"),
 		);
-		const second = await computePrototypeHash(manifestPath, skillsDir);
+		prototype.prototype.instructions = "Version two.";
+		const second = await computePrototypeHash(
+			yamlPath,
+			skillsDir,
+			prototype.prototype,
+		);
 		expect(first).not.toBe(second);
 		expect(first).toMatch(/^[a-f0-9]{64}$/);
 	});
 
-	it("changes when skills/ content changes", async () => {
+	it("changes when skill file content changes", async () => {
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-proto-hash-"));
 		tempDirs.push(rootDir);
-		const prototypeDir = writePrototypeFixture(rootDir, {
+		writeV3HostFixture(rootDir);
+		const { yamlPath, skillsDir } = writePrototypeFixture(rootDir, {
 			skillContent: "skill v1",
 		});
-		const manifestPath = join(prototypeDir, "manifest.yaml");
-		const skillsDir = join(prototypeDir, "skills");
-		const first = await computePrototypeHash(manifestPath, skillsDir);
-		writeFileSync(join(prototypeDir, "skills", "demo", "SKILL.md"), "skill v2");
-		const second = await computePrototypeHash(manifestPath, skillsDir);
+		const hostConfig = await loadHostConfig(rootDir);
+		const prototype = hostConfig.prototypes.get("claude-code");
+		if (prototype === undefined) throw new Error("prototype missing");
+		const first = await computePrototypeHash(
+			yamlPath,
+			skillsDir,
+			prototype.prototype,
+		);
+		writeFileSync(join(skillsDir, "demo.md"), "skill v2");
+		const second = await computePrototypeHash(
+			yamlPath,
+			skillsDir,
+			prototype.prototype,
+		);
 		expect(first).not.toBe(second);
 	});
 
 	it("stores prototypeHash when loading host config", async () => {
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-proto-hash-"));
 		tempDirs.push(rootDir);
-		writeHostFixture(rootDir);
+		writeV3HostFixture(rootDir);
 		writePrototypeFixture(rootDir);
 		const hostConfig = await loadHostConfig(rootDir);
 		const prototype = hostConfig.prototypes.get("claude-code");
 		expect(prototype?.prototypeHash).toMatch(/^[a-f0-9]{64}$/);
+		expect(prototype?.composePath).toContain("compose.yaml");
 	});
 });
 
@@ -175,8 +193,10 @@ describe("prototype lazy re-init", () => {
 	it("re-inits adapter when prototype hash changes between inbox messages", async () => {
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-proto-reinit-"));
 		tempDirs.push(rootDir);
-		writeHostFixture(rootDir);
-		writePrototypeFixture(rootDir, { instructions: "Version one." });
+		writeV3HostFixture(rootDir);
+		const { yamlPath, skillsDir } = writePrototypeFixture(rootDir, {
+			instructions: "Version one.",
+		});
 		const hostConfig = await loadHostConfig(rootDir);
 		const { transport, initCount } = createInitTrackingTransport();
 		const manager = createInstanceManager({ hostConfig, transport });
@@ -200,23 +220,19 @@ describe("prototype lazy re-init", () => {
 			throw new Error("prototype missing");
 		}
 		writeFileSync(
-			prototype.manifestPath,
+			yamlPath,
 			[
 				"name: claude-code",
 				"instructions: Version two.",
 				"skills:",
 				"  - demo",
-				"model:",
-				"  provider: anthropic",
-				"  name: claude-sonnet-4",
-				"  apiKey: test-key",
-				"  contextWindow: 200000",
 			].join("\n"),
 		);
-		prototype.manifest.instructions = "Version two.";
+		prototype.prototype.instructions = "Version two.";
 		prototype.prototypeHash = await computePrototypeHash(
-			prototype.manifestPath,
-			join(hostConfig.prototypesDir, "claude-code", "skills"),
+			yamlPath,
+			skillsDir,
+			prototype.prototype,
 		);
 
 		await manager.submitInbox(created.id, {

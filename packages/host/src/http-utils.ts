@@ -12,6 +12,16 @@ export function writeJson(
 	res.end(payload);
 }
 
+export async function readTextBody(
+	req: import("node:http").IncomingMessage,
+): Promise<string> {
+	const chunks: Buffer[] = [];
+	for await (const chunk of req) {
+		chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+	}
+	return Buffer.concat(chunks).toString("utf-8");
+}
+
 export async function readJsonBody(
 	req: import("node:http").IncomingMessage,
 ): Promise<unknown> {

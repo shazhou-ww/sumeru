@@ -11,41 +11,36 @@ import { LOCAL_MASTER_HANDLE } from "../src/local-transport.js";
 import { createOcasRecorder } from "../src/ocas-recorder.js";
 import type { Transport, TransportExecSession } from "../src/types.js";
 
-function writeHostFixture(rootDir: string, maxInstances = 2): void {
+function writeHostFixture(rootDir: string, maxRunning = 2): void {
 	writeFileSync(
 		join(rootDir, "host.yaml"),
 		[
 			"name: test-host",
-			"master:",
-			"  adapter: hermes",
-			"  config:",
-			"    profile: default",
-			"    instructions: You are the master.",
-			"    skills: []",
-			"resources:",
-			"  maxMemory: 4g",
-			"  maxCpus: 2",
-			`  maxInstances: ${maxInstances}`,
+			`maxRunning: ${maxRunning}`,
+			"workspaceRoot: /tmp/workspaces",
+			"envFile: /dev/null",
+			"models:",
+			"  anthropic:",
+			"    baseUrl: null",
+			"    apiKey: sk-test",
+			"  openai: null",
+			"  openrouter: null",
 		].join("\n"),
+	);
+	const dataDir = join(rootDir, "data");
+	mkdirSync(join(dataDir, "skills"), { recursive: true });
+	mkdirSync(join(dataDir, "prototypes"), { recursive: true });
+	writeFileSync(
+		join(dataDir, "prototypes", "claude-code.yaml"),
+		["name: claude-code", "instructions: You are a worker.", "skills: []"].join(
+			"\n",
+		),
 	);
 	const prototypeDir = join(rootDir, "prototypes", "claude-code");
 	mkdirSync(prototypeDir, { recursive: true });
 	writeFileSync(
 		join(prototypeDir, "compose.yaml"),
 		"services:\n  agent:\n    image: example\n",
-	);
-	writeFileSync(
-		join(prototypeDir, "manifest.yaml"),
-		[
-			"name: claude-code",
-			"instructions: You are a worker.",
-			"skills: []",
-			"model:",
-			"  provider: anthropic",
-			"  name: claude-sonnet-4",
-			"  apiKey: test-key",
-			"  contextWindow: 200000",
-		].join("\n"),
 	);
 }
 
@@ -143,14 +138,14 @@ describe("instance-manager", () => {
 		expect(instances[0]?.prototype).toBeNull();
 	});
 
-	it("bootMaster provisions local master handle", async () => {
+	it("bootMaster is a no-op without v2 master config", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
 		const { transport } = createInteractiveTransport();
 		const manager = createInstanceManager({ hostConfig, transport });
 		await manager.bootMaster();
 		const master = manager.getInstance(MASTER_INSTANCE_ID);
-		expect(master?.containerId).toBe(LOCAL_MASTER_HANDLE);
+		expect(master?.containerId).toBeNull();
 		expect(master?.status).toBe("running");
 	});
 
@@ -164,30 +159,20 @@ describe("instance-manager", () => {
 		);
 	});
 
-	it("routes master inbox through local adapter process", async () => {
+	it("rejects master inbox without a running master container", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
-		const { transport, calls } = createInteractiveTransport();
+		const { transport } = createInteractiveTransport();
 		const manager = createInstanceManager({ hostConfig, transport });
 		await manager.bootMaster();
 
-		const events: Array<{ event: string; data: string }> = [];
-		const unsubscribe = manager.subscribeOutbox(MASTER_INSTANCE_ID, (event) => {
-			events.push({ event: event.event, data: event.data });
-		});
-
-		await manager.submitInbox(MASTER_INSTANCE_ID, {
-			messageId: "msg_master",
-			content: "hello master",
-			project: null,
-		});
-
-		await waitUntil(() => events.some((event) => event.event === "done"));
-		unsubscribe();
-		expect(
-			calls.some((call) => call.startsWith(`exec:${LOCAL_MASTER_HANDLE}:`)),
-		).toBe(true);
-		expect(events.map((event) => event.event)).toEqual(["turn", "done"]);
+		await expect(
+			manager.submitInbox(MASTER_INSTANCE_ID, {
+				messageId: "msg_master",
+				content: "hello master",
+				project: null,
+			}),
+		).rejects.toThrow("master_not_supported");
 	});
 
 	it("creates and deletes docker-backed instances", async () => {
@@ -213,7 +198,7 @@ describe("instance-manager", () => {
 		expect(calls.some((call) => call.startsWith("rm:"))).toBe(true);
 	});
 
-	it("enforces maxInstances from host config for running instances", async () => {
+	it("enforces maxRunning from host config for running instances", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
 		const { transport } = createInteractiveTransport();

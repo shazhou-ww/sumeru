@@ -10,3 +10,4 @@ export {
 	writeRouteNotFound,
 } from "./root.js";
 export { createSearchHandler, searchEnvelope } from "./search.js";
+export { createSkillsHandler } from "./skills.js";

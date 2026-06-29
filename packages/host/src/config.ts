@@ -1,31 +1,71 @@
-import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
-import { join, relative } from "node:path";
-import type { AdapterInitConfig, SkillContent } from "@sumeru/adapter-core";
-import type { HostConfig, Manifest, ModelConfig } from "@sumeru/core";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import type { SkillContent } from "@sumeru/adapter-core";
+import type { HostConfig, ModelConfig, Prototype } from "@sumeru/core";
+import { parse as parseYaml } from "yaml";
+import {
+	computePrototypeHash,
+	ensureDataDirs,
+	loadPrototypeInfo,
+	loadPrototypesFromDisk,
+} from "./data-store.js";
 import type { LoadedHostConfig, PrototypeInfo } from "./types.js";
 
 const DEFAULT_HOST_FILE = "host.yaml";
-const DEFAULT_PROTOTYPES_DIR = "prototypes";
+const DEFAULT_DATA_DIR = "data";
 
 export async function loadHostConfig(
 	rootDir: string,
 ): Promise<LoadedHostConfig> {
 	const configPath = join(rootDir, DEFAULT_HOST_FILE);
-	const prototypesDir = join(rootDir, DEFAULT_PROTOTYPES_DIR);
 	const config = await loadHostYaml(configPath);
-	const prototypes = await scanPrototypes(prototypesDir);
-	const dataDir = resolveDataDir(rootDir, config);
-	const masterHash = await computeMasterHash(configPath);
+	await applyEnvFile(config.envFile);
+	const dataDir = join(rootDir, DEFAULT_DATA_DIR);
+	const skillsDir = join(dataDir, "skills");
+	const prototypesDir = join(dataDir, "prototypes");
+	await ensureDataDirs(skillsDir, prototypesDir);
+	const prototypes = await loadPrototypesFromDisk({
+		rootDir,
+		prototypesDir,
+		skillsDir,
+	});
 	return {
 		rootDir,
 		configPath,
-		prototypesDir,
 		dataDir,
+		skillsDir,
+		prototypesDir,
 		config,
 		prototypes,
-		masterHash,
+	};
+}
+
+export async function reloadPrototypeInConfig(
+	hostConfig: LoadedHostConfig,
+	name: string,
+): Promise<PrototypeInfo> {
+	const info = await loadPrototypeInfo(toStoreInput(hostConfig), name);
+	hostConfig.prototypes.set(name, info);
+	return info;
+}
+
+export async function removePrototypeFromConfig(
+	hostConfig: LoadedHostConfig,
+	name: string,
+): Promise<void> {
+	hostConfig.prototypes.delete(name);
+}
+
+function toStoreInput(hostConfig: LoadedHostConfig): {
+	rootDir: string;
+	prototypesDir: string;
+	skillsDir: string;
+} {
+	return {
+		rootDir: hostConfig.rootDir,
+		prototypesDir: hostConfig.prototypesDir,
+		skillsDir: hostConfig.skillsDir,
 	};
 }
 
@@ -35,194 +75,13 @@ async function loadHostYaml(configPath: string): Promise<HostConfig> {
 	return validateHostConfig(doc, configPath);
 }
 
-async function scanPrototypes(
-	prototypesDir: string,
-): Promise<Map<string, PrototypeInfo>> {
-	const entries = await readdir(prototypesDir, { withFileTypes: true });
-	const prototypes = new Map<string, PrototypeInfo>();
-	for (const entry of entries) {
-		if (!entry.isDirectory()) continue;
-		const prototypeDir = join(prototypesDir, entry.name);
-		const manifestPath = join(prototypeDir, "manifest.yaml");
-		const composePath = join(prototypeDir, "compose.yaml");
-		const manifest = await loadManifest(manifestPath);
-		const adapter = resolveAdapterName(manifest.name, entry.name);
-		const prototypeHash = await computePrototypeHash(
-			manifestPath,
-			join(prototypeDir, "skills"),
-		);
-		prototypes.set(entry.name, {
-			name: entry.name,
-			adapter,
-			manifest,
-			composePath,
-			manifestPath,
-			prototypeHash,
-		});
-	}
-	return prototypes;
-}
-
-async function loadManifest(manifestPath: string): Promise<Manifest> {
-	const raw = await readFileSafely(manifestPath);
-	const expanded = expandEnvVars(raw, manifestPath);
-	const doc = parseYamlSafely(expanded, manifestPath);
-	return validateManifest(doc, manifestPath);
-}
-
-export async function computePrototypeHash(
-	manifestPath: string,
-	skillsDir: string,
-): Promise<string> {
-	const hash = createHash("sha256");
-	const manifestRaw = await readFile(manifestPath, "utf-8");
-	hash.update("manifest\0");
-	hash.update(manifestRaw);
-	await hashSkillsDirectory(hash, skillsDir);
-	return hash.digest("hex");
-}
-
-async function hashSkillsDirectory(
-	hash: ReturnType<typeof createHash>,
-	skillsDir: string,
-): Promise<void> {
-	let entries: Array<{ name: string; isDirectory: () => boolean }>;
-	try {
-		entries = await readdir(skillsDir, { withFileTypes: true });
-	} catch {
-		return;
-	}
-	const skillNames = entries
-		.filter((entry) => entry.isDirectory())
-		.map((entry) => entry.name)
-		.sort();
-	for (const skillName of skillNames) {
-		const skillRoot = join(skillsDir, skillName);
-		const files = await collectSkillFiles(skillRoot);
-		for (const filePath of files) {
-			const relPath = relative(skillsDir, filePath);
-			const content = await readFile(filePath);
-			hash.update(`skill:${relPath}\0`);
-			hash.update(content);
-		}
-	}
-}
-
-async function collectSkillFiles(dir: string): Promise<Array<string>> {
-	const entries = await readdir(dir, { withFileTypes: true });
-	const files: Array<string> = [];
-	for (const entry of entries) {
-		const fullPath = join(dir, entry.name);
-		if (entry.isDirectory()) {
-			files.push(...(await collectSkillFiles(fullPath)));
-			continue;
-		}
-		if (entry.isFile()) {
-			files.push(fullPath);
-		}
-	}
-	return files.sort();
-}
-
-export async function computeMasterHash(configPath: string): Promise<string> {
-	const raw = await readFileSafely(configPath);
-	const doc = parseYamlSafely(raw, configPath);
-	if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
-		throw new Error(
-			`Config ${configPath} must be a YAML mapping at the top level`,
-		);
-	}
-	const masterRaw = (doc as Record<string, unknown>).master;
-	if (
-		masterRaw === null ||
-		typeof masterRaw !== "object" ||
-		Array.isArray(masterRaw)
-	) {
-		throw new Error(`Config ${configPath} field "master" must be a mapping`);
-	}
-	const hash = createHash("sha256");
-	hash.update("master\0");
-	hash.update(stringifyYaml(masterRaw));
-	return hash.digest("hex");
-}
-
-export function buildMasterInitConfig(
-	hostConfig: LoadedHostConfig,
-): AdapterInitConfig {
-	const masterConfig = hostConfig.config.master.config;
-	const instructions =
-		typeof masterConfig.instructions === "string"
-			? masterConfig.instructions
-			: "You are the master agent.";
-	const skills = parseMasterSkills(masterConfig.skills);
-	const model = parseMasterModel(masterConfig.model);
-	return { instructions, skills, model };
-}
-
-export function resolveMasterAdapterCommand(
-	hostConfig: LoadedHostConfig,
-): Array<string> {
-	const masterConfig = hostConfig.config.master.config;
-	const command = masterConfig.command;
-	if (Array.isArray(command)) {
-		const parts: Array<string> = [];
-		for (const item of command) {
-			if (typeof item !== "string" || item.length === 0) {
-				throw new Error("master.config.command must contain non-empty strings");
-			}
-			parts.push(item);
-		}
-		if (parts.length > 0) return parts;
-	}
-	const binary = masterConfig.binary;
-	if (typeof binary === "string" && binary.length > 0) {
-		return ["node", binary];
-	}
-	return [
-		"node",
-		join(hostConfig.rootDir, "packages/adapter-hermes/dist/main.js"),
-	];
-}
-
-function parseMasterSkills(value: unknown): Array<SkillContent> {
-	if (!Array.isArray(value)) return [];
-	const skills: Array<SkillContent> = [];
-	for (const item of value) {
-		if (!isRecord(item)) continue;
-		const name = item.name;
-		const content = item.content;
-		if (typeof name !== "string" || name.length === 0) continue;
-		skills.push({
-			name,
-			content: typeof content === "string" ? content : "",
-		});
-	}
-	return skills;
-}
-
-function parseMasterModel(value: unknown): ModelConfig {
-	if (isRecord(value)) {
-		return validateModelConfig(value, "master.config.model");
-	}
-	return {
-		provider: "anthropic",
-		name: "placeholder",
-		apiKey: process.env.ANTHROPIC_API_KEY ?? "",
-		contextWindow: 200_000,
-	};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 export async function loadPrototypeInitSkills(
-	prototypeDir: string,
-	manifest: Manifest,
+	skillsDir: string,
+	prototype: Prototype,
 ): Promise<Array<SkillContent>> {
 	const skills: Array<SkillContent> = [];
-	for (const skillName of manifest.skills) {
-		const skillPath = join(prototypeDir, "skills", skillName, "SKILL.md");
+	for (const skillName of prototype.skills) {
+		const skillPath = join(skillsDir, `${skillName}.md`);
 		let content = "";
 		try {
 			content = await readFile(skillPath, "utf-8");
@@ -234,10 +93,36 @@ export async function loadPrototypeInitSkills(
 	return skills;
 }
 
-function resolveAdapterName(manifestName: string, dirName: string): string {
-	if (manifestName.length > 0) return manifestName;
-	return dirName;
+export function defaultModelFromHostConfig(config: HostConfig): ModelConfig {
+	if (config.models.anthropic !== null) {
+		return {
+			provider: "anthropic",
+			name: "claude-sonnet-4",
+			apiKey: config.models.anthropic.apiKey,
+		};
+	}
+	if (config.models.openai !== null) {
+		return {
+			provider: "openai",
+			name: "gpt-4o",
+			apiKey: config.models.openai.apiKey,
+		};
+	}
+	if (config.models.openrouter !== null) {
+		return {
+			provider: "openrouter",
+			name: "anthropic/claude-sonnet-4",
+			apiKey: config.models.openrouter.apiKey,
+		};
+	}
+	return {
+		provider: "anthropic",
+		name: "claude-sonnet-4",
+		apiKey: null,
+	};
 }
+
+export { computePrototypeHash } from "./data-store.js";
 
 function validateHostConfig(doc: unknown, path: string): HostConfig {
 	if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
@@ -250,198 +135,191 @@ function validateHostConfig(doc: unknown, path: string): HostConfig {
 			`Config ${path} is missing required field "name" (must be a non-empty string)`,
 		);
 	}
-	const masterRaw = obj.master;
-	if (
-		masterRaw === null ||
-		typeof masterRaw !== "object" ||
-		Array.isArray(masterRaw)
-	) {
-		throw new Error(`Config ${path} field "master" must be a mapping`);
-	}
-	const masterObj = masterRaw as Record<string, unknown>;
-	const adapter = masterObj.adapter;
-	if (typeof adapter !== "string" || adapter.length === 0) {
+	const maxRunning = obj.maxRunning;
+	if (typeof maxRunning !== "number" || !Number.isFinite(maxRunning)) {
 		throw new Error(
-			`Config ${path} field "master.adapter" must be a non-empty string`,
+			`Config ${path} field "maxRunning" must be a finite number`,
 		);
 	}
-	const masterConfig =
-		masterObj.config === null || masterObj.config === undefined
-			? {}
-			: validateRecord(masterObj.config, `${path} field "master.config"`);
+	const workspaceRoot = obj.workspaceRoot;
+	if (typeof workspaceRoot !== "string" || workspaceRoot.length === 0) {
+		throw new Error(
+			`Config ${path} field "workspaceRoot" must be a non-empty string`,
+		);
+	}
+	const envFile = obj.envFile;
+	if (typeof envFile !== "string" || envFile.length === 0) {
+		throw new Error(
+			`Config ${path} field "envFile" must be a non-empty string`,
+		);
+	}
+	const modelsRaw = obj.models;
+	if (
+		modelsRaw === null ||
+		typeof modelsRaw !== "object" ||
+		Array.isArray(modelsRaw)
+	) {
+		throw new Error(`Config ${path} field "models" must be a mapping`);
+	}
+	const modelsObj = modelsRaw as Record<string, unknown>;
+	return {
+		name,
+		maxRunning,
+		workspaceRoot,
+		envFile,
+		models: {
+			anthropic: parseProviderConfig(
+				modelsObj.anthropic,
+				`${path} models.anthropic`,
+			),
+			openai: parseProviderConfig(modelsObj.openai, `${path} models.openai`),
+			openrouter: parseProviderConfig(
+				modelsObj.openrouter,
+				`${path} models.openrouter`,
+			),
+		},
+		resourceLimits: parseResourceLimits(obj.resourceLimits, path),
+		defaults: parseHostDefaults(obj.defaults, path),
+	};
+}
+
+function parseProviderConfig(
+	value: unknown,
+	label: string,
+): { baseUrl: string | null; apiKey: string } | null {
+	if (value === undefined || value === null) {
+		return null;
+	}
+	if (typeof value !== "object" || Array.isArray(value)) {
+		throw new Error(`${label} must be a mapping or null`);
+	}
+	const obj = value as Record<string, unknown>;
+	const apiKey = obj.apiKey;
+	if (typeof apiKey !== "string" || apiKey.length === 0) {
+		throw new Error(`${label}.apiKey must be a non-empty string`);
+	}
+	const baseUrlRaw = obj.baseUrl;
+	let baseUrl: string | null = null;
+	if (baseUrlRaw !== undefined && baseUrlRaw !== null) {
+		if (typeof baseUrlRaw !== "string" || baseUrlRaw.length === 0) {
+			throw new Error(`${label}.baseUrl must be a non-empty string when set`);
+		}
+		baseUrl = baseUrlRaw;
+	}
+	return { baseUrl, apiKey };
+}
+
+function parseResourceLimits(
+	value: unknown,
+	path: string,
+): HostConfig["resourceLimits"] {
+	if (value === undefined || value === null) {
+		return null;
+	}
+	if (typeof value !== "object" || Array.isArray(value)) {
+		throw new Error(`Config ${path} field "resourceLimits" must be a mapping`);
+	}
+	const obj = value as Record<string, unknown>;
+	const maxCpu = obj.maxCpu;
+	const maxMemory = obj.maxMemory;
+	if (typeof maxCpu !== "number" || !Number.isFinite(maxCpu)) {
+		throw new Error(
+			`Config ${path} field "resourceLimits.maxCpu" must be a finite number`,
+		);
+	}
+	if (typeof maxMemory !== "string" || maxMemory.length === 0) {
+		throw new Error(
+			`Config ${path} field "resourceLimits.maxMemory" must be a non-empty string`,
+		);
+	}
+	return { maxCpu, maxMemory };
+}
+
+function parseHostDefaults(
+	value: unknown,
+	path: string,
+): HostConfig["defaults"] {
+	if (value === undefined || value === null) {
+		return null;
+	}
+	if (typeof value !== "object" || Array.isArray(value)) {
+		throw new Error(`Config ${path} field "defaults" must be a mapping`);
+	}
+	const obj = value as Record<string, unknown>;
+	const timeout = obj.timeout;
+	const maxTurns = obj.maxTurns;
 	const resourcesRaw = obj.resources;
+	if (typeof timeout !== "number" || !Number.isFinite(timeout)) {
+		throw new Error(
+			`Config ${path} field "defaults.timeout" must be a finite number`,
+		);
+	}
+	if (typeof maxTurns !== "number" || !Number.isFinite(maxTurns)) {
+		throw new Error(
+			`Config ${path} field "defaults.maxTurns" must be a finite number`,
+		);
+	}
 	if (
 		resourcesRaw === null ||
 		typeof resourcesRaw !== "object" ||
 		Array.isArray(resourcesRaw)
 	) {
-		throw new Error(`Config ${path} field "resources" must be a mapping`);
+		throw new Error(
+			`Config ${path} field "defaults.resources" must be a mapping`,
+		);
 	}
 	const resourcesObj = resourcesRaw as Record<string, unknown>;
-	const maxMemory = resourcesObj.maxMemory;
-	const maxCpus = resourcesObj.maxCpus;
-	const maxInstances = resourcesObj.maxInstances;
-	if (typeof maxMemory !== "string" || maxMemory.length === 0) {
+	const cpu = resourcesObj.cpu;
+	const memory = resourcesObj.memory;
+	if (typeof cpu !== "number" || !Number.isFinite(cpu)) {
 		throw new Error(
-			`Config ${path} field "resources.maxMemory" must be a non-empty string`,
+			`Config ${path} field "defaults.resources.cpu" must be a finite number`,
 		);
 	}
-	if (typeof maxCpus !== "number" || !Number.isFinite(maxCpus)) {
+	if (typeof memory !== "string" || memory.length === 0) {
 		throw new Error(
-			`Config ${path} field "resources.maxCpus" must be a finite number`,
-		);
-	}
-	if (typeof maxInstances !== "number" || !Number.isFinite(maxInstances)) {
-		throw new Error(
-			`Config ${path} field "resources.maxInstances" must be a finite number`,
-		);
-	}
-	const dataDirRaw = obj.dataDir;
-	let dataDir: string | null = null;
-	if (dataDirRaw !== undefined && dataDirRaw !== null) {
-		if (typeof dataDirRaw !== "string" || dataDirRaw.length === 0) {
-			throw new Error(
-				`Config ${path} field "dataDir" must be a non-empty string when set`,
-			);
-		}
-		dataDir = dataDirRaw;
-	}
-	return {
-		name,
-		master: { adapter, config: masterConfig },
-		resources: {
-			maxMemory,
-			maxCpus,
-			maxInstances,
-		},
-		dataDir,
-	};
-}
-
-function resolveDataDir(rootDir: string, config: HostConfig): string {
-	if (config.dataDir !== null) {
-		return config.dataDir;
-	}
-	return join(rootDir, "data");
-}
-
-function validateManifest(doc: unknown, path: string): Manifest {
-	if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
-		throw new Error(`Manifest ${path} must be a YAML mapping at the top level`);
-	}
-	const obj = doc as Record<string, unknown>;
-	const name = obj.name;
-	if (typeof name !== "string" || name.length === 0) {
-		throw new Error(
-			`Manifest ${path} is missing required field "name" (must be a non-empty string)`,
-		);
-	}
-	const instructions = obj.instructions;
-	if (typeof instructions !== "string") {
-		throw new Error(`Manifest ${path} field "instructions" must be a string`);
-	}
-	const skillsRaw = obj.skills;
-	const skills: Array<string> = [];
-	if (skillsRaw !== undefined && skillsRaw !== null) {
-		if (!Array.isArray(skillsRaw)) {
-			throw new Error(`Manifest ${path} field "skills" must be an array`);
-		}
-		for (const item of skillsRaw) {
-			if (typeof item !== "string") {
-				throw new Error(
-					`Manifest ${path} field "skills" must contain only strings`,
-				);
-			}
-			skills.push(item);
-		}
-	}
-	const modelRaw = obj.model;
-	if (
-		modelRaw === null ||
-		typeof modelRaw !== "object" ||
-		Array.isArray(modelRaw)
-	) {
-		throw new Error(`Manifest ${path} field "model" must be a mapping`);
-	}
-	return {
-		name,
-		instructions,
-		skills,
-		model: validateModelConfig(modelRaw as Record<string, unknown>, path),
-	};
-}
-
-function validateModelConfig(
-	obj: Record<string, unknown>,
-	path: string,
-): ModelConfig {
-	const provider = obj.provider;
-	const name = obj.name;
-	const apiKey = obj.apiKey;
-	const contextWindow = obj.contextWindow;
-	if (
-		provider !== "anthropic" &&
-		provider !== "openai" &&
-		provider !== "openrouter" &&
-		(typeof provider !== "object" ||
-			provider === null ||
-			Array.isArray(provider))
-	) {
-		throw new Error(
-			`Manifest ${path} field "model.provider" must be a known provider or custom mapping`,
-		);
-	}
-	if (typeof name !== "string" || name.length === 0) {
-		throw new Error(
-			`Manifest ${path} field "model.name" must be a non-empty string`,
-		);
-	}
-	if (typeof apiKey !== "string" || apiKey.length === 0) {
-		throw new Error(
-			`Manifest ${path} field "model.apiKey" must be a non-empty string`,
-		);
-	}
-	if (typeof contextWindow !== "number" || !Number.isFinite(contextWindow)) {
-		throw new Error(
-			`Manifest ${path} field "model.contextWindow" must be a finite number`,
-		);
-	}
-	if (
-		provider === "anthropic" ||
-		provider === "openai" ||
-		provider === "openrouter"
-	) {
-		return { provider, name, apiKey, contextWindow };
-	}
-	const custom = provider as Record<string, unknown>;
-	const baseUrl = custom.baseUrl;
-	const apiType = custom.apiType;
-	if (typeof baseUrl !== "string" || baseUrl.length === 0) {
-		throw new Error(
-			`Manifest ${path} custom provider requires "baseUrl" string`,
-		);
-	}
-	if (apiType !== "openai" && apiType !== "anthropic") {
-		throw new Error(
-			`Manifest ${path} custom provider requires apiType "openai" | "anthropic"`,
+			`Config ${path} field "defaults.resources.memory" must be a non-empty string`,
 		);
 	}
 	return {
-		provider: { baseUrl, apiType },
-		name,
-		apiKey,
-		contextWindow,
+		timeout,
+		maxTurns,
+		resources: { cpu, memory },
 	};
 }
 
-function validateRecord(
-	value: unknown,
-	label: string,
-): Record<string, unknown> {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error(`${label} must be an object`);
+async function applyEnvFile(envFilePath: string): Promise<void> {
+	const expanded = expandHome(envFilePath);
+	let raw: string;
+	try {
+		raw = await readFile(expanded, "utf-8");
+	} catch {
+		return;
 	}
-	return value as Record<string, unknown>;
+	for (const line of raw.split("\n")) {
+		const trimmed = line.trim();
+		if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
+		const eq = trimmed.indexOf("=");
+		if (eq <= 0) continue;
+		const key = trimmed.slice(0, eq).trim();
+		let value = trimmed.slice(eq + 1).trim();
+		if (
+			(value.startsWith('"') && value.endsWith('"')) ||
+			(value.startsWith("'") && value.endsWith("'"))
+		) {
+			value = value.slice(1, -1);
+		}
+		if (process.env[key] === undefined) {
+			process.env[key] = value;
+		}
+	}
+}
+
+function expandHome(path: string): string {
+	if (path.startsWith("~/")) {
+		return join(homedir(), path.slice(2));
+	}
+	return path;
 }
 
 async function readFileSafely(path: string): Promise<string> {

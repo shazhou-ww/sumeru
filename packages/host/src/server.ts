@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer as createHttpServer } from "node:http";
-import { loadHostConfig, resolveMasterAdapterCommand } from "./config.js";
+import { loadHostConfig } from "./config.js";
 import {
 	createExportHandler,
 	createHistoryHandler,
@@ -10,15 +10,11 @@ import {
 	createPrototypesHandler,
 	createRootHandler,
 	createSearchHandler,
+	createSkillsHandler,
 	writeMethodNotAllowed,
 	writeRouteNotFound,
 } from "./handlers/index.js";
-import { projectNameFromInstanceId } from "./id.js";
 import { createInstanceManager } from "./instance-manager.js";
-import {
-	createLocalTransport,
-	createRoutingTransport,
-} from "./local-transport.js";
 import { createRouter } from "./router.js";
 import { createDockerTransport } from "./transport.js";
 import type {
@@ -48,6 +44,7 @@ export function createHostHandler(input: {
 	version: string;
 }): (req: IncomingMessage, res: ServerResponse) => void {
 	const prototypes = createPrototypesHandler(input.hostConfig);
+	const skills = createSkillsHandler(input.hostConfig);
 	const instances = createInstancesHandler(input.manager);
 	const router = createRouter({
 		methodNotAllowed: writeMethodNotAllowed,
@@ -56,6 +53,12 @@ export function createHostHandler(input: {
 		.route("GET", "/", createRootHandler(input))
 		.route("GET", "/prototypes", prototypes.list)
 		.route("GET", "/prototypes/:name", prototypes.detail)
+		.route("POST", "/prototypes/:name", prototypes.create)
+		.route("PUT", "/prototypes/:name", prototypes.update)
+		.route("DELETE", "/prototypes/:name", prototypes.remove)
+		.route("GET", "/skills/:name", skills.get)
+		.route("PUT", "/skills/:name", skills.put)
+		.route("DELETE", "/skills/:name", skills.remove)
 		.route("GET", "/instances", instances.list)
 		.route("POST", "/instances", instances.create)
 		.route("DELETE", "/instances/:id", instances.remove)
@@ -78,15 +81,7 @@ export function createHostHandler(input: {
 
 export async function startHost(config: StartHostConfig): Promise<StartedHost> {
 	const hostConfig = await loadHostConfig(config.rootDir);
-	const dockerTransport = config.transport ?? createDockerTransport();
-	const localTransport = createLocalTransport({
-		adapterCommand: resolveMasterAdapterCommand(hostConfig),
-	});
-	const transport = createRoutingTransport({
-		docker: dockerTransport,
-		local: localTransport,
-		masterProjectName: projectNameFromInstanceId("inst_0"),
-	});
+	const transport = config.transport ?? createDockerTransport();
 	const manager = createInstanceManager({ hostConfig, transport });
 	await manager.bootMaster();
 	const handler = createHostHandler({
