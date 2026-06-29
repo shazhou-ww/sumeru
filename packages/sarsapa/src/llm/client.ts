@@ -1,3 +1,4 @@
+import type { TokenUsage } from "@sumeru/core";
 import type { LlmMessage } from "../types.js";
 import { parseToolCalls } from "./parse.js";
 import type { LlmRequest, LlmResponse } from "./types.js";
@@ -78,7 +79,7 @@ export async function chat(request: LlmRequest): Promise<LlmResponse> {
 	const toolCalls = parseToolCalls(message.tool_calls);
 
 	const usage = data.usage;
-	let tokens: { input: number; output: number } | null = null;
+	let tokens: TokenUsage | null = null;
 	if (
 		typeof usage === "object" &&
 		usage !== null &&
@@ -89,6 +90,7 @@ export async function chat(request: LlmRequest): Promise<LlmResponse> {
 		tokens = {
 			input: u.prompt_tokens as number,
 			output: u.completion_tokens as number,
+			cached: 0,
 		};
 	}
 

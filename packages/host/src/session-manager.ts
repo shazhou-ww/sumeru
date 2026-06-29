@@ -1,4 +1,9 @@
-import type { AdapterInitConfig } from "@sumeru/adapter-core";
+import type {
+	AdapterInitConfig,
+	InboxMessage,
+	OutboxFrame,
+	TurnValue,
+} from "@sumeru/adapter-core";
 import type { ExitSignal, SessionInfo, TokenUsage, Turn } from "@sumeru/core";
 import {
 	extractImageFromCompose,
@@ -12,11 +17,6 @@ import {
 	generateSessionId,
 	projectNameFromSessionId,
 } from "./id.js";
-import type {
-	InboxMessage,
-	OutboxFrame,
-	TurnValue,
-} from "./legacy-types.js";
 import { createOcasRecorder, type OcasRecorder } from "./ocas-recorder.js";
 import { parseOutboxLine } from "./outbox.js";
 import { wireTurnsToV3, turnRecordsToV3 } from "./wire-turn.js";
@@ -29,7 +29,6 @@ import { defaultAdapterCommand } from "./transport.js";
 import type {
 	CreateSessionRequest,
 	HistoryValue,
-	InboxRequest,
 	LoadedHostConfig,
 	ManagedSession,
 	MessageRequest,
@@ -335,29 +334,14 @@ export function createSessionManager(input: {
 		});
 	}
 
-	async function submitInbox(
-		id: string,
-		body: InboxRequest,
-	): Promise<void> {
-		const record = sessions.get(id);
-		if (record === undefined) {
-			throw new Error("session_not_found");
-		}
-		if (record.containerId === null) {
-			throw new Error("session_not_running");
-		}
-		await deliverMessage(id, record, body);
-	}
-
 	async function sendTask(
 		id: string,
 		record: ManagedSession,
 		task: string,
 	): Promise<void> {
-		await submitInbox(id, {
+		await deliverMessage(id, record, {
 			messageId: generateMessageId(),
 			content: task,
-			project: record.projectPath,
 		});
 	}
 

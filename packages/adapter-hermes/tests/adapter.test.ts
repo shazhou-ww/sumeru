@@ -235,7 +235,7 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 		expect(turns).toHaveLength(1);
 		expect(turns[0]?.content).toBe("hello from hermes");
 		expect(turns[0]?.toolCalls).toBeNull();
-		expect(tokenUsage).toEqual({ input: 10, output: 5 });
+		expect(tokenUsage).toEqual({ input: 10, output: 5, cached: 0 });
 		expect(adapter.getNativeId?.()).toBe(nativeId);
 	});
 

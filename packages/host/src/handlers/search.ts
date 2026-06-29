@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { envelope, errorEnvelope } from "../envelope.js";
 import { writeJson } from "../http-utils.js";
-import type { InstanceId } from "../legacy-types.js";
 import { createSearchIndex, type SearchHit } from "../search.js";
 
 export type SearchValue = {
@@ -28,22 +27,22 @@ export function createSearchHandler(dataDir: string) {
 			return;
 		}
 
-		const instanceRaw = query.get("instance");
-		const instanceFilter = parseInstanceFilter(instanceRaw);
-		if (instanceFilter === undefined) {
+		const sessionRaw = query.get("session");
+		const sessionFilter = parseSessionFilter(sessionRaw);
+		if (sessionFilter === undefined) {
 			writeJson(
 				res,
 				400,
 				errorEnvelope(
 					"invalid_request",
-					"Query parameter 'instance' must be a non-empty string when provided",
+					"Query parameter 'session' must be a non-empty string when provided",
 				),
 			);
 			return;
 		}
 
 		const index = createSearchIndex(dataDir);
-		const hits = index.search(q, instanceFilter);
+		const hits = index.search(q, sessionFilter);
 		writeJson(res, 200, searchEnvelope({ query: q, hits }));
 	};
 }
@@ -52,9 +51,9 @@ export function searchEnvelope(value: SearchValue) {
 	return envelope("@sumeru/search", value);
 }
 
-function parseInstanceFilter(
+function parseSessionFilter(
 	raw: string | null,
-): InstanceId | null | undefined {
+): string | null | undefined {
 	if (raw === null || raw.length === 0) return null;
 	if (raw.trim().length === 0) return undefined;
 	return raw;

@@ -7,25 +7,25 @@ import {
 	type Store,
 } from "@ocas/core";
 import { createFsStore, createSqliteVarStore } from "@ocas/fs";
-import type { InstanceId, OutboxFrame, TurnValue } from "./legacy-types.js";
+import type { OutboxFrame, TurnValue } from "@sumeru/adapter-core";
 
 /**
- * `@sumeru/chain-node` — one link in an instance's append-only CAS chain.
+ * `@sumeru/chain-node` — one link in a session's append-only CAS chain.
  *
  * Every emitted outbox frame (turn / done / suspend / error) is stored as an
  * immutable CAS node carrying a `prev` pointer to the node that preceded it.
- * The newest node's hash is tracked by the per-instance head variable
- * `@sumeru/chain/<instanceId>`, so the whole chain is recoverable by walking
+ * The newest node's hash is tracked by the per-session head variable
+ * `@sumeru/chain/<sessionId>`, so the whole chain is recoverable by walking
  * `prev` from the head back to the first node (where `prev === null`).
  *
  * `prev` is declared `format: ocas_ref` so closure / gc traversal follows the
  * chain edge. `value` is the opaque frame payload — its shape is determined by
- * the frame `type` and validated upstream by `@sumeru/core`.
+ * the frame `type` and validated upstream by `@sumeru/adapter-core`.
  */
 export const SUMERU_CHAIN_NODE_SCHEMA: JSONSchema = {
 	title: "@sumeru/chain-node",
 	description:
-		"One link in an instance's append-only CAS chain of outbox frames.",
+		"One link in a session's append-only CAS chain of outbox frames.",
 	type: "object",
 	additionalProperties: false,
 	required: ["prev", "type", "value", "timestamp"],
@@ -62,16 +62,16 @@ export type TurnRecord = {
 };
 
 export type OcasRecorder = {
-	/** Append `frame` to the instance chain; returns the new node's CAS hash. */
-	append(instanceId: InstanceId, frame: OutboxFrame): Hash;
+	/** Append `frame` to the session chain; returns the new node's CAS hash. */
+	append(sessionId: string, frame: OutboxFrame): Hash;
 	getTurns(
-		instanceId: InstanceId,
+		sessionId: string,
 		limit: number,
 		offset: number,
 	): Array<TurnRecord>;
-	getTurnTotal(instanceId: InstanceId): number;
-	/** Drop the instance head pointer so its chain is no longer reachable. */
-	clear(instanceId: InstanceId): void;
+	getTurnTotal(sessionId: string): number;
+	/** Drop the session head pointer so its chain is no longer reachable. */
+	clear(sessionId: string): void;
 };
 
 /** Handle to an opened on-disk Sumeru CAS store plus its chain schema hash. */
@@ -81,9 +81,9 @@ export type OcasStoreHandle = {
 	close(): void;
 };
 
-/** The head-pointer variable name for an instance's chain. */
-export function chainHeadVarName(instanceId: InstanceId): string {
-	return `@sumeru/chain/${instanceId}`;
+/** The head-pointer variable name for a session's chain. */
+export function chainHeadVarName(sessionId: string): string {
+	return `@sumeru/chain/${sessionId}`;
 }
 
 /**
@@ -105,15 +105,15 @@ export function openOcasStore(dataDir: string): OcasStoreHandle {
 }
 
 /**
- * Read an instance's chain in chronological order (oldest first) by walking
+ * Read a session's chain in chronological order (oldest first) by walking
  * `prev` from the head node. A `seen` set guards against cycles or a corrupted
  * `prev` pointer; a missing node simply terminates the walk.
  */
 export function readChain(
 	store: Store,
-	instanceId: InstanceId,
+	sessionId: string,
 ): Array<ChainEntry> {
-	const head = store.var.get(chainHeadVarName(instanceId));
+	const head = store.var.get(chainHeadVarName(sessionId));
 	let cursor: Hash | null = head?.value ?? null;
 	const seen = new Set<Hash>();
 	const reversed: Array<ChainEntry> = [];
@@ -132,8 +132,8 @@ export function readChain(
 export function createOcasRecorder(dataDir: string): OcasRecorder {
 	const { store, chainSchemaHash } = openOcasStore(dataDir);
 
-	function append(instanceId: InstanceId, frame: OutboxFrame): Hash {
-		const head = store.var.get(chainHeadVarName(instanceId));
+	function append(sessionId: string, frame: OutboxFrame): Hash {
+		const head = store.var.get(chainHeadVarName(sessionId));
 		const payload: ChainNodePayload = {
 			prev: head?.value ?? null,
 			type: frame.type,
@@ -141,13 +141,13 @@ export function createOcasRecorder(dataDir: string): OcasRecorder {
 			timestamp: new Date().toISOString(),
 		};
 		const hash = store.cas.put(chainSchemaHash, payload);
-		store.var.set(chainHeadVarName(instanceId), hash);
+		store.var.set(chainHeadVarName(sessionId), hash);
 		return hash;
 	}
 
-	function turnRecords(instanceId: InstanceId): Array<TurnRecord> {
+	function turnRecords(sessionId: string): Array<TurnRecord> {
 		const records: Array<TurnRecord> = [];
-		for (const entry of readChain(store, instanceId)) {
+		for (const entry of readChain(store, sessionId)) {
 			if (entry.payload.type !== "turn") continue;
 			records.push({
 				timestamp: entry.payload.timestamp,
@@ -160,19 +160,19 @@ export function createOcasRecorder(dataDir: string): OcasRecorder {
 	}
 
 	function getTurns(
-		instanceId: InstanceId,
+		sessionId: string,
 		limit: number,
 		offset: number,
 	): Array<TurnRecord> {
-		return turnRecords(instanceId).slice(offset, offset + limit);
+		return turnRecords(sessionId).slice(offset, offset + limit);
 	}
 
-	function getTurnTotal(instanceId: InstanceId): number {
-		return turnRecords(instanceId).length;
+	function getTurnTotal(sessionId: string): number {
+		return turnRecords(sessionId).length;
 	}
 
-	function clear(instanceId: InstanceId): void {
-		store.var.remove(chainHeadVarName(instanceId));
+	function clear(sessionId: string): void {
+		store.var.remove(chainHeadVarName(sessionId));
 	}
 
 	return {

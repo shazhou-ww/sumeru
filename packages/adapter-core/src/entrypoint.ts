@@ -3,7 +3,6 @@
 // writes ready/turn/done/suspend/error frames to stdout. Authoritative source:
 // package-design wiki §4 "@sumeru/adapter-core — Adapter 公共框架".
 
-import type { SuspendValue } from "@sumeru/core";
 import type {
 	AdapterEntryOptions,
 	AdapterHandleYield,
@@ -11,6 +10,7 @@ import type {
 	AdapterInboxMessage,
 	AdapterInitConfig,
 	OutboundFrame,
+	SuspendValue,
 } from "./types.js";
 
 const DEFAULT_SEND_TIMEOUT_MS = 7_200_000;

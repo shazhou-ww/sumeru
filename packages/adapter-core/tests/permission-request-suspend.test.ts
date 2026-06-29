@@ -1,4 +1,4 @@
-import type { DoneValue } from "@sumeru/core";
+import type { DoneValue } from "@sumeru/adapter-core";
 import { describe, expect, it } from "vitest";
 import type { AdapterHandleYield, AdapterImpl } from "../src/types.js";
 import {

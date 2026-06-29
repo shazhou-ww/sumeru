@@ -1,5 +1,5 @@
 import type { AssistantTurn, TokenUsage, ToolCall, ToolTurn, Turn } from "@sumeru/core";
-import type { LegacyToolCall, TurnValue } from "./legacy-types.js";
+import type { WireToolCall, TurnValue } from "@sumeru/adapter-core";
 
 const EMPTY_TOKEN_USAGE: TokenUsage = { input: 0, output: 0, cached: 0 };
 
@@ -50,7 +50,7 @@ export function wireTurnsToV3(
 	return { turns, nextId };
 }
 
-function mapLegacyToolCalls(toolCalls: Array<LegacyToolCall> | null): {
+function mapLegacyToolCalls(toolCalls: Array<WireToolCall> | null): {
 	calls: Array<ToolCall>;
 	toolTurns: Array<Omit<ToolTurn, "id">>;
 } {
@@ -86,7 +86,7 @@ function mapLegacyToolCalls(toolCalls: Array<LegacyToolCall> | null): {
 	return { calls, toolTurns };
 }
 
-function sumToolDuration(toolCalls: Array<LegacyToolCall> | null): number {
+function sumToolDuration(toolCalls: Array<WireToolCall> | null): number {
 	if (toolCalls === null) return 0;
 	let total = 0;
 	for (const call of toolCalls) {

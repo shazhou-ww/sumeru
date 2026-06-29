@@ -35,7 +35,7 @@ describe("adapter-core — dummy adapter lifecycle (e2e)", () => {
 				};
 				return {
 					summary: `handled ${message.messageId}`,
-					tokenUsage: { input: 1, output: 2 },
+					tokenUsage: { input: 1, output: 2, cached: 0 },
 				};
 			},
 		};
@@ -94,7 +94,7 @@ describe("adapter-core — dummy adapter lifecycle (e2e)", () => {
 				type: "done",
 				value: {
 					summary: "handled msg_A",
-					tokenUsage: { input: 1, output: 2 },
+					tokenUsage: { input: 1, output: 2, cached: 0 },
 				},
 			},
 			{
@@ -112,7 +112,7 @@ describe("adapter-core — dummy adapter lifecycle (e2e)", () => {
 				type: "done",
 				value: {
 					summary: "handled msg_B",
-					tokenUsage: { input: 1, output: 2 },
+					tokenUsage: { input: 1, output: 2, cached: 0 },
 				},
 			},
 		]);

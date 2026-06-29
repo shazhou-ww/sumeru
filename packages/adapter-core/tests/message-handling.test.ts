@@ -1,6 +1,6 @@
 // Spec: adapter-core-message-handling.md
 
-import type { DoneValue, InboxMessage, TurnValue } from "@sumeru/core";
+import type { DoneValue, InboxMessage, TurnValue } from "@sumeru/adapter-core";
 import { describe, expect, it } from "vitest";
 import type { AdapterImpl } from "../src/types.js";
 import {
@@ -48,7 +48,7 @@ describe("adapter-core — message handling", () => {
 				handleCalls.push(message);
 				yield turn(0, `re: ${message.content}`);
 				yield turn(1, "done thinking");
-				return { summary: "ok", tokenUsage: { input: 10, output: 20 } };
+				return { summary: "ok", tokenUsage: { input: 10, output: 20, cached: 0 } };
 			},
 		};
 
@@ -84,7 +84,7 @@ describe("adapter-core — message handling", () => {
 			{ type: "turn", value: turn(1, "done thinking") },
 			{
 				type: "done",
-				value: { summary: "ok", tokenUsage: { input: 10, output: 20 } },
+				value: { summary: "ok", tokenUsage: { input: 10, output: 20, cached: 0 } },
 			},
 		]);
 	});

@@ -3,7 +3,6 @@ import type {
 	Envelope,
 	ErrorValue,
 	HostRootValue,
-	InboxAcceptedValue,
 	MessageAcceptedValue,
 	PrototypeInfo,
 	SkillValue,
@@ -60,13 +59,6 @@ export function messageAcceptedEnvelope(
 	value: MessageAcceptedValue,
 ): Envelope<MessageAcceptedValue> {
 	return envelope("@sumeru/message-accepted", value);
-}
-
-/** @deprecated Use messageAcceptedEnvelope */
-export function inboxAcceptedEnvelope(
-	value: InboxAcceptedValue,
-): Envelope<InboxAcceptedValue> {
-	return messageAcceptedEnvelope(value);
 }
 
 export function errorEnvelope(
