@@ -1,11 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { errorEnvelope } from "../envelope.js";
-import { writeJson, writeRawSseEvent, writeSseHeaders } from "../http-utils.js";
+import {
+	writeJson,
+	writeRawSseEvent,
+	writeSseComment,
+	writeSseHeaders,
+} from "../http-utils.js";
 import type { SessionManager } from "../session-manager.js";
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
-export function createOutboxHandler(manager: SessionManager) {
+export function createEventsHandler(manager: SessionManager) {
 	return (
 		req: IncomingMessage,
 		res: ServerResponse,
@@ -18,7 +23,7 @@ export function createOutboxHandler(manager: SessionManager) {
 		try {
 			buffer = manager.getSseBuffer(id);
 		} catch (err) {
-			writeOutboxSubscribeError(res, err);
+			writeEventsSubscribeError(res, err);
 			return;
 		}
 
@@ -42,7 +47,7 @@ export function createOutboxHandler(manager: SessionManager) {
 		for (const evt of buffer.eventsAfter(replayFrom)) {
 			writeRawSseEvent(res, evt);
 			watermark = evt.id;
-			if (evt.event === "done" || evt.event === "error") {
+			if (evt.event === "exit") {
 				res.end();
 				return;
 			}
@@ -66,23 +71,22 @@ export function createOutboxHandler(manager: SessionManager) {
 				cleanup();
 				return;
 			}
-			const heartbeat = buffer.append({ event: "heartbeat", data: "{}" });
-			writeRawSseEvent(res, heartbeat);
+			writeSseComment(res);
 		}, HEARTBEAT_INTERVAL_MS);
 
 		try {
-			unsubscribe = manager.subscribeOutbox(id, (evt) => {
+			unsubscribe = manager.subscribeEvents(id, (evt) => {
 				if (evt.id <= watermark) return;
 				watermark = evt.id;
 				writeRawSseEvent(res, evt);
-				if (evt.event === "done" || evt.event === "error") {
+				if (evt.event === "exit") {
 					res.end();
 					cleanup();
 				}
 			});
 		} catch (err) {
 			cleanup();
-			writeOutboxSubscribeError(res, err);
+			writeEventsSubscribeError(res, err);
 		}
 	};
 }
@@ -97,15 +101,18 @@ function parseLastEventId(req: IncomingMessage): number | null {
 	return parsed;
 }
 
-function writeOutboxSubscribeError(res: ServerResponse, err: unknown): void {
+function writeEventsSubscribeError(res: ServerResponse, err: unknown): void {
 	if (res.headersSent) {
 		const message = err instanceof Error ? err.message : String(err);
 		writeRawSseEvent(res, {
 			id: 0,
-			event: "error",
+			event: "exit",
 			data: JSON.stringify({
-				type: "error",
-				value: { code: message, message },
+				type: "failed",
+				message,
+				elapsedMs: 0,
+				turnCount: 0,
+				tokenUsage: { input: 0, output: 0, cached: 0 },
 			}),
 		});
 		res.end();

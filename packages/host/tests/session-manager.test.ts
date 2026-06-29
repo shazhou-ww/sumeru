@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
+import type { Turn } from "@sumeru/core";
 import { loadHostConfig } from "../src/config.js";
 import { generateSessionId } from "../src/id.js";
 import { createOcasRecorder } from "../src/ocas-recorder.js";
@@ -74,7 +75,7 @@ function createInteractiveTransport(): {
 		async rm(input) {
 			calls.push(`rm:${input.projectName}`);
 		},
-		exec({ containerId, command }) {
+		exec({ containerId, command, env: _env }) {
 			calls.push(`exec:${containerId}:${command.join(" ")}`);
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();
@@ -128,7 +129,7 @@ function createBlockingTransport(): Transport {
 		},
 		async down() {},
 		async rm() {},
-		exec() {
+		exec(_input) {
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();
 			stdin.on("data", (chunk: Buffer | string) => {
@@ -253,10 +254,8 @@ describe("session-manager", () => {
 				.eventsAfter(0)
 				.find((event) => event.event === "turn");
 			if (turnEvent === undefined) continue;
-			const data = JSON.parse(turnEvent.data) as {
-				value: { content: string };
-			};
-			turnContents.set(session.id, data.value.content);
+			const data = JSON.parse(turnEvent.data) as Turn;
+			turnContents.set(session.id, data.content);
 			expect(turnContents.get(session.id)).toBe(
 				`pong:${managed?.projectName ?? ""}`,
 			);
@@ -265,7 +264,7 @@ describe("session-manager", () => {
 		expect(new Set(turnContents.values()).size).toBe(3);
 	});
 
-	it("records turn and done events in the outbox buffer during create+start", async () => {
+	it("records turn and exit events in the events buffer during create+start", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
 		const { transport, calls } = createInteractiveTransport();
@@ -275,9 +274,10 @@ describe("session-manager", () => {
 		await waitUntil(() => manager.getSession(created.id)?.status === "idle");
 		const events = manager.getSseBuffer(created.id).eventsAfter(0);
 		expect(calls.some((call) => call.startsWith("exec:"))).toBe(true);
-		expect(events.map((event) => event.event)).toEqual(["turn", "done"]);
+		expect(events.map((event) => event.event)).toEqual(["turn", "exit"]);
 		expect(JSON.parse(events[0]?.data ?? "{}")).toMatchObject({
-			value: { content: expect.stringMatching(/^pong:/) },
+			role: "assistant",
+			content: expect.stringMatching(/^pong:/),
 		});
 	});
 
@@ -338,7 +338,7 @@ describe("session-manager", () => {
 		expect(a).not.toBe(b);
 	});
 
-	it("marks session idle on adapter suspend and resumes on next inbox", async () => {
+	it("marks session idle on adapter suspend and resumes on next message", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
 		const stdinWrites: Array<string> = [];
@@ -349,7 +349,7 @@ describe("session-manager", () => {
 			},
 			async down() {},
 			async rm() {},
-			exec() {
+			exec(_input) {
 				execCount += 1;
 				const stdin = new PassThrough();
 				const stdout = new PassThrough();
@@ -415,20 +415,21 @@ describe("session-manager", () => {
 			manager
 				.getSseBuffer(created.id)
 				.eventsAfter(0)
-				.some((event) => event.event === "suspend"),
+				.some((event) => event.event === "exit"),
 		).toBe(true);
 
 		const events: Array<{ event: string }> = [];
-		const unsubscribe = manager.subscribeOutbox(created.id, (event) => {
+		const unsubscribe = manager.subscribeEvents(created.id, (event) => {
 			events.push({ event: event.event });
 		});
 
-		await manager.submitInbox(created.id, {
+		await manager.submitMessage(created.id, {
 			messageId: "msg_2",
 			content: "continue",
-			project: null,
+			env: null,
+			model: null,
 		});
-		await waitUntil(() => events.some((event) => event.event === "done"));
+		await waitUntil(() => events.some((event) => event.event === "exit"));
 		unsubscribe();
 
 		expect(execCount).toBe(2);
@@ -438,7 +439,7 @@ describe("session-manager", () => {
 			line.includes("native-resume-abc"),
 		);
 		expect(resumeWrite).toBeUndefined();
-		expect(events.map((event) => event.event)).toEqual(["turn", "done"]);
+		expect(events.map((event) => event.event)).toEqual(["turn", "exit"]);
 	});
 
 	it("clears history on delete", async () => {

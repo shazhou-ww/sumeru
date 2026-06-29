@@ -7,7 +7,7 @@ export const LOCAL_MASTER_HANDLE = "master";
 
 export type LocalTransport = {
 	create(): string;
-	spawn(handleId: string, command: Array<string>): TransportExecSession;
+	spawn(handleId: string, command: Array<string>, env: Record<string, string> | null): TransportExecSession;
 	stop(handleId: string): void;
 	destroy(): void;
 };
@@ -24,6 +24,7 @@ export function createLocalTransportImpl(options: {
 	function spawnHandle(
 		handleId: string,
 		command: Array<string>,
+		env: Record<string, string> | null,
 	): TransportExecSession {
 		stop(handleId);
 		const resolvedCommand =
@@ -36,6 +37,13 @@ export function createLocalTransportImpl(options: {
 			resolvedCommand.slice(1),
 			{
 				stdio: ["pipe", "pipe", "pipe"],
+				env:
+					env === null
+						? undefined
+						: {
+								...process.env,
+								...env,
+							},
 			},
 		);
 		if (child.stdin === null || child.stdout === null) {
@@ -102,8 +110,8 @@ export function createLocalTransport(options: {
 		async rm() {
 			local.destroy();
 		},
-		exec({ containerId, command }) {
-			return local.spawn(containerId, command);
+		exec({ containerId, command, env }) {
+			return local.spawn(containerId, command, env);
 		},
 		async inspectStatus(containerId) {
 			void containerId;

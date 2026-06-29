@@ -68,19 +68,34 @@ export type CreateSessionRequest = {
 
 export type SessionModelRequest = CreateSessionRequest["model"];
 
+export type MessageBody = {
+	content: string;
+	env: Record<string, string> | null;
+	model: SessionModelRequest | null;
+};
+
+export type MessageRequest = MessageBody & {
+	messageId: string;
+};
+
+export type MessageAcceptedValue = {
+	sessionId: string;
+	messageId: string;
+};
+
+/** @deprecated Use MessageBody — retained for adapter wire compatibility */
 export type InboxBody = {
 	content: string;
 	project: string | null;
 };
 
+/** @deprecated Use MessageRequest */
 export type InboxRequest = InboxBody & {
 	messageId: string;
 };
 
-export type InboxAcceptedValue = {
-	sessionId: string;
-	messageId: string;
-};
+/** @deprecated Use MessageAcceptedValue */
+export type InboxAcceptedValue = MessageAcceptedValue;
 
 export type HistoryValue = {
 	sessionId: string;
@@ -124,6 +139,7 @@ export type Transport = {
 	exec(input: {
 		containerId: string;
 		command: Array<string>;
+		env: Record<string, string> | null;
 	}): TransportExecSession;
 	inspectStatus(containerId: string): Promise<"running" | "stopped">;
 };
