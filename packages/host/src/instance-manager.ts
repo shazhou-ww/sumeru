@@ -133,6 +133,7 @@ export function createInstanceManager(input: {
 			initVersion: null,
 		};
 		instances.set(id, record);
+		await ensureAdapterReady(id, record);
 		return record;
 	}
 
