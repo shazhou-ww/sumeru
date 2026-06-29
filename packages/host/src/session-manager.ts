@@ -19,7 +19,7 @@ import type {
 } from "./legacy-types.js";
 import { createOcasRecorder, type OcasRecorder } from "./ocas-recorder.js";
 import { parseOutboxLine } from "./outbox.js";
-import { wireTurnsToV3 } from "./wire-turn.js";
+import { wireTurnsToV3, turnRecordsToV3 } from "./wire-turn.js";
 import {
 	createSseBuffer,
 	type SseBuffer,
@@ -67,11 +67,18 @@ export type SessionManager = {
 	): () => void;
 	getSseBuffer(id: string): SseBuffer;
 	getHistory(id: string, limit: number, offset: number): HistoryValue;
-	hostRoot(): {
-		name: string;
-		prototypes: Array<string>;
-		sessions: Array<string>;
+	getSessionTurns(id: string, after: number | null): Array<Turn>;
+	hostRoot(): HostRootSnapshot;
+};
+
+export type HostRootSnapshot = {
+	name: string;
+	status: {
+		running: number;
+		queued: number;
+		idle: number;
 	};
+	uptime: number;
 };
 
 export function createSessionManager(input: {
@@ -82,6 +89,7 @@ export function createSessionManager(input: {
 	const sessions = new Map<string, ManagedSession>();
 	const adapters = new Map<string, AdapterRuntime>();
 	const slotWaiters: Array<() => void> = [];
+	const startedAt = Date.now();
 	const recorder =
 		input.recorder ?? createOcasRecorder(input.hostConfig.dataDir);
 
@@ -710,15 +718,38 @@ export function createSessionManager(input: {
 		};
 	}
 
-	function hostRoot(): {
-		name: string;
-		prototypes: Array<string>;
-		sessions: Array<string>;
-	} {
+	function getSessionTurns(id: string, after: number | null): Array<Turn> {
+		const record = sessions.get(id);
+		if (record === undefined) {
+			throw new Error("session_not_found");
+		}
+		const total = recorder.getTurnTotal(id);
+		const records = recorder.getTurns(id, total, 0);
+		const turns = turnRecordsToV3(records);
+		if (after === null) {
+			return turns;
+		}
+		return turns.filter((turn) => turn.id > after);
+	}
+
+	function hostRoot(): HostRootSnapshot {
+		let running = 0;
+		let idle = 0;
+		for (const session of sessions.values()) {
+			if (session.status === "running") {
+				running += 1;
+			} else {
+				idle += 1;
+			}
+		}
 		return {
 			name: input.hostConfig.config.name,
-			prototypes: [...input.hostConfig.prototypes.keys()],
-			sessions: [...sessions.keys()],
+			status: {
+				running,
+				queued: slotWaiters.length,
+				idle,
+			},
+			uptime: Math.max(0, Date.now() - startedAt),
 		};
 	}
 
@@ -732,6 +763,7 @@ export function createSessionManager(input: {
 		subscribeEvents,
 		getSseBuffer,
 		getHistory,
+		getSessionTurns,
 		hostRoot,
 	};
 }

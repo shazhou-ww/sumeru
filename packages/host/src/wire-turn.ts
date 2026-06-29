@@ -3,6 +3,17 @@ import type { LegacyToolCall, TurnValue } from "./legacy-types.js";
 
 const EMPTY_TOKEN_USAGE: TokenUsage = { input: 0, output: 0, cached: 0 };
 
+export function turnRecordsToV3(records: Array<{ value: TurnValue }>): Array<Turn> {
+	let nextId = 0;
+	const turns: Array<Turn> = [];
+	for (const record of records) {
+		const mapped = wireTurnsToV3(record.value, nextId);
+		nextId = mapped.nextId;
+		turns.push(...mapped.turns);
+	}
+	return turns;
+}
+
 export function wireTurnsToV3(
 	wire: TurnValue,
 	startId: number,

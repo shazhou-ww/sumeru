@@ -1,4 +1,4 @@
-import type { Prototype, SessionInfo } from "@sumeru/core";
+import type { Prototype, SessionInfo, Turn, Image } from "@sumeru/core";
 import type {
 	Envelope,
 	ErrorValue,
@@ -42,6 +42,18 @@ export function sessionListEnvelope(
 
 export function sessionEnvelope(info: SessionInfo): Envelope<SessionInfo> {
 	return envelope("@sumeru/session", info);
+}
+
+export function turnListEnvelope(turns: Array<Turn>): Envelope<Array<Turn>> {
+	return envelope("@sumeru/turn-list", turns);
+}
+
+export function imageListEnvelope(images: Array<Image>): Envelope<Array<Image>> {
+	return envelope("@sumeru/image-list", images);
+}
+
+export function imageEnvelope(image: Image): Envelope<Image> {
+	return envelope("@sumeru/image", image);
 }
 
 export function messageAcceptedEnvelope(

@@ -91,6 +91,15 @@ export type ToolTurn = {
 };
 export type Turn = AssistantTurn | ToolTurn;
 
+// === Image ===
+export type Image = {
+	name: string;
+	description: string;
+	dockerfile: string;
+	builtAt: string;
+	digest: string;
+};
+
 // === Host 配置 ===
 export type HostConfig = {
 	name: string;

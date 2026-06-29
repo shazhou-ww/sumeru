@@ -453,6 +453,42 @@ describe("session-manager", () => {
 		await manager.deleteSession(created.id);
 		expect(recorder.getTurnTotal(created.id)).toBe(0);
 	});
+
+	it("returns v3 turns from persisted session activity", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		const { transport } = createInteractiveTransport();
+		const manager = createSessionManager({ hostConfig, transport });
+		const created = await manager.createSession(createSessionBody());
+		await waitUntil(() => manager.getSession(created.id)?.status === "idle");
+
+		const turns = manager.getSessionTurns(created.id, null);
+		expect(turns).toHaveLength(1);
+		expect(turns[0]?.role).toBe("assistant");
+		expect(turns[0]?.id).toBe(0);
+
+		const after = manager.getSessionTurns(created.id, 0);
+		expect(after).toEqual([]);
+	});
+
+	it("reports host root status counts and uptime", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		const transport = createBlockingTransport();
+		const manager = createSessionManager({ hostConfig, transport });
+		const created = await manager.createSession(createSessionBody());
+
+		const root = manager.hostRoot();
+		expect(root.name).toBe("test-host");
+		expect(root.status.running).toBe(1);
+		expect(root.status.idle).toBe(0);
+		expect(root.uptime).toBeGreaterThanOrEqual(0);
+
+		await manager.stopSession(created.id);
+		const idleRoot = manager.hostRoot();
+		expect(idleRoot.status.running).toBe(0);
+		expect(idleRoot.status.idle).toBe(1);
+	});
 });
 
 async function waitUntil(
