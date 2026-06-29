@@ -65,7 +65,8 @@ async function scanPrototypes(
 
 async function loadManifest(manifestPath: string): Promise<Manifest> {
 	const raw = await readFileSafely(manifestPath);
-	const doc = parseYamlSafely(raw, manifestPath);
+	const expanded = expandEnvVars(raw, manifestPath);
+	const doc = parseYamlSafely(expanded, manifestPath);
 	return validateManifest(doc, manifestPath);
 }
 
@@ -206,7 +207,7 @@ function parseMasterModel(value: unknown): ModelConfig {
 	return {
 		provider: "anthropic",
 		name: "placeholder",
-		apiKeyEnv: "ANTHROPIC_API_KEY",
+		apiKey: process.env.ANTHROPIC_API_KEY ?? "",
 		contextWindow: 200_000,
 	};
 }
@@ -376,7 +377,7 @@ function validateModelConfig(
 ): ModelConfig {
 	const provider = obj.provider;
 	const name = obj.name;
-	const apiKeyEnv = obj.apiKeyEnv;
+	const apiKey = obj.apiKey;
 	const contextWindow = obj.contextWindow;
 	if (
 		provider !== "anthropic" &&
@@ -395,9 +396,9 @@ function validateModelConfig(
 			`Manifest ${path} field "model.name" must be a non-empty string`,
 		);
 	}
-	if (typeof apiKeyEnv !== "string" || apiKeyEnv.length === 0) {
+	if (typeof apiKey !== "string" || apiKey.length === 0) {
 		throw new Error(
-			`Manifest ${path} field "model.apiKeyEnv" must be a non-empty string`,
+			`Manifest ${path} field "model.apiKey" must be a non-empty string`,
 		);
 	}
 	if (typeof contextWindow !== "number" || !Number.isFinite(contextWindow)) {
@@ -410,7 +411,7 @@ function validateModelConfig(
 		provider === "openai" ||
 		provider === "openrouter"
 	) {
-		return { provider, name, apiKeyEnv, contextWindow };
+		return { provider, name, apiKey, contextWindow };
 	}
 	const custom = provider as Record<string, unknown>;
 	const baseUrl = custom.baseUrl;
@@ -428,7 +429,7 @@ function validateModelConfig(
 	return {
 		provider: { baseUrl, apiType },
 		name,
-		apiKeyEnv,
+		apiKey,
 		contextWindow,
 	};
 }
@@ -466,4 +467,20 @@ function parseYamlSafely(raw: string, path: string): unknown {
 		const msg = err instanceof Error ? err.message : String(err);
 		throw new Error(`Invalid YAML in ${path}: ${msg}`);
 	}
+}
+
+/**
+ * Expand ${VAR} and ${VAR:-default} in raw YAML text.
+ * Throws if a variable has no default and is not set in process.env.
+ */
+export function expandEnvVars(raw: string, context: string): string {
+	const pattern = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-(.*?))?\}/g;
+	return raw.replace(pattern, (_match, varName: string, defaultVal?: string) => {
+		const envVal = process.env[varName];
+		if (envVal !== undefined) return envVal;
+		if (defaultVal !== undefined) return defaultVal;
+		throw new Error(
+			`${context}: environment variable \${${varName}} is not set and has no default`,
+		);
+	});
 }

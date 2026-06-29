@@ -46,7 +46,7 @@ describe("@sumeru/adapter-core — types contract", () => {
 		const model: ModelConfig = {
 			provider: "anthropic",
 			name: "claude-sonnet-4",
-			apiKeyEnv: "ANTHROPIC_API_KEY",
+			apiKey: "test-key",
 			contextWindow: 200000,
 		};
 		const config: AdapterInitConfig = {

@@ -13,7 +13,7 @@ const INIT_CONFIG: AdapterInitConfig = {
 	model: {
 		provider: "openai",
 		name: "gpt-5",
-		apiKeyEnv: "OPENAI_API_KEY",
+		apiKey: "test-key",
 		contextWindow: 200_000,
 	},
 };

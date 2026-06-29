@@ -12,7 +12,7 @@ export type ToolSchema = {
 
 export type LlmRequest = {
 	model: string;
-	apiKeyEnv: string;
+	apiKey: string;
 	baseUrl: string | null;
 	messages: Array<LlmMessage>;
 	tools: Array<ToolSchema>;

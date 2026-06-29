@@ -53,7 +53,7 @@ describe("adapter-core — dummy adapter lifecycle (e2e)", () => {
 			model: {
 				provider: "anthropic",
 				name: "m",
-				apiKeyEnv: "K",
+				apiKey: "test-key",
 				contextWindow: 1000,
 			},
 		};

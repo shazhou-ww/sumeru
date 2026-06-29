@@ -43,7 +43,7 @@ function writeHostFixture(rootDir: string, maxInstances = 2): void {
 			"model:",
 			"  provider: anthropic",
 			"  name: claude-sonnet-4",
-			"  apiKeyEnv: ANTHROPIC_API_KEY",
+			"  apiKey: test-key",
 			"  contextWindow: 200000",
 		].join("\n"),
 	);

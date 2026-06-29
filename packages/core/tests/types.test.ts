@@ -36,7 +36,7 @@ describe("@sumeru/core — minimal type set conformance", () => {
 		const modelConfig: ModelConfig = {
 			provider: knownProvider,
 			name: "claude-sonnet",
-			apiKeyEnv: "ANTHROPIC_API_KEY",
+			apiKey: "test-key",
 			contextWindow: 200000,
 		};
 		const manifest: Manifest = {

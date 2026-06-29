@@ -1,5 +1,5 @@
 import type { AdapterInboxMessage } from "@sumeru/adapter-core";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createSarsapaAdapter } from "../src/agent.js";
 
 function mockFetch(): typeof fetch {
@@ -40,10 +40,6 @@ function mockFetch(): typeof fetch {
 }
 
 describe("sarsapa loop", () => {
-	beforeEach(() => {
-		process.env.SARSPA_TEST_KEY = "test-key";
-	});
-
 	it("runs a tool call then finishes with done", async () => {
 		const adapter = createSarsapaAdapter({
 			fetchImpl: mockFetch(),
@@ -55,7 +51,7 @@ describe("sarsapa loop", () => {
 			model: {
 				provider: "openai",
 				name: "gpt-4.1",
-				apiKeyEnv: "SARSPA_TEST_KEY",
+				apiKey: "test-key",
 				contextWindow: 8000,
 			},
 		});

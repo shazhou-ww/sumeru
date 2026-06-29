@@ -18,7 +18,7 @@ const INIT_LINE = JSON.stringify({
 		model: {
 			provider: "anthropic",
 			name: "m",
-			apiKeyEnv: "K",
+			apiKey: "test-key",
 			contextWindow: 1000,
 		},
 	},

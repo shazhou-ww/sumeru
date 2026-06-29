@@ -133,6 +133,7 @@ export function createInstanceManager(input: {
 			initVersion: null,
 		};
 		instances.set(id, record);
+		await ensureAdapterReady(id, record);
 		return record;
 	}
 
@@ -620,7 +621,7 @@ function placeholderModel(): AdapterInitConfig["model"] {
 	return {
 		provider: "anthropic",
 		name: "placeholder",
-		apiKeyEnv: "ANTHROPIC_API_KEY",
+		apiKey: process.env.ANTHROPIC_API_KEY ?? "",
 		contextWindow: 200_000,
 	};
 }
