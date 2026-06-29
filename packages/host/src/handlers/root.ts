@@ -15,8 +15,8 @@ export function createRootHandler(input: {
 			hostEnvelope({
 				name: root.name,
 				version: input.version,
-				prototypes: root.prototypes,
-				sessions: root.sessions,
+				status: root.status,
+				uptime: root.uptime,
 			}),
 		);
 	};

@@ -1,5 +1,11 @@
 import type { AdapterInitConfig } from "@sumeru/adapter-core";
-import type { HostConfig, ModelConfig, Prototype, SessionInfo } from "@sumeru/core";
+import type {
+	HostConfig,
+	Image,
+	ModelConfig,
+	Prototype,
+	SessionInfo,
+} from "@sumeru/core";
 import type { OutboxFrame } from "./legacy-types.js";
 import type { TurnRecord } from "./ocas-recorder.js";
 
@@ -24,8 +30,12 @@ export type ErrorValue = {
 export type HostRootValue = {
 	name: string;
 	version: string;
-	prototypes: Array<string>;
-	sessions: Array<string>;
+	status: {
+		running: number;
+		queued: number;
+		idle: number;
+	};
+	uptime: number;
 };
 
 export type PrototypeInfo = {
@@ -44,6 +54,7 @@ export type LoadedHostConfig = {
 	prototypesDir: string;
 	config: HostConfig;
 	prototypes: Map<string, PrototypeInfo>;
+	images: Map<string, Image>;
 };
 
 export type ManagedSession = SessionInfo & {

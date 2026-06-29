@@ -6,6 +6,7 @@ import type { SkillContent } from "@sumeru/adapter-core";
 import type {
 	CustomProvider,
 	HostConfig,
+	Image,
 	KnownProvider,
 	ModelConfig,
 	Prototype,
@@ -20,13 +21,16 @@ import {
 import type { LoadedHostConfig, PrototypeInfo } from "./types.js";
 
 const DEFAULT_HOST_FILE = "host.yaml";
+const DEFAULT_IMAGES_FILE = "images.yaml";
 const DEFAULT_DATA_DIR = "data";
 
 export async function loadHostConfig(
 	rootDir: string,
 ): Promise<LoadedHostConfig> {
 	const configPath = join(rootDir, DEFAULT_HOST_FILE);
-	const config = await loadHostYaml(configPath);
+	const raw = await readFileSafely(configPath);
+	const doc = parseYamlSafely(raw, configPath);
+	const config = validateHostConfig(doc, configPath);
 	await applyEnvFile(config.envFile);
 	const dataDir = join(rootDir, DEFAULT_DATA_DIR);
 	const skillsDir = join(dataDir, "skills");
@@ -37,6 +41,7 @@ export async function loadHostConfig(
 		prototypesDir,
 		skillsDir,
 	});
+	const images = await loadImagesConfig(rootDir, doc, configPath);
 	return {
 		rootDir,
 		configPath,
@@ -45,6 +50,7 @@ export async function loadHostConfig(
 		prototypesDir,
 		config,
 		prototypes,
+		images,
 	};
 }
 
@@ -76,10 +82,85 @@ function toStoreInput(hostConfig: LoadedHostConfig): {
 	};
 }
 
-async function loadHostYaml(configPath: string): Promise<HostConfig> {
-	const raw = await readFileSafely(configPath);
-	const doc = parseYamlSafely(raw, configPath);
-	return validateHostConfig(doc, configPath);
+async function loadImagesConfig(
+	rootDir: string,
+	hostDoc: unknown,
+	hostConfigPath: string,
+): Promise<Map<string, Image>> {
+	if (
+		hostDoc !== null &&
+		typeof hostDoc === "object" &&
+		!Array.isArray(hostDoc)
+	) {
+		const embedded = (hostDoc as Record<string, unknown>).images;
+		if (embedded !== undefined && embedded !== null) {
+			return parseImagesMapping(embedded, hostConfigPath);
+		}
+	}
+	const imagesPath = join(rootDir, DEFAULT_IMAGES_FILE);
+	try {
+		const raw = await readFile(imagesPath, "utf-8");
+		const doc = parseYamlSafely(raw, imagesPath);
+		if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+			throw new Error(
+				`Config ${imagesPath} must be a YAML mapping at the top level`,
+			);
+		}
+		const obj = doc as Record<string, unknown>;
+		const imagesRaw = obj.images ?? obj;
+		return parseImagesMapping(imagesRaw, imagesPath);
+	} catch (err) {
+		const code =
+			err instanceof Error && "code" in err
+				? (err as { code: unknown }).code
+				: null;
+		if (code === "ENOENT") {
+			return new Map();
+		}
+		throw err;
+	}
+}
+
+function parseImagesMapping(value: unknown, path: string): Map<string, Image> {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error(`Config ${path} field "images" must be a mapping`);
+	}
+	const images = new Map<string, Image>();
+	for (const [name, entry] of Object.entries(value as Record<string, unknown>)) {
+		if (name.length === 0) {
+			throw new Error(`Config ${path} image name must be a non-empty string`);
+		}
+		images.set(name, validateImageEntry(name, entry, `${path} images.${name}`));
+	}
+	return images;
+}
+
+function validateImageEntry(
+	name: string,
+	value: unknown,
+	label: string,
+): Image {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error(`${label} must be a mapping`);
+	}
+	const obj = value as Record<string, unknown>;
+	const description = obj.description;
+	const dockerfile = obj.dockerfile;
+	const builtAt = obj.builtAt;
+	const digest = obj.digest;
+	if (typeof description !== "string") {
+		throw new Error(`${label}.description must be a string`);
+	}
+	if (typeof dockerfile !== "string" || dockerfile.length === 0) {
+		throw new Error(`${label}.dockerfile must be a non-empty string`);
+	}
+	if (typeof builtAt !== "string" || builtAt.length === 0) {
+		throw new Error(`${label}.builtAt must be a non-empty string`);
+	}
+	if (typeof digest !== "string" || digest.length === 0) {
+		throw new Error(`${label}.digest must be a non-empty string`);
+	}
+	return { name, description, dockerfile, builtAt, digest };
 }
 
 export async function loadPrototypeInitSkills(

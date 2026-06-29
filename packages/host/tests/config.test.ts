@@ -51,5 +51,42 @@ describe("loadHostConfig — v3 HostConfig", () => {
 		expect(prototype?.prototype.instructions).toBe("You are a worker.");
 		expect(prototype?.prototype.skills).toEqual(["demo"]);
 		expect(prototype?.prototypeHash).toMatch(/^[a-f0-9]{64}$/);
+		expect(loaded.images.size).toBe(0);
+	});
+
+	it("loads embedded images from host.yaml", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-host-config-"));
+		writeFileSync(
+			join(rootDir, "host.yaml"),
+			[
+				"name: test-host",
+				"maxRunning: 3",
+				"workspaceRoot: /tmp/workspaces",
+				"envFile: /dev/null",
+				"models:",
+				"  anthropic:",
+				"    baseUrl: null",
+				"    apiKey: sk-test",
+				"  openai: null",
+				"  openrouter: null",
+				"images:",
+				"  worker:",
+				'    description: "Worker"',
+				'    dockerfile: "CAS001"',
+				'    builtAt: "2026-06-29T00:00:00.000Z"',
+				'    digest: "sha256:abc"',
+			].join("\n"),
+		);
+		mkdirSync(join(rootDir, "data", "skills"), { recursive: true });
+		mkdirSync(join(rootDir, "data", "prototypes"), { recursive: true });
+
+		const loaded = await loadHostConfig(rootDir);
+		expect(loaded.images.get("worker")).toEqual({
+			name: "worker",
+			description: "Worker",
+			dockerfile: "CAS001",
+			builtAt: "2026-06-29T00:00:00.000Z",
+			digest: "sha256:abc",
+		});
 	});
 });

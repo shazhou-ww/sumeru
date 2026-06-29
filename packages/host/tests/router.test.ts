@@ -53,6 +53,28 @@ describe("router — host routes", () => {
 		}
 	});
 
+	it("matches GET /sessions/:id/turns", () => {
+		const router = createTestRouter();
+		router.route("GET", "/sessions/:id/turns", () => {});
+		const result = router.match("GET", "/sessions/ses_01J/turns");
+		expect(result.type).toBe("match");
+		if (result.type === "match") {
+			expect(result.params).toEqual({ id: "ses_01J" });
+		}
+	});
+
+	it("matches GET /images and GET /images/:name", () => {
+		const router = createTestRouter();
+		router.route("GET", "/images", () => {});
+		router.route("GET", "/images/:name", () => {});
+		expect(router.match("GET", "/images").type).toBe("match");
+		const detail = router.match("GET", "/images/worker");
+		expect(detail.type).toBe("match");
+		if (detail.type === "match") {
+			expect(detail.params).toEqual({ name: "worker" });
+		}
+	});
+
 	it("returns method_not_allowed for wrong verb on messages", () => {
 		const router = createTestRouter();
 		router.route("POST", "/sessions/:id/messages", () => {});

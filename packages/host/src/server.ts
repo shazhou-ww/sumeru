@@ -5,12 +5,14 @@ import {
 	createExportHandler,
 	createEventsHandler,
 	createHistoryHandler,
+	createImagesHandler,
 	createMessagesHandler,
 	createPrototypesHandler,
 	createRootHandler,
 	createSearchHandler,
 	createSessionsHandler,
 	createSkillsHandler,
+	createTurnsHandler,
 	writeMethodNotAllowed,
 	writeRouteNotFound,
 } from "./handlers/index.js";
@@ -45,12 +47,15 @@ export function createHostHandler(input: {
 }): (req: IncomingMessage, res: ServerResponse) => void {
 	const prototypes = createPrototypesHandler(input.hostConfig);
 	const skills = createSkillsHandler(input.hostConfig);
+	const images = createImagesHandler(input.hostConfig);
 	const sessions = createSessionsHandler(input.manager);
 	const router = createRouter({
 		methodNotAllowed: writeMethodNotAllowed,
 		notFound: writeRouteNotFound,
 	})
 		.route("GET", "/", createRootHandler(input))
+		.route("GET", "/images", images.list)
+		.route("GET", "/images/:name", images.detail)
 		.route("GET", "/prototypes", prototypes.list)
 		.route("GET", "/prototypes/:name", prototypes.detail)
 		.route("POST", "/prototypes/:name", prototypes.create)
@@ -67,6 +72,7 @@ export function createHostHandler(input: {
 		.route("POST", "/sessions/:id/messages", createMessagesHandler(input.manager))
 		.route("GET", "/sessions/:id/events", createEventsHandler(input.manager))
 		.route("GET", "/sessions/:id/history", createHistoryHandler(input.manager))
+		.route("GET", "/sessions/:id/turns", createTurnsHandler(input.manager))
 		.route(
 			"POST",
 			"/sessions/:id/export",
