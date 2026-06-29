@@ -1,57 +1,66 @@
-# Sumeru v2 — Usage Scenario Validation Checklist
+# Sumeru v3 — Spec Checklist
 
-> 重写于 2026-06-28（v2 重构后）。旧 v1 checklist 与 74 个 v1 spec 已移至 `legacy/specs/`（作参考，不删）。
+> 重写于 2026-06-29（v3 重构后）。旧 v2 specs 已移至 `specs/legacy/`。
 >
-> **方法**：按新 wiki（`cards/` 17 张架构卡）梳理出 v2 的主要**使用场景**，逐个**摸索正确用法** → 写成 spec；**发现 bug → 开 issue**。
-> 由星月（RAKU）编排，每个场景派一个 subagent 顺序摸索。
+> **权威设计文档**：[spec-v3 wiki](https://git.shazhou.work/shazhou/sumeru/wiki/spec-v3)
+>
+> **格式**：Given/When/Then + YAML frontmatter（scenario/feature/tags）。
+> 每个 spec 验证一个具体的 user story 或 invariant。
 
 ---
 
-## 现状基线（2026-06-28 recon）
+## Session 生命周期
 
-| 项 | 状态 |
-|---|---|
-| v2 build | ✅ 绿（需先 `pnpm install` 链 workspace，scaffold 后从未跑过 → 已修） |
-| 可运行示例 | ❌ **无** —— 仓库无 `host.yaml` / `prototypes/`，根 `sumeru.yaml` 是 v1 `gateways:` 格式。**S1 的首要产物就是造出来。** |
-| docker daemon | ✅ colima up（worker/prototype 场景需要；master 走 local transport 不需要） |
-| agent CLIs | ✅ claude / codex / cursor-agent / hermes 均在 PATH |
-| OCAS 记录 | 🔴 **假实现**（#148）—— recorder 写 flat jsonl、`hash:null`，非真 CAS。S8 阻塞于此。 |
+- [x] `session/create-and-start.md` — POST /sessions 创建即启动，校验 prototype/project/model/image，返回 SessionInfo
+- [x] `session/stop-running-session.md` — POST /sessions/:id/stop running→idle(exit.type=stopped)，已 idle→409
+- [x] `session/delete-session.md` — DELETE /sessions/:id 停止+清理容器+数据
+- [x] `session/list-and-detail.md` — GET /sessions 列表 + GET /sessions/:id 详情，SessionInfo 结构
+- [x] `session/concurrency-fifo-queue.md` — maxRunning 达到后排队 FIFO，idle 释放槽位后唤醒
 
----
+## SSE 事件流
 
-## 场景清单（按依赖 + 摸索顺序）
+- [x] `sse/turn-exit-heartbeat.md` — GET /sessions/:id/events 只有三种事件(turn/exit/heartbeat)，exit 后关流
+- [x] `sse/last-event-id-resume.md` — 断开重连带 Last-Event-ID，补发缺失事件
 
-> 图例：状态 ⬜ 未开始 / 🔄 摸索中 / ✅ spec 已写 / 🔴 阻塞。依赖列指明前置场景。
+## Resume（消息 + 热注入）
 
-| # | 场景 | 验证什么（覆盖的卡） | 依赖 | docker | 真 agent | 状态 |
-|---|------|------|------|--------|---------|------|
-| **S1** | **Host bootstrap & discovery** | 从零写最小 `host.yaml` + 一个 `prototypes/<n>/{manifest,compose}.yaml` → `sumeru start` → `GET /` 返回 host 身份信封、master `inst_0` 在列（architecture-overview, host-service, manifest-schema, master-agent） | — | no | no | ✅ |
-| **S2** | **Master agent roundtrip** | 向 `inst_0` 投 inbox → 订阅 outbox → 收到 turn/done。验证 local transport + master adapter（hermes，读 ~/.hermes/config）（master-agent, transport-layer/local, adapter-hermes） | S1 | no | yes | ✅ |
-| **S3** | **Inbox→Outbox SSE 管道** | POST inbox 生成 messageId → GET outbox SSE 流（turn/done/suspend/error 帧 + heartbeat），replay/reconnect（host-service, sse-reliability） | S2 | no | yes | ⬜ |
-| **S4** | **Suspend / Resume** | 触发 timeout suspend → 状态翻 suspended → 下次 inbox 注入 resumeNativeId 续上（suspend-resume, adapter-contract） | S3 | no | yes | ⬜ |
-| **S5** | **Adapter 契约一致性** | 直接喂 NDJSON（init→ready→message→turn→done）给每个 adapter 二进制，验证协议序与错误帧。逐个：hermes(ACP) / claude-code / codex（adapter-contract, adapter-*） | S1 | no | yes | ⬜ |
-| **S6** | **Prototype versioning / 懒重初始化** | 改 manifest/skills → hash 漂移 → 下次 inbox 触发 re-init（prototype-versioning, manifest-schema） | S2 | no | yes | ⬜ |
-| **S7** | **Worker instance 生命周期（docker）** | 从 prototype `create` → compose up 容器 → inbox/outbox → `reset` → `delete`（compose down/rm）+ maxInstances 资源闸（instance-lifecycle, transport-layer/docker, docker-image） | S1,S2 | **yes** | yes | ⬜ |
-| **S8** | **OCAS 记录 / history / search / export** | 🔴 **阻塞 #148**：当前 recorder 是假的。先摸索当前（坏）行为、记录 gap，待 #148 修后补真 spec（ocas-recording） | S2 | no | — | 🔴 |
-| **S9** | **CLI operator 面** | `sumeru server start/stop/status` · `prototypes` · `instances` · `create/send/logs/reset/delete` · `images`（cli） | S1 | partial | no | ⬜ |
-| **S10** | **部署为常驻服务（launchd/systemd）** | repo `deploy/` 只有 systemd unit；mac 要 launchd 三件套。验证常驻 + 重启恢复（deploy-systemd） | S1 | no | no | ⬜ |
+- [x] `resume/message-resume-idle.md` — POST /sessions/:id/messages idle 时 resume，running 时 409
+- [x] `resume/env-hot-injection.md` — resume 带 env，注入容器环境（不进 agent 上下文）
+- [x] `resume/model-hot-switch.md` — resume 带 model，切换 session 的 model 配置
+
+## Turns 查询
+
+- [x] `turns/list-turns-pagination.md` — GET /sessions/:id/turns 返回 Turn[]，支持 ?after= 分页
+- [x] `turns/turn-discriminated-union.md` — Turn 是 assistant|tool discriminated union，结构正确性
+
+## Prototype 管理
+
+- [x] `prototype/crud-lifecycle.md` — GET/POST/PUT/DELETE /prototypes，创建需 name+instructions
+- [x] `prototype/skill-reference-validation.md` — 创建/更新时引用的 skill 必须存在，否则 400
+
+## Skill 管理
+
+- [x] `skill/crud-idempotent.md` — GET/PUT/DELETE /skills/:name，PUT 幂等
+- [x] `skill/delete-reverse-reference-protection.md` — 删除被 prototype 引用的 skill → 409
+
+## Image（只读）
+
+- [x] `image/list-and-detail.md` — GET /images 列表 + GET /images/:name 详情，元数据结构(name/description/dockerfile/builtAt/digest)
+
+## Host 根
+
+- [x] `host/root-status.md` — GET / 返回 name/version/status(running/queued/idle)/uptime
+
+## 错误码
+
+- [x] `errors/standard-http-errors.md` — 400/404/409/429/500 标准错误码覆盖
 
 ---
 
 ## 编排原则
 
-1. **S1 先行、单独跑** —— 它产出 v2 第一个可运行示例（`host.yaml` + `prototypes/`），是后续所有场景的共享前置。在它跑通前别派其它场景。
-2. **顺序摸索** —— 每个 subagent 摸一个场景，回报「正确用法 + 写好的 spec + 开的 issue 号」。星月整合后再派下一个，保持全局上下文清爽。
-3. **摸索 = 真跑** —— 不是读代码臆测。subagent 必须真起 host、真投消息、真看输出，用实证写 spec。
-4. **spec 格式** —— 沿用 v2 现有 spec 的 Given/When/Then + frontmatter（scenario/feature/tags），参考 `specs/adapter-core/*` 与 `specs/core/*`。
-5. **bug → issue** —— 摸索中发现实现与卡片/预期不符，按 `gitea-cli-operations` 开 issue（REST + User-Agent + label id），spec 里标 `⚠️ 见 #N`。
-
----
-
-## 进度日志
-
-| 日期 | 场景 | subagent 结果 | 产出 spec | 开的 issue |
-|------|------|--------------|----------|-----------|
-| 2026-06-28 | 准备 | recon + 115 v1 specs → legacy/ + build 修复 + checklist | 本文件 | #148(host CAS), #149(eval RFC) |
-| 2026-06-28 | S1 | subagent 超时(无总结)但产物真实 → 星月独立复跑 port 7912 逐条核验，5 端点+4 invariant byte-exact 复现 → 采纳 | examples/minimal/ + specs/host/host-bootstrap-discovery.md | 无 bug。⚠️旁现：:7900 有陈旧 v1 服务(跑1.5天)，待主人确认是否清理 |
-| 2026-06-28 | S2 | subagent 完成(有总结) → 星月独立复跑 port 7913，自发消息'verify'→agent回'verify'(非预录)，帧 byte-exact 复现；两个 gap/bug 均亲手复现核实 → 采纳 | specs/host/master-roundtrip.md | **#152**(退出泄漏 adapter 子进程树)。GAP: token/summary 全 null，已在 spec 标注 |
+1. **每个 spec 聚焦一个 user story / invariant** — 不混搭多个场景
+2. **Given/When/Then 格式** — Given 设置前提，When 做操作（含具体 curl/API 调用），Then 断言响应
+3. **基于真实实现** — 读 `packages/host/src/` 代码确认实际行为，不臆测
+4. **引用 wiki 作为设计意图** — spec 验证实现是否符合 wiki 设计
+5. **tags 标注** — `[session, lifecycle, v3]` 等便于筛选
