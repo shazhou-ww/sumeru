@@ -1,0 +1,12 @@
+# compose.yaml is NOT schema-validated by the host (manifest-schema card §"Compose File
+# Handling"): it is an opaque path forwarded to `docker compose -f <path> -p <project> up -d`
+# by the Docker transport when a WORKER instance is created (POST /instances). The master
+# (inst_0) uses local transport and never touches this file. Not exercised by S1 discovery;
+# present so the prototype directory is complete for later worker scenarios (S7).
+services:
+  worker:
+    image: node:25-slim
+    command: ["node", "/opt/sumeru/adapter-claude-code/dist/main.js"]
+    stdin_open: true
+    tty: false
+    restart: "no"

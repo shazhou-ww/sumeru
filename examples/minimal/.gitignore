@@ -1,0 +1,3 @@
+# Runtime OCAS recordings — created eagerly at host boot (createOcasRecorder ->
+# mkdirSync(dataDir)). dataDir defaults to <rootDir>/data. Not part of the example.
+data/
