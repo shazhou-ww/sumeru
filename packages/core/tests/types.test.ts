@@ -1,193 +1,235 @@
 import { describe, expect, it } from "vitest";
 import type {
+	AssistantTurn,
 	CustomProvider,
-	DoneValue,
-	ErrorValue,
+	ExitBase,
+	ExitSignal,
 	HostConfig,
-	InboxMessage,
-	InstanceId,
-	InstanceInfo,
-	InstanceStatus,
 	KnownProvider,
-	Manifest,
-	MasterConfig,
 	ModelConfig,
-	OutboxFrame,
-	ResourceLimits,
-	SuspendValue,
+	Prototype,
+	SessionInfo,
+	SessionStatus,
 	TokenUsage,
 	ToolCall,
-	TurnValue,
+	ToolTurn,
+	Turn,
 } from "../src/index.js";
 
-// Compile-time conformance for the M1 minimal type set (wiki §1).
+// Compile-time conformance for the v3 type set (spec-v3 + issue #159).
 // Each `const` below is a well-typed literal of a core type; if any signature
-// drifts from the wiki, `pnpm run typecheck` (tsc --build, strict) fails closed.
+// drifts from the spec, `pnpm run typecheck` (tsc --build, strict) fails closed.
 
-describe("@sumeru/core — minimal type set conformance", () => {
+describe("@sumeru/core — v3 type set conformance", () => {
 	it("constructs a well-typed literal for each core type", () => {
-		const tokenUsage: TokenUsage = { input: 100, output: 200 };
+		const tokenUsage: TokenUsage = { input: 100, output: 200, cached: 50 };
 
 		const knownProvider: KnownProvider = "anthropic";
 		const customProvider: CustomProvider = {
-			baseUrl: "https://llm.example.com",
+			name: "corp-llm",
+			endpoint: "https://llm.internal.corp/v1",
 			apiType: "openai",
 		};
 		const modelConfig: ModelConfig = {
 			provider: knownProvider,
-			name: "claude-sonnet",
-			apiKey: "test-key",
-			contextWindow: 200000,
+			name: "claude-sonnet-4",
+			apiKey: null,
 		};
-		const manifest: Manifest = {
-			name: "demo-agent",
+		const modelWithCustom: ModelConfig = {
+			provider: customProvider,
+			name: "deepseek-v3",
+			apiKey: "sk-internal",
+		};
+
+		const prototype: Prototype = {
+			name: "software-engineer",
+			instructions: "You are a TypeScript engineer.",
+			skills: ["test-driven-development"],
+			defaults: {
+				maxTurns: 40,
+				timeout: 7_200_000,
+				resources: { cpu: 2, memory: "4G" },
+			},
+		};
+
+		const sessionStatus: SessionStatus = "running";
+		const exitBase: ExitBase = {
+			elapsedMs: 1200,
+			turnCount: 3,
+			tokenUsage,
+		};
+		const exitComplete: ExitSignal = {
+			...exitBase,
+			type: "complete",
+			message: "Done.",
+		};
+		const exitTimeout: ExitSignal = {
+			...exitBase,
+			type: "timeout",
+		};
+		const sessionInfo: SessionInfo = {
+			id: "ses_01JXYZ",
+			prototype: prototype.name,
 			model: modelConfig,
-			instructions: "be helpful",
-			skills: ["search"],
-		};
-
-		const instanceId: InstanceId = "inst_0";
-		const instanceStatus: InstanceStatus = "running";
-		const instanceInfo: InstanceInfo = {
-			id: instanceId,
-			prototype: null,
-			status: instanceStatus,
-			createdAt: "2026-06-27T00:00:00.000Z",
-			projects: ["alpha"],
-		};
-
-		const inbox: InboxMessage = {
-			messageId: "msg_1",
-			content: "hello",
-			project: null,
+			image: "sumeru/typescript:node22",
+			project: "united-workforce",
+			task: "Fix login button",
+			status: sessionStatus,
+			exit: null,
+			createdAt: "2026-06-29T00:00:00.000Z",
 		};
 
 		const toolCall: ToolCall = {
-			tool: "bash",
-			input: { cmd: "ls" },
-			output: null,
-			durationMs: null,
-			exitCode: null,
+			id: "call_1",
+			name: "bash",
+			arguments: { cmd: "ls" },
 		};
-		const turnValue: TurnValue = {
-			index: 0,
+		const assistantTurn: AssistantTurn = {
+			id: 0,
 			role: "assistant",
-			content: "hi",
-			timestamp: "2026-06-27T00:00:00.000Z",
+			content: "Running ls.",
 			toolCalls: [toolCall],
-			tokens: tokenUsage,
-		};
-		const doneValue: DoneValue = {
-			summary: null,
 			tokenUsage,
+			durationMs: 500,
+			timestamp: "2026-06-29T00:00:00.000Z",
 		};
-		const suspendValue: SuspendValue = {
-			reason: "timeout",
-			elapsedMs: 1000,
+		const toolTurn: ToolTurn = {
+			id: 1,
+			role: "tool",
+			callId: "call_1",
+			name: "bash",
+			result: "README.md\n",
+			durationMs: 120,
+			timestamp: "2026-06-29T00:00:01.000Z",
 		};
-		const errorValue: ErrorValue = {
-			code: "E_FAIL",
-			message: "boom",
-		};
+		const turn: Turn = assistantTurn;
 
-		const masterConfig: MasterConfig = {
-			adapter: "claude-code",
-			config: {},
-		};
-		const resourceLimits: ResourceLimits = {
-			maxMemory: "2G",
-			maxCpus: 2,
-			maxInstances: 8,
-		};
 		const hostConfig: HostConfig = {
-			name: "node-1",
-			master: masterConfig,
-			resources: resourceLimits,
-			dataDir: null,
-		};
-
-		// Touch each literal at runtime so the suite exercises every type.
-		expect(tokenUsage.input).toBe(100);
-		expect(knownProvider).toBe("anthropic");
-		expect(customProvider.apiType).toBe("openai");
-		expect(modelConfig.contextWindow).toBe(200000);
-		expect(manifest.skills).toEqual(["search"]);
-		expect(instanceId).toBe("inst_0");
-		expect(instanceStatus).toBe("running");
-		expect(instanceInfo.prototype).toBeNull();
-		expect(inbox.project).toBeNull();
-		expect(toolCall.exitCode).toBeNull();
-		expect(turnValue.role).toBe("assistant");
-		expect(doneValue.summary).toBeNull();
-		expect(suspendValue.reason).toBe("timeout");
-		expect(errorValue.code).toBe("E_FAIL");
-		expect(masterConfig.adapter).toBe("claude-code");
-		expect(resourceLimits.maxCpus).toBe(2);
-		expect(hostConfig.name).toBe("node-1");
-	});
-
-	it("narrows OutboxFrame on `type` and is exhaustive over turn|done|suspend|error", () => {
-		const turnFrame: OutboxFrame = {
-			type: "turn",
-			value: {
-				index: 1,
-				role: "user",
-				content: "hi",
-				timestamp: "2026-06-27T00:00:00.000Z",
-				toolCalls: null,
-				tokens: null,
+			name: "neko-host",
+			maxRunning: 3,
+			workspaceRoot: "/home/azureuser/repos",
+			envFile: "~/.config/sumeru/.env",
+			models: {
+				anthropic: {
+					baseUrl: "https://api.anthropic.com",
+					apiKey: "sk-ant-test",
+				},
+				openai: null,
+				openrouter: null,
+			},
+			resourceLimits: { maxCpu: 4, maxMemory: "16G" },
+			defaults: {
+				timeout: 7_200_000,
+				maxTurns: 40,
+				resources: { cpu: 2, memory: "4G" },
 			},
 		};
-		const doneFrame: OutboxFrame = {
-			type: "done",
-			value: { summary: "ok", tokenUsage: null },
+
+		expect(tokenUsage.cached).toBe(50);
+		expect(knownProvider).toBe("anthropic");
+		expect(customProvider.apiType).toBe("openai");
+		expect(modelConfig.apiKey).toBeNull();
+		expect(modelWithCustom.provider).toEqual(customProvider);
+		expect(prototype.skills).toEqual(["test-driven-development"]);
+		expect(sessionStatus).toBe("running");
+		expect(exitComplete.type).toBe("complete");
+		expect(exitTimeout.type).toBe("timeout");
+		expect(sessionInfo.exit).toBeNull();
+		expect(toolCall.name).toBe("bash");
+		expect(assistantTurn.role).toBe("assistant");
+		expect(toolTurn.callId).toBe("call_1");
+		expect(turn.role).toBe("assistant");
+		expect(hostConfig.maxRunning).toBe(3);
+	});
+
+	it("narrows ExitSignal on `type` and is exhaustive", () => {
+		const signals: Array<ExitSignal> = [
+			{
+				elapsedMs: 1,
+				turnCount: 1,
+				tokenUsage: { input: 1, output: 2, cached: 0 },
+				type: "complete",
+				message: "ok",
+			},
+			{
+				elapsedMs: 1,
+				turnCount: 1,
+				tokenUsage: { input: 1, output: 2, cached: 0 },
+				type: "failed",
+				message: "no",
+			},
+			{
+				elapsedMs: 1,
+				turnCount: 1,
+				tokenUsage: { input: 1, output: 2, cached: 0 },
+				type: "needsInput",
+				message: "need token",
+			},
+			{ elapsedMs: 1, turnCount: 1, tokenUsage: { input: 0, output: 0, cached: 0 }, type: "timeout" },
+			{ elapsedMs: 1, turnCount: 1, tokenUsage: { input: 0, output: 0, cached: 0 }, type: "stopped" },
+			{ elapsedMs: 1, turnCount: 1, tokenUsage: { input: 0, output: 0, cached: 0 }, type: "exhausted" },
+		];
+
+		expect(signals.map(describeExit)).toEqual([
+			"complete:ok",
+			"failed:no",
+			"needsInput:need token",
+			"timeout",
+			"stopped",
+			"exhausted",
+		]);
+	});
+
+	it("narrows Turn on `role` and is exhaustive", () => {
+		const assistant: Turn = {
+			id: 0,
+			role: "assistant",
+			content: "hi",
+			toolCalls: [],
+			tokenUsage: { input: 1, output: 2, cached: 0 },
+			durationMs: 10,
+			timestamp: "2026-06-29T00:00:00.000Z",
 		};
-		const suspendFrame: OutboxFrame = {
-			type: "suspend",
-			value: { reason: "inputRequired", elapsedMs: 5 },
-		};
-		const errorFrame: OutboxFrame = {
-			type: "error",
-			value: { code: "E_BOOM", message: "kaboom" },
+		const tool: Turn = {
+			id: 1,
+			role: "tool",
+			callId: "c1",
+			name: "bash",
+			result: "ok",
+			durationMs: 5,
+			timestamp: "2026-06-29T00:00:01.000Z",
 		};
 
-		// `type` tag round-trips for each variant.
-		expect(turnFrame.type).toBe("turn");
-		expect(doneFrame.type).toBe("done");
-		expect(suspendFrame.type).toBe("suspend");
-		expect(errorFrame.type).toBe("error");
-
-		// Discrimination narrows `value` to the matching payload (no cast).
-		expect(describeFrame(turnFrame)).toBe("turn#1");
-		expect(describeFrame(doneFrame)).toBe("ok");
-		expect(describeFrame(suspendFrame)).toBe("inputRequired");
-		expect(describeFrame(errorFrame)).toBe("E_BOOM");
+		expect(describeTurn(assistant)).toBe("assistant#0");
+		expect(describeTurn(tool)).toBe("tool:bash");
 	});
 });
 
-// Exhaustive narrowing: the `default` branch's `never` assignment compiles only
-// while OutboxFrame is closed at exactly turn|done|suspend|error. Adding or
-// renaming a member without updating this consumer breaks `tsc`.
-function describeFrame(frame: OutboxFrame): string {
-	switch (frame.type) {
-		case "turn": {
-			const v: TurnValue = frame.value;
-			return `turn#${v.index}`;
-		}
-		case "done": {
-			const v: DoneValue = frame.value;
-			return v.summary ?? "done";
-		}
-		case "suspend": {
-			const v: SuspendValue = frame.value;
-			return v.reason;
-		}
-		case "error": {
-			const v: ErrorValue = frame.value;
-			return v.code;
-		}
+function describeExit(exit: ExitSignal): string {
+	switch (exit.type) {
+		case "complete":
+		case "failed":
+		case "needsInput":
+			return `${exit.type}:${exit.message}`;
+		case "timeout":
+		case "stopped":
+		case "exhausted":
+			return exit.type;
 		default: {
-			const _never: never = frame;
+			const _never: never = exit;
+			return _never;
+		}
+	}
+}
+
+function describeTurn(turn: Turn): string {
+	switch (turn.role) {
+		case "assistant":
+			return `assistant#${turn.id}`;
+		case "tool":
+			return `tool:${turn.name}`;
+		default: {
+			const _never: never = turn;
 			return _never;
 		}
 	}
