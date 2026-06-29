@@ -12,7 +12,7 @@ import type {
 	AdapterInboxMessage,
 	AdapterInitConfig,
 } from "@sumeru/adapter-core";
-import type { DoneValue, ToolCall, TurnValue } from "@sumeru/core";
+import type { DoneValue, WireToolCall, TurnValue } from "@sumeru/adapter-core";
 import { createAcpClient } from "./acp-client.js";
 import type {
 	AcpClient,
@@ -267,6 +267,7 @@ function mapUpdateToTurns(
 		state.usage = {
 			input: update.input_tokens,
 			output: update.output_tokens,
+			cached: 0,
 		};
 		return [];
 	}
@@ -307,7 +308,7 @@ function flushPending(state: AcpStreamState): Array<TurnValue> {
 
 function mapToolCall(
 	update: Extract<AcpSessionUpdate, { sessionUpdate: "tool_call" }>,
-): ToolCall {
+): WireToolCall {
 	return {
 		tool: update.name,
 		input: update.input,

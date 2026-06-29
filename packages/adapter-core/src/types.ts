@@ -1,15 +1,26 @@
 // @sumeru/adapter-core — adapter-author contract + NDJSON wire-frame types.
 // Authoritative source: package-design wiki §4 "@sumeru/adapter-core — Adapter 公共框架".
-// Payload types are imported from @sumeru/core (NOT redefined here).
+// Wire payload types live in wire-types.ts; ModelConfig comes from @sumeru/core.
 
+import type { ModelConfig } from "@sumeru/core";
 import type {
 	DoneValue,
-	ErrorValue,
 	InboxMessage,
-	ModelConfig,
+	OutboxFrame,
 	SuspendValue,
 	TurnValue,
-} from "@sumeru/core";
+	WireErrorValue,
+} from "./wire-types.js";
+
+export type {
+	DoneValue,
+	InboxMessage,
+	OutboxFrame,
+	SuspendValue,
+	TurnValue,
+	WireErrorValue,
+	WireToolCall,
+} from "./wire-types.js";
 
 // === Adapter-author contract ===
 
@@ -56,8 +67,7 @@ export type InboundFrame =
 	| { type: "message"; value: AdapterInboxMessage };
 
 // Outbound frames written to stdout (discriminated union on `type`).
-// `ready` is local to adapter-core (core's OutboxFrame has no `ready` member);
-// `turn`/`done`/`error` reuse the payload types from @sumeru/core.
+// `ready` is local to adapter-core; turn/done/suspend/error reuse wire-types.
 export type SuspendOutboundValue = SuspendValue & {
 	nativeId: string | null;
 };
@@ -67,7 +77,7 @@ export type OutboundFrame =
 	| { type: "turn"; value: TurnValue }
 	| { type: "done"; value: DoneValue }
 	| { type: "suspend"; value: SuspendOutboundValue }
-	| { type: "error"; value: ErrorValue };
+	| { type: "error"; value: WireErrorValue };
 
 // === Entrypoint run options (injectable I/O seam for unit testing) ===
 

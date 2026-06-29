@@ -12,7 +12,7 @@ import { DEFAULT_MAX_ITERATIONS } from "./types.js";
 
 function resolveBaseUrl(model: ModelConfig): string | null {
 	if (typeof model.provider !== "string") {
-		return model.provider.baseUrl;
+		return model.provider.endpoint;
 	}
 	return null;
 }
@@ -24,7 +24,7 @@ function resolveModel(model: ModelConfig): {
 } {
 	return {
 		name: model.name,
-		apiKey: model.apiKey,
+		apiKey: model.apiKey ?? "",
 		baseUrl: resolveBaseUrl(model),
 	};
 }

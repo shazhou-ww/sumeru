@@ -1,5 +1,5 @@
 import type { AdapterHandleYield } from "@sumeru/adapter-core";
-import type { DoneValue, ToolCall, TurnValue } from "@sumeru/core";
+import type { DoneValue, WireToolCall, TurnValue } from "@sumeru/adapter-core";
 import type { Conversation } from "./context.js";
 import { pushAssistant, pushToolResult, toMessages } from "./context.js";
 import { chat } from "./llm/client.js";
@@ -26,7 +26,7 @@ async function executeToolCall(
 	call: LlmToolCall,
 	tools: Array<Tool>,
 	ctx: ToolContext,
-): Promise<ToolCall> {
+): Promise<WireToolCall> {
 	const tool = tools.find((t) => t.name === call.name) ?? null;
 	let parsedArgs: Record<string, unknown>;
 	let parseError: string | null = null;
@@ -113,7 +113,7 @@ export async function* runLoop(
 			yield turn;
 			return {
 				summary: null,
-				tokenUsage: { input: inputTokens, output: outputTokens },
+				tokenUsage: { input: inputTokens, output: outputTokens, cached: 0 },
 			};
 		}
 
@@ -129,7 +129,7 @@ export async function* runLoop(
 		for (const [i, call] of res.toolCalls.entries()) {
 			pushToolResult(conversation, call.id, results[i].output ?? "");
 		}
-		const executed: Array<ToolCall> = results;
+		const executed: Array<WireToolCall> = results;
 
 		const turn: TurnValue = {
 			index,
@@ -145,6 +145,6 @@ export async function* runLoop(
 
 	return {
 		summary: "max iterations reached",
-		tokenUsage: { input: inputTokens, output: outputTokens },
+		tokenUsage: { input: inputTokens, output: outputTokens, cached: 0 },
 	};
 }

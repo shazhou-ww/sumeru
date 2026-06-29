@@ -1,6 +1,6 @@
 // Spec: adapter-core-shutdown-and-errors.md
 
-import type { DoneValue, TurnValue } from "@sumeru/core";
+import type { DoneValue, TurnValue } from "@sumeru/adapter-core";
 import { describe, expect, it } from "vitest";
 import type { AdapterImpl } from "../src/types.js";
 import {

@@ -4,8 +4,8 @@ import { dirname, resolve } from "node:path";
 import {
 	formatDockerImagesOutput,
 	formatHostStatus,
-	formatInstanceTable,
 	formatPrototypeTable,
+	formatSessionTable,
 } from "./format.js";
 import { createHostClient, HostClientError } from "./http-client.js";
 import {
@@ -23,12 +23,12 @@ Commands:
   server stop
   server status
   prototypes
-  instances
-  create <prototype> [--project <path>...]
-  delete <instance_id>
-  send <instance_id> <message>
-  logs <instance_id> [--follow]
-  reset <instance_id>
+  sessions
+  create <prototype> --project <path> --task <description>
+  delete <session_id>
+  send <session_id> <message>
+  logs <session_id> [--follow]
+  stop <session_id>
   images
 
 Environment:
@@ -223,13 +223,13 @@ async function runPrototypes(
 	}
 }
 
-async function runInstances(
+async function runSessions(
 	flags: Map<string, string | boolean>,
 ): Promise<void> {
 	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 	try {
-		const envelope = await client.listInstances();
-		process.stdout.write(`${formatInstanceTable(envelope.value)}\n`);
+		const envelope = await client.listSessions();
+		process.stdout.write(`${formatSessionTable(envelope.value)}\n`);
 	} catch (err) {
 		writeClientError(err);
 	}
@@ -240,49 +240,45 @@ async function runCreate(
 	positionals: Array<string>,
 ): Promise<void> {
 	const prototype = positionals[0];
-	if (prototype === undefined || prototype.length === 0) {
-		fail("Usage: sumeru create <prototype> [--project <path>...]");
+	const project = flagString(flags, "project");
+	const task = flagString(flags, "task");
+	if (
+		prototype === undefined ||
+		prototype.length === 0 ||
+		project === null ||
+		task === null
+	) {
+		fail(
+			"Usage: sumeru create <prototype> --project <path> --task <description>",
+		);
 	}
-	const projects = collectProjects(flags, positionals.slice(1));
 	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 	try {
-		const envelope = await client.createInstance(prototype, projects);
+		const envelope = await client.createSession({
+			prototype,
+			project,
+			task,
+			model: null,
+			env: null,
+		});
 		process.stdout.write(`${envelope.value.id}\n`);
 	} catch (err) {
 		writeClientError(err);
 	}
 }
 
-function collectProjects(
-	flags: Map<string, string | boolean>,
-	extraPositionals: Array<string>,
-): Array<string> | null {
-	const projects: Array<string> = [];
-	for (const [key, value] of flags.entries()) {
-		if (key === "project" && typeof value === "string") {
-			projects.push(value);
-		}
-	}
-	for (const positional of extraPositionals) {
-		if (positional.length > 0) {
-			projects.push(positional);
-		}
-	}
-	return projects.length > 0 ? projects : null;
-}
-
 async function runDelete(
 	flags: Map<string, string | boolean>,
 	positionals: Array<string>,
 ): Promise<void> {
-	const instanceId = positionals[0];
-	if (instanceId === undefined || instanceId.length === 0) {
-		fail("Usage: sumeru delete <instance_id>");
+	const sessionId = positionals[0];
+	if (sessionId === undefined || sessionId.length === 0) {
+		fail("Usage: sumeru delete <session_id>");
 	}
 	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 	try {
-		await client.deleteInstance(instanceId);
-		process.stdout.write(`deleted ${instanceId}\n`);
+		await client.deleteSession(sessionId);
+		process.stdout.write(`deleted ${sessionId}\n`);
 	} catch (err) {
 		writeClientError(err);
 	}
@@ -292,23 +288,24 @@ async function runSend(
 	flags: Map<string, string | boolean>,
 	positionals: Array<string>,
 ): Promise<void> {
-	const instanceId = positionals[0];
+	const sessionId = positionals[0];
 	const message = positionals.slice(1).join(" ");
 	if (
-		instanceId === undefined ||
-		instanceId.length === 0 ||
+		sessionId === undefined ||
+		sessionId.length === 0 ||
 		message.length === 0
 	) {
-		fail("Usage: sumeru send <instance_id> <message>");
+		fail("Usage: sumeru send <session_id> <message>");
 	}
 	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 	try {
-		const envelope = await client.submitInbox(instanceId, {
+		const envelope = await client.submitMessage(sessionId, {
 			content: message,
-			project: null,
+			env: null,
+			model: null,
 		});
 		process.stdout.write(
-			`accepted message ${envelope.value.messageId} for ${envelope.value.instanceId}\n`,
+			`accepted message ${envelope.value.messageId} for ${envelope.value.sessionId}\n`,
 		);
 	} catch (err) {
 		writeClientError(err);
@@ -319,9 +316,9 @@ async function runLogs(
 	flags: Map<string, string | boolean>,
 	positionals: Array<string>,
 ): Promise<void> {
-	const instanceId = positionals[0];
-	if (instanceId === undefined || instanceId.length === 0) {
-		fail("Usage: sumeru logs <instance_id> [--follow]");
+	const sessionId = positionals[0];
+	if (sessionId === undefined || sessionId.length === 0) {
+		fail("Usage: sumeru logs <session_id> [--follow]");
 	}
 	const follow = flagBoolean(flags, "follow");
 	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
@@ -334,7 +331,7 @@ async function runLogs(
 
 	try {
 		do {
-			await client.streamOutbox(instanceId, printEvent);
+			await client.streamEvents(sessionId, printEvent);
 			if (!follow) break;
 		} while (follow);
 	} catch (err) {
@@ -342,18 +339,18 @@ async function runLogs(
 	}
 }
 
-async function runReset(
+async function runStop(
 	flags: Map<string, string | boolean>,
 	positionals: Array<string>,
 ): Promise<void> {
-	const instanceId = positionals[0];
-	if (instanceId === undefined || instanceId.length === 0) {
-		fail("Usage: sumeru reset <instance_id>");
+	const sessionId = positionals[0];
+	if (sessionId === undefined || sessionId.length === 0) {
+		fail("Usage: sumeru stop <session_id>");
 	}
 	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 	try {
-		await client.resetInstance(instanceId);
-		process.stdout.write(`reset ${instanceId}\n`);
+		await client.stopSession(sessionId);
+		process.stdout.write(`stopped ${sessionId}\n`);
 	} catch (err) {
 		writeClientError(err);
 	}
@@ -415,8 +412,8 @@ async function main(): Promise<void> {
 		await runPrototypes(parsed.flags);
 		return;
 	}
-	if (cmd === "instances") {
-		await runInstances(parsed.flags);
+	if (cmd === "sessions") {
+		await runSessions(parsed.flags);
 		return;
 	}
 	if (cmd === "create") {
@@ -435,8 +432,8 @@ async function main(): Promise<void> {
 		await runLogs(parsed.flags, parsed.positionals);
 		return;
 	}
-	if (cmd === "reset") {
-		await runReset(parsed.flags, parsed.positionals);
+	if (cmd === "stop") {
+		await runStop(parsed.flags, parsed.positionals);
 		return;
 	}
 	if (cmd === "images") {

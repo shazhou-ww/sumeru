@@ -6,7 +6,7 @@ import type {
 	InboxMessage,
 	ModelConfig,
 	TurnValue,
-} from "@sumeru/core";
+} from "@sumeru/adapter-core";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type {
 	AdapterHandleYield,
@@ -47,7 +47,6 @@ describe("@sumeru/adapter-core — types contract", () => {
 			provider: "anthropic",
 			name: "claude-sonnet-4",
 			apiKey: "test-key",
-			contextWindow: 200000,
 		};
 		const config: AdapterInitConfig = {
 			instructions: "hi",

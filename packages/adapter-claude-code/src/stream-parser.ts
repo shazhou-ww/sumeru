@@ -3,7 +3,7 @@
  * `claude -p ... --output-format stream-json --verbose` NDJSON output.
  */
 
-import type { ToolCall, TurnValue } from "@sumeru/core";
+import type { WireToolCall, TurnValue } from "@sumeru/adapter-core";
 import type {
 	ClaudeCodeParsedResult,
 	ClaudeCodeResultSubtype,
@@ -24,7 +24,7 @@ function safeString(v: unknown, fallback = ""): string {
 
 type ParseState = {
 	turns: TurnValue[];
-	pendingToolCalls: Map<string, ToolCall>;
+	pendingToolCalls: Map<string, WireToolCall>;
 	resultLine: Record<string, unknown> | null;
 	model: string;
 	sessionId: string;
@@ -46,8 +46,8 @@ function extractTextContent(content: unknown[]): string {
 	return texts.join("\n");
 }
 
-function extractToolCalls(content: unknown[]): ToolCall[] {
-	const calls: ToolCall[] = [];
+function extractToolCalls(content: unknown[]): Array<WireToolCall> {
+	const calls: Array<WireToolCall> = [];
 	for (const item of content) {
 		if (
 			!isRecord(item) ||
@@ -358,7 +358,7 @@ export function doneValueFromResultLine(
 	resultLine: Record<string, unknown> | null,
 ): {
 	summary: string | null;
-	tokenUsage: { input: number; output: number } | null;
+	tokenUsage: { input: number; output: number; cached: number } | null;
 } {
 	if (resultLine === null) {
 		return { summary: null, tokenUsage: null };
@@ -368,6 +368,10 @@ export function doneValueFromResultLine(
 	const usage = isRecord(resultLine.usage) ? resultLine.usage : {};
 	const input = safeNumber(usage.input_tokens);
 	const output = safeNumber(usage.output_tokens);
-	const tokenUsage = input === 0 && output === 0 ? null : { input, output };
+	const cached = safeNumber(usage.cache_read_input_tokens);
+	const tokenUsage =
+		input === 0 && output === 0 && cached === 0
+			? null
+			: { input, output, cached };
 	return { summary, tokenUsage };
 }

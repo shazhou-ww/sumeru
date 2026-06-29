@@ -1,4 +1,4 @@
-import type { InstanceInfo } from "@sumeru/core";
+import type { SessionInfo } from "@sumeru/core";
 
 export type HostClientOptions = {
 	baseUrl: string;
@@ -12,31 +12,38 @@ export type Envelope<T> = {
 export type HostRootValue = {
 	name: string;
 	version: string;
-	master: string;
-	prototypes: Array<string>;
-	instances: Array<string>;
+	status: {
+		running: number;
+		queued: number;
+		idle: number;
+	};
+	uptime: number;
 };
 
 export type PrototypeListItem = {
 	name: string;
-	adapter: string;
+};
+
+export type CreateSessionBody = {
+	prototype: string;
+	project: string;
+	task: string;
+	model: { provider: SessionInfo["model"]["provider"]; name: string } | null;
+	env: Record<string, string> | null;
 };
 
 export type HostClient = {
 	getRoot(): Promise<Envelope<HostRootValue>>;
 	listPrototypes(): Promise<Envelope<Array<PrototypeListItem>>>;
-	listInstances(): Promise<Envelope<Array<InstanceInfo>>>;
-	createInstance(
-		prototype: string,
-		projects: Array<string> | null,
-	): Promise<Envelope<InstanceInfo>>;
-	deleteInstance(id: string): Promise<void>;
-	submitInbox(
+	listSessions(): Promise<Envelope<Array<SessionInfo>>>;
+	createSession(body: CreateSessionBody): Promise<Envelope<SessionInfo>>;
+	deleteSession(id: string): Promise<void>;
+	submitMessage(
 		id: string,
-		body: { content: string; project: string | null },
-	): Promise<Envelope<{ instanceId: string; messageId: string }>>;
-	resetInstance(id: string): Promise<void>;
-	streamOutbox(
+		body: { content: string; env: Record<string, string> | null; model: CreateSessionBody["model"] },
+	): Promise<Envelope<{ sessionId: string; messageId: string }>>;
+	stopSession(id: string): Promise<Envelope<SessionInfo>>;
+	streamEvents(
 		id: string,
 		onEvent: (event: string, data: string) => void,
 	): Promise<void>;
@@ -98,24 +105,21 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			);
 			return json;
 		},
-		async listInstances() {
-			const { json } = await requestJson<Array<InstanceInfo>>(
+		async listSessions() {
+			const { json } = await requestJson<Array<SessionInfo>>(
 				"GET",
-				"/instances",
+				"/sessions",
 				null,
 			);
 			return json;
 		},
-		async createInstance(prototype, projects) {
-			const { json } = await requestJson<InstanceInfo>("POST", "/instances", {
-				prototype,
-				projects,
-			});
+		async createSession(body) {
+			const { json } = await requestJson<SessionInfo>("POST", "/sessions", body);
 			return json;
 		},
-		async deleteInstance(id) {
+		async deleteSession(id) {
 			const response = await fetch(
-				`${baseUrl}/instances/${encodeURIComponent(id)}`,
+				`${baseUrl}/sessions/${encodeURIComponent(id)}`,
 				{
 					method: "DELETE",
 				},
@@ -140,41 +144,24 @@ export function createHostClient(options: HostClientOptions): HostClient {
 				errValue.message,
 			);
 		},
-		async submitInbox(id, body) {
+		async submitMessage(id, body) {
 			const { json } = await requestJson<{
-				instanceId: string;
+				sessionId: string;
 				messageId: string;
-			}>("POST", `/instances/${encodeURIComponent(id)}/inbox`, body);
+			}>("POST", `/sessions/${encodeURIComponent(id)}/messages`, body);
 			return json;
 		},
-		async resetInstance(id) {
-			const response = await fetch(
-				`${baseUrl}/instances/${encodeURIComponent(id)}/reset`,
-				{ method: "POST" },
+		async stopSession(id) {
+			const { json } = await requestJson<SessionInfo>(
+				"POST",
+				`/sessions/${encodeURIComponent(id)}/stop`,
+				null,
 			);
-			if (response.status === 204) return;
-			const text = await response.text();
-			if (text.length === 0) {
-				throw new HostClientError(
-					response.status,
-					"request_failed",
-					`HTTP ${String(response.status)}`,
-				);
-			}
-			const json = JSON.parse(text) as Envelope<{
-				error: string;
-				message: string;
-			}>;
-			const errValue = json.value;
-			throw new HostClientError(
-				response.status,
-				errValue.error,
-				errValue.message,
-			);
+			return json;
 		},
-		async streamOutbox(id, onEvent) {
+		async streamEvents(id, onEvent) {
 			const response = await fetch(
-				`${baseUrl}/instances/${encodeURIComponent(id)}/outbox`,
+				`${baseUrl}/sessions/${encodeURIComponent(id)}/events`,
 				{ headers: { Accept: "text/event-stream" } },
 			);
 			if (!response.ok) {

@@ -2,7 +2,7 @@
  * JSONL parser for Codex CLI's `codex exec --json` output.
  */
 
-import type { DoneValue, ToolCall, TurnValue } from "@sumeru/core";
+import type { DoneValue, WireToolCall, TurnValue } from "@sumeru/adapter-core";
 import type {
 	CodexParsedResult,
 	CodexResultSubtype,
@@ -71,7 +71,7 @@ function processItemCompleted(
 		const aggregatedOutput = safeString(item.aggregated_output);
 		const exitCode = typeof item.exit_code === "number" ? item.exit_code : null;
 
-		const toolCall: ToolCall = {
+		const toolCall: WireToolCall = {
 			tool: "command_execution",
 			input: { command },
 			output: aggregatedOutput,
@@ -250,7 +250,11 @@ export function doneValueFromResultLine(
 	const usage = isRecord(resultLine.usage) ? resultLine.usage : resultLine;
 	const input = safeNumber(usage.input_tokens);
 	const output = safeNumber(usage.output_tokens);
-	const tokenUsage = input === 0 && output === 0 ? null : { input, output };
+	const cached = safeNumber(usage.cache_read_input_tokens);
+	const tokenUsage =
+		input === 0 && output === 0 && cached === 0
+			? null
+			: { input, output, cached };
 	return { summary: null, tokenUsage };
 }
 

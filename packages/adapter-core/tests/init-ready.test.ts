@@ -1,6 +1,6 @@
 // Spec: adapter-core-init-ready-handshake.md
 
-import type { AdapterInitConfig } from "@sumeru/core";
+import type { AdapterInitConfig } from "@sumeru/adapter-core";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AdapterImpl } from "../src/types.js";
 import {

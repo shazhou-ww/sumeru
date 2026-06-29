@@ -1,14 +1,14 @@
-import type { InstanceId, TurnValue } from "./legacy-types.js";
+import type { OutboxFrame, TurnValue } from "@sumeru/adapter-core";
 import { openOcasStore, readChain, type TurnRecord } from "./ocas-recorder.js";
 
 export type SearchHit = {
-	instanceId: InstanceId;
+	sessionId: string;
 	turn: TurnRecord;
 	highlight: string;
 };
 
 export type SearchIndex = {
-	search(query: string, instanceFilter: InstanceId | null): Array<SearchHit>;
+	search(query: string, sessionFilter: string | null): Array<SearchHit>;
 };
 
 const HIGHLIGHT_RADIUS = 40;
@@ -18,7 +18,7 @@ export function createSearchIndex(dataDir: string): SearchIndex {
 
 	function search(
 		query: string,
-		instanceFilter: InstanceId | null,
+		sessionFilter: string | null,
 	): Array<SearchHit> {
 		const trimmed = query.trim();
 		if (trimmed.length === 0) return [];
@@ -27,14 +27,14 @@ export function createSearchIndex(dataDir: string): SearchIndex {
 		const hits: Array<SearchHit> = [];
 
 		for (const entry of entries) {
-			if (instanceFilter !== null && entry.instanceId !== instanceFilter) {
+			if (sessionFilter !== null && entry.sessionId !== sessionFilter) {
 				continue;
 			}
 			const content = entry.turn.value.content;
 			const matchIndex = content.toLowerCase().indexOf(lowerQuery);
 			if (matchIndex === -1) continue;
 			hits.push({
-				instanceId: entry.instanceId,
+				sessionId: entry.sessionId,
 				turn: entry.turn,
 				highlight: buildHighlight(content, matchIndex, trimmed.length),
 			});
@@ -47,14 +47,14 @@ export function createSearchIndex(dataDir: string): SearchIndex {
 }
 
 type TurnEntry = {
-	instanceId: InstanceId;
+	sessionId: string;
 	turn: TurnRecord;
 };
 
 const CHAIN_VAR_PREFIX = "@sumeru/chain/";
 
 /**
- * Load every recorded turn across all instances by walking each instance's
+ * Load every recorded turn across all sessions by walking each session's
  * CAS chain. Opens the store read-only, drains it eagerly into memory, then
  * closes the SQLite handle so the per-request index does not leak connections.
  */
@@ -70,14 +70,14 @@ function loadTurnEntries(dataDir: string): Array<TurnEntry> {
 	try {
 		const heads = handle.store.var.list({ namePrefix: CHAIN_VAR_PREFIX });
 		for (const head of heads) {
-			const instanceId = head.name.slice(CHAIN_VAR_PREFIX.length);
-			if (instanceId.length === 0) continue;
-			for (const entry of readChain(handle.store, instanceId)) {
+			const sessionId = head.name.slice(CHAIN_VAR_PREFIX.length);
+			if (sessionId.length === 0) continue;
+			for (const entry of readChain(handle.store, sessionId)) {
 				if (entry.payload.type !== "turn") continue;
 				const value = entry.payload.value as TurnValue;
 				if (typeof value.content !== "string") continue;
 				entries.push({
-					instanceId,
+					sessionId,
 					turn: {
 						timestamp: entry.payload.timestamp,
 						type: "turn",

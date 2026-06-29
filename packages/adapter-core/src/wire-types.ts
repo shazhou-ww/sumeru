@@ -1,19 +1,6 @@
-// v2 instance / adapter wire types retained locally until the host session layer
-// migrates to v3 SessionInfo / Turn. Not exported from @sumeru/core in v3.
+// Adapter NDJSON wire payload types. Not part of the public @sumeru/core v3 API.
 
 import type { TokenUsage } from "@sumeru/core";
-
-export type InstanceId = string;
-
-export type InstanceStatus = "running" | "stopped" | "idle" | "suspended";
-
-export type InstanceInfo = {
-	id: InstanceId;
-	prototype: string | null;
-	status: InstanceStatus;
-	createdAt: string;
-	projects: Array<string>;
-};
 
 export type InboxMessage = {
 	messageId: string;
@@ -21,7 +8,7 @@ export type InboxMessage = {
 	project: string | null;
 };
 
-export type LegacyToolCall = {
+export type WireToolCall = {
 	tool: string;
 	input: Record<string, unknown>;
 	output: string | null;
@@ -34,7 +21,7 @@ export type TurnValue = {
 	role: "user" | "assistant" | "system";
 	content: string;
 	timestamp: string;
-	toolCalls: Array<LegacyToolCall> | null;
+	toolCalls: Array<WireToolCall> | null;
 	tokens: TokenUsage | null;
 };
 

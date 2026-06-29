@@ -2,7 +2,7 @@
  * Package-local types for `@sumeru/adapter-codex` (v2).
  */
 
-import type { TurnValue } from "@sumeru/core";
+import type { TurnValue } from "@sumeru/adapter-core";
 
 export type SpawnExitInfo = {
 	exitCode: number | null;

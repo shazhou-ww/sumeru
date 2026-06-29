@@ -1,4 +1,4 @@
-import type { OutboxFrame } from "./legacy-types.js";
+import type { OutboxFrame } from "@sumeru/adapter-core";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
@@ -23,22 +23,4 @@ export function parseOutboxLine(line: string): OutboxFrame | null {
 		return parsed as OutboxFrame;
 	}
 	return null;
-}
-
-export async function* parseOutboxStream(
-	lines: AsyncIterable<string>,
-): AsyncGenerator<OutboxFrame> {
-	for await (const line of lines) {
-		const frame = parseOutboxLine(line);
-		if (frame !== null) {
-			yield frame;
-		}
-	}
-}
-
-export function outboxFrameToSseEvent(frame: OutboxFrame): {
-	event: string;
-	data: OutboxFrame;
-} {
-	return { event: frame.type, data: frame };
 }

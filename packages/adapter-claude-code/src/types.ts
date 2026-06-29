@@ -1,9 +1,9 @@
 /**
- * Package-local types for `@sumeru/adapter-claude-code` (v2).
- * Wire payload types (`TurnValue`, `DoneValue`, …) live in `@sumeru/core`.
+ * Package-local types for `@sumeru/adapter-claude-code`.
+ * Wire payload types (`TurnValue`, `DoneValue`, …) live in `@sumeru/adapter-core`.
  */
 
-import type { TurnValue } from "@sumeru/core";
+import type { TurnValue } from "@sumeru/adapter-core";
 
 /** Post-exit metadata from a streaming spawn. */
 export type SpawnExitInfo = {

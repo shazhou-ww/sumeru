@@ -1,4 +1,3 @@
-import type { AdapterInitConfig } from "@sumeru/adapter-core";
 import type {
 	HostConfig,
 	Image,
@@ -6,16 +5,7 @@ import type {
 	Prototype,
 	SessionInfo,
 } from "@sumeru/core";
-import type { OutboxFrame } from "./legacy-types.js";
 import type { TurnRecord } from "./ocas-recorder.js";
-
-export type {
-	DoneValue,
-	InboxMessage,
-	OutboxFrame,
-	SuspendValue,
-	TurnValue,
-} from "./legacy-types.js";
 
 export type Envelope<T> = {
 	type: string;
@@ -94,20 +84,6 @@ export type MessageAcceptedValue = {
 	messageId: string;
 };
 
-/** @deprecated Use MessageBody — retained for adapter wire compatibility */
-export type InboxBody = {
-	content: string;
-	project: string | null;
-};
-
-/** @deprecated Use MessageRequest */
-export type InboxRequest = InboxBody & {
-	messageId: string;
-};
-
-/** @deprecated Use MessageAcceptedValue */
-export type InboxAcceptedValue = MessageAcceptedValue;
-
 export type HistoryValue = {
 	sessionId: string;
 	total: number;
@@ -153,13 +129,6 @@ export type Transport = {
 		env: Record<string, string> | null;
 	}): TransportExecSession;
 	inspectStatus(containerId: string): Promise<"running" | "stopped">;
-};
-
-export type AdapterBridge = {
-	initConfig: AdapterInitConfig;
-	initialized: boolean;
-	session: TransportExecSession | null;
-	frameSubscribers: Set<(frame: OutboxFrame) => void>;
 };
 
 export type HostServerOptions = {

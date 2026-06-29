@@ -1,19 +1,17 @@
-# examples/minimal — Sumeru v2 minimal runnable Host
+# examples/minimal — Sumeru v3 minimal runnable Host
 
-The first runnable v2 example. A minimal `host.yaml` plus one prototype, enough to
-boot `@sumeru/host`, seed the reserved master `inst_0`, and answer the read-only
-**discovery** endpoints. Shared prerequisite for later scenarios (master roundtrip,
-SSE, worker lifecycle, ...).
+The first runnable v3 example. A minimal `host.yaml` plus one prototype, enough to
+boot `@sumeru/host` and answer the read-only **discovery** endpoints.
 
 ## Layout
 
 ```
 examples/minimal/
-  host.yaml                              # HostConfig (validateHostConfig)
+  host.yaml                              # HostConfig
   prototypes/
     echo-worker/
-      manifest.yaml                      # Manifest (validateManifest)
-      compose.yaml                       # opaque, forwarded to docker compose (workers only)
+      manifest.yaml                      # Prototype manifest
+      compose.yaml                       # Docker compose for session containers
 ```
 
 ## Run
@@ -25,18 +23,23 @@ pnpm install && pnpm run build
 SUMERU_PORT=7911 node packages/host/dist/main.js examples/minimal
 ```
 
-Defaults: `SUMERU_HOST=127.0.0.1`, `SUMERU_PORT=7900`. The master (`inst_0`) runs via
-local transport (no Docker needed for discovery). A `data/` dir is created at boot for
-OCAS recordings and is gitignored.
+Defaults: `SUMERU_HOST=127.0.0.1`, `SUMERU_PORT=7900`. A `data/` dir is created at
+boot for OCAS recordings and is gitignored.
 
 ## Discovery (read-only) endpoints
 
 ```bash
 curl -s http://127.0.0.1:7911/                          # @sumeru/host identity envelope
 curl -s http://127.0.0.1:7911/prototypes                # @sumeru/prototype-list
-curl -s http://127.0.0.1:7911/prototypes/echo-worker    # @sumeru/prototype (+ manifest)
-curl -s http://127.0.0.1:7911/instances                 # @sumeru/instance-list (inst_0 in list)
-curl -s http://127.0.0.1:7911/instances/inst_0/status   # @sumeru/instance-status
+curl -s http://127.0.0.1:7911/prototypes/echo-worker    # @sumeru/prototype
+curl -s http://127.0.0.1:7911/sessions                  # @sumeru/session-list
+curl -s http://127.0.0.1:7911/images                    # @sumeru/image-list
 ```
 
-Spec: `specs/host/host-bootstrap-discovery.md`.
+## Create a session
+
+```bash
+curl -s -X POST http://127.0.0.1:7911/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"prototype":"echo-worker","project":"demo","task":"Say hello","model":null,"env":null}'
+```

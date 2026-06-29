@@ -1,4 +1,4 @@
-import type { ToolCall } from "@sumeru/core";
+import type { WireToolCall } from "@sumeru/adapter-core";
 
 export type HermesAdapterOptions = {
 	profile: string;
@@ -116,8 +116,8 @@ export type AcpClientOptions = AcpClientCreateOptions & {
 };
 
 export type AcpStreamState = {
-	pendingToolCalls: Array<ToolCall>;
+	pendingToolCalls: Array<WireToolCall>;
 	pendingText: string;
-	usage: { input: number; output: number } | null;
+	usage: { input: number; output: number; cached: number } | null;
 	nextIndex: number;
 };

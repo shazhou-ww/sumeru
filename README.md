@@ -7,116 +7,113 @@
 ## 核心概念
 
 ```
-Instance (一个进程，一个 endpoint)
+Host (一个进程，一个 HTTP endpoint)
   │
-  ├─ Gateway: hermes (adapter = @sumeru/adapter-hermes)
-  │    ├─ Session ses_01JXYZ → native: hermes session 20260614_053637_b3a39f
-  │    └─ Session ses_01JXZZ → native: hermes session 20260614_053701_1f1583
+  ├─ Prototype: software-engineer (manifest + compose)
+  │    └─ Session ses_01JXYZ → Docker container + adapter
   │
-  └─ Gateway: claude-code (adapter = @sumeru/adapter-claude-code)
-       └─ Session ses_01JY00 → native: claude session xyz
+  └─ Prototype: code-reviewer
+       └─ Session ses_01JXZZ → Docker container + adapter
 ```
 
-- **Instance** — 一个 Sumeru 进程，一个运行环境的 agent 管理层，对外暴露一个 HTTP endpoint
-- **Gateway** — Instance 内的一个 agent 入口，由 adapter 驱动，配置声明 capabilities
-- **Session** — 一次 agent 对话，`ses_` + ULID，支持 resume（多次 message 延续同一 conversation）
-- **Adapter** — 每类 agent 一个包，实现 `createSession` / `send` / `close` / `getTurns`
+- **Host** — 一个 Sumeru 进程，为同一运行环境内的多个 agent 提供统一的收发室
+- **Prototype** — agent 模板（instructions、skills、默认资源）
+- **Session** — 一次 agent 对话，`ses_` + ULID，支持多次 message 延续
+- **Adapter** — 每类 agent 一个包，实现 NDJSON stdin/stdout 协议
 
 ## Quick Start
 
 ```bash
-# 1. 创建实例配置
-cat > sumeru.yaml << 'EOF'
+# 1. 创建 host 配置
+cat > host.yaml << 'EOF'
 name: sumeru@local
-
-gateways:
-  hermes:
-    adapter: hermes
-    capabilities:
-      resume: true
-      streaming: true
+maxRunning: 3
+workspaceRoot: /workspace
+envFile: ~/.config/sumeru/.env
+models:
+  anthropic:
+    baseUrl: null
+    apiKey: sk-ant-...
+  openai: null
+  openrouter: null
+resourceLimits: null
+defaults:
+  timeout: 7200000
+  maxTurns: 40
+  resources:
+    cpu: 2
+    memory: 4G
 EOF
 
 # 2. 启动服务
-sumeru start -c sumeru.yaml -p 7900
+SUMERU_PORT=7900 sumeru-host .
 
 # 3. 验证
 curl http://127.0.0.1:7900/
-# → {"type":"@sumeru/instance","value":{"name":"sumeru@local","version":"0.1.0","gateways":["hermes"]}}
+# → {"type":"@sumeru/host","value":{"name":"sumeru@local","version":"0.1.0","status":{...},"uptime":...}}
 ```
 
 ## HTTP API
 
 所有响应使用 ocas envelope 格式 `{ type, value }`。
 
-### 实例信息
+### Host 信息
 
 ```
-GET /  → @sumeru/instance
+GET /  → @sumeru/host
 ```
 
-### Gateway
+### Prototype
 
 ```
-GET /gateways           → @sumeru/gateways (列出所有 gateway)
-GET /gateways/:name     → @sumeru/gateway  (单个 gateway 详情)
+GET  /prototypes           → @sumeru/prototype-list
+GET  /prototypes/:name     → @sumeru/prototype
+POST /prototypes/:name     → 201 @sumeru/prototype
 ```
 
 ### Session
 
 ```
-POST   /gateways/:name/sessions          → 201 @sumeru/session (创建)
-GET    /gateways/:name/sessions/:id      → @sumeru/session     (查看)
-GET    /gateways/:name/sessions/:id/messages → @sumeru/message-history (历史)
-DELETE /gateways/:name/sessions/:id      → 204                 (关闭)
+GET    /sessions              → @sumeru/session-list
+POST   /sessions              → 201 @sumeru/session (创建)
+GET    /sessions/:id          → @sumeru/session (查看)
+POST   /sessions/:id/stop     → @sumeru/session (停止)
+DELETE /sessions/:id          → 204 (删除)
 ```
 
-### 发消息 (SSE)
+### 发消息
 
 ```
-POST /gateways/:name/sessions/:id/messages  → text/event-stream
+POST /sessions/:id/messages  → 202 @sumeru/message-accepted
 ```
 
-请求 body: `{ "content": "你的消息" }`
+请求 body: `{ "content": "你的消息", "env": null, "model": null }`
 
-SSE 事件流：
-- `event: turn` — 完整的 Turn 对象 `{ index, role, content, timestamp, hash }`
+### 事件流 (SSE)
+
+```
+GET /sessions/:id/events  → text/event-stream
+```
+
+SSE 事件：
+- `event: turn` — v3 Turn 对象
+- `event: exit` — 会话结束信号（complete / failed / timeout / …）
 - `event: heartbeat` — 保活
-- `event: done` — 完成，附带 summary `{ turnCount, tokens, durationMs }`
-- `event: suspend` — 终态：send 被中断（当前仅 `reason: "timeout"`），附带 `{ reason, nativeId, elapsedMs }`，可凭 `nativeId` 将来 resume
-- `event: error` — 错误
 
 支持 `Last-Event-ID` header 断点续传。
 
-### 搜索 & 导出
+### 历史 & 搜索
 
 ```
-GET  /sessions?q=keyword&gateway=hermes  → FTS5 全文搜索
-POST /gateways/:name/sessions/:id/export → tar.gz 导出
+GET /sessions/:id/history  → @sumeru/history
+GET /sessions/:id/turns    → @sumeru/turn-list
+GET /search?q=keyword&session=ses_...  → @sumeru/search
+POST /sessions/:id/export  → tar.gz 导出
 ```
-
-### 持久化 & 重启
-
-所有 turn 内容、session-meta，以及每个 session 的 **有序 turn 列表指针** 都落在
-`<ocasDir>/_store.db`（与 FTS5 索引同库）。server 重启后 `createSessionStore`
-会从盘上 rehydrate：之前记录过的 session 重新可见，`GET .../messages` 返回的历史
-与重启前完全一致（相同 total、相同 hash、相同顺序）。
-
-注意：adapter 侧的 `NativeSessionRef` 是运行时状态、不落盘——rehydrate 出来的
-session 历史可读但不可继续发新消息，`POST .../messages` 会返回
-`503 adapter_unavailable`。已关闭的 session 重启后仍为 `closed`；idle/active 统一
-恢复为 `idle`（重启不可能让一次发送悬在半途）。
-
-### SSE Reliability (Phase A, RFC #107)
-
-- Declarative router (api-kit) replacing hand-written dispatch
-- Generator + middleware pipeline: messageAction → withResumable → withHeartbeats → writeSseStream
-- CAS-backed SSE frame persistence — events survive server restart, no length/time limit
-- Automatic resume via Last-Event-ID (CAS replay)
 
 ## Packages
 
-Active v2 packages (build-dependency order):
+Active v3 packages (build-dependency order):
 
 | Package | Description |
 |---------|-------------|

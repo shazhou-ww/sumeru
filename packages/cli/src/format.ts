@@ -1,4 +1,4 @@
-import type { InstanceInfo } from "@sumeru/core";
+import type { SessionInfo } from "@sumeru/core";
 import type { HostRootValue, PrototypeListItem } from "./http-client.js";
 
 export type TableColumn<T> = {
@@ -24,11 +24,12 @@ export function formatTable<T>(
 
 export function formatHostStatus(root: HostRootValue): string {
 	const lines = [
-		`name:        ${root.name}`,
-		`version:     ${root.version}`,
-		`master:      ${root.master}`,
-		`prototypes:  ${root.prototypes.join(", ") || "(none)"}`,
-		`instances:   ${root.instances.join(", ") || "(none)"}`,
+		`name:     ${root.name}`,
+		`version:  ${root.version}`,
+		`running:  ${String(root.status.running)}`,
+		`queued:   ${String(root.status.queued)}`,
+		`idle:     ${String(root.status.idle)}`,
+		`uptime:   ${String(root.uptime)}s`,
 	];
 	return lines.join("\n");
 }
@@ -38,24 +39,16 @@ export function formatPrototypeTable(
 ): string {
 	return formatTable(prototypes, [
 		{ header: "NAME", width: 24, value: (row) => row.name },
-		{ header: "ADAPTER", width: 16, value: (row) => row.adapter },
 	]);
 }
 
-export function formatInstanceTable(instances: Array<InstanceInfo>): string {
-	return formatTable(instances, [
+export function formatSessionTable(sessions: Array<SessionInfo>): string {
+	return formatTable(sessions, [
 		{ header: "ID", width: 28, value: (row) => row.id },
-		{
-			header: "PROTOTYPE",
-			width: 16,
-			value: (row) => row.prototype ?? "master",
-		},
+		{ header: "PROTOTYPE", width: 16, value: (row) => row.prototype },
 		{ header: "STATUS", width: 12, value: (row) => row.status },
-		{
-			header: "PROJECTS",
-			width: 24,
-			value: (row) => (row.projects.length > 0 ? row.projects.join(",") : "-"),
-		},
+		{ header: "PROJECT", width: 20, value: (row) => row.project },
+		{ header: "TASK", width: 24, value: (row) => row.task },
 	]);
 }
 
