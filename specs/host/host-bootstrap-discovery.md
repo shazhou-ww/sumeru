@@ -25,7 +25,7 @@ tags: [host, bootstrap, discovery, master, inst_0, manifest, envelope, http, m1,
   - `examples/minimal/prototypes/echo-worker/manifest.yaml` — `Manifest` validated by
     `validateManifest`: `name: echo-worker` (non-empty), `instructions` (string),
     `skills: []` (optional string array), `model: { provider: anthropic, name: claude-sonnet-4,
-    apiKeyEnv: ANTHROPIC_API_KEY, contextWindow: 200000 }` validated by `validateModelConfig`.
+    apiKey: ${ANTHROPIC_API_KEY}, contextWindow: 200000 }` validated by `validateModelConfig`.
   - `examples/minimal/prototypes/echo-worker/compose.yaml` — present but NOT schema-validated
     (opaque; only forwarded to `docker compose` for *worker* creation, never read during
     discovery).
@@ -76,7 +76,7 @@ tags: [host, bootstrap, discovery, master, inst_0, manifest, envelope, http, m1,
 - **`GET /prototypes/echo-worker` → `200`, `@sumeru/prototype`** (single prototype + full
   manifest). Observed:
   ```json
-  {"type":"@sumeru/prototype","value":{"name":"echo-worker","adapter":"echo-worker","manifest":{"name":"echo-worker","instructions":"You are a minimal echo worker. Repeat the user's message back to them.\n","skills":[],"model":{"provider":"anthropic","name":"claude-sonnet-4","apiKeyEnv":"ANTHROPIC_API_KEY","contextWindow":200000}}}}
+  {"type":"@sumeru/prototype","value":{"name":"echo-worker","adapter":"echo-worker","manifest":{"name":"echo-worker","instructions":"You are a minimal echo worker. Repeat the user's message back to them.\n","skills":[],"model":{"provider":"anthropic","name":"claude-sonnet-4","apiKey":"${ANTHROPIC_API_KEY}","contextWindow":200000}}}}
   ```
   - `value.manifest` is the parsed-and-validated `Manifest` (note the trailing `\n` preserved
     from the YAML block scalar `instructions`). An unknown name → `404 @sumeru/error`

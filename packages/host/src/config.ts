@@ -475,12 +475,15 @@ function parseYamlSafely(raw: string, path: string): unknown {
  */
 export function expandEnvVars(raw: string, context: string): string {
 	const pattern = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-(.*?))?\}/g;
-	return raw.replace(pattern, (_match, varName: string, defaultVal?: string) => {
-		const envVal = process.env[varName];
-		if (envVal !== undefined) return envVal;
-		if (defaultVal !== undefined) return defaultVal;
-		throw new Error(
-			`${context}: environment variable \${${varName}} is not set and has no default`,
-		);
-	});
+	return raw.replace(
+		pattern,
+		(_match, varName: string, defaultVal?: string) => {
+			const envVal = process.env[varName];
+			if (envVal !== undefined) return envVal;
+			if (defaultVal !== undefined) return defaultVal;
+			throw new Error(
+				`${context}: environment variable \${${varName}} is not set and has no default`,
+			);
+		},
+	);
 }

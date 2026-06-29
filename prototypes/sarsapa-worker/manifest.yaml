@@ -7,7 +7,7 @@ name: sarsapa-worker
 model:
   provider: openai          # KnownProvider: anthropic | openai | openrouter
   name: deepseek-ai/DeepSeek-V4-Pro
-  apiKeyEnv: SILICONFLOW_API_KEY
+  apiKey: ${SILICONFLOW_API_KEY}
   contextWindow: 128000
 instructions: |
   你是一个资深软件工程师，Sumeru 的芥子 worker agent。
