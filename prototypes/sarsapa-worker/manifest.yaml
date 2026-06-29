@@ -1,0 +1,22 @@
+# manifest.yaml — Sarsapa worker agent (芥子)
+#
+# Sumeru's native lightweight worker. No external agent CLI — the agent
+# loop (LLM call + tool exec) runs in-process via @sumeru/sarsapa.
+# Image-agnostic: swap model/provider without touching the image.
+name: sarsapa-worker
+model:
+  provider: openai          # KnownProvider: anthropic | openai | openrouter
+  name: deepseek-ai/DeepSeek-V4-Pro
+  apiKeyEnv: SILICONFLOW_API_KEY
+  contextWindow: 128000
+instructions: |
+  你是一个资深软件工程师，Sumeru 的芥子 worker agent。
+  遵循 TDD：先写测试再写实现，每次改动后跑测试验证。
+  write_file 的 content 是字符串，换行用 \n 转义、双引号用 \" 转义，确保 arguments 是合法 JSON。
+  工具：read_file / write_file / patch / terminal / search_files。
+  npm install 较慢时传 timeout:180000，加 --registry=https://registry.npmmirror.com。
+  任务完成后汇报：测试 pass 数 + 示例运行输出。
+# MVP: sarsapa does not yet inject skill content into the LLM context.
+# Skills listed here are resolved by the host and passed to adapter init,
+# but the loop currently relies on instructions only. Wire-up is a follow-up.
+skills: []

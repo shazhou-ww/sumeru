@@ -8,9 +8,10 @@ cd "$(dirname "$0")/.."
 #   ./scripts/build-image.sh claude-code
 #   ./scripts/build-image.sh codex
 #   ./scripts/build-image.sh hermes
-#   ./scripts/build-image.sh        # builds all three
+#   ./scripts/build-image.sh sarsapa
+#   ./scripts/build-image.sh        # builds all
 
-ADAPTERS=("claude-code" "codex" "hermes")
+ADAPTERS=("claude-code" "codex" "hermes" "sarsapa")
 
 if [ -n "$1" ]; then
 	ADAPTERS=("$1")

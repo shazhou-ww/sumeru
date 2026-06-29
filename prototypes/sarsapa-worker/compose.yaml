@@ -1,0 +1,10 @@
+# compose.yaml — container runtime for sarsapa-worker
+# Standard Docker Compose. The image carries the adapter dist; model/auth
+# come from env (declared in manifest, injected here).
+services:
+  agent:
+    image: sumeru/sarsapa:dev
+    mem_limit: 4g
+    cpus: 2
+    environment:
+      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
