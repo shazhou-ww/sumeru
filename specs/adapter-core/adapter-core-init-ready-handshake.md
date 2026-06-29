@@ -21,7 +21,7 @@ tags: [adapter-core, entrypoint, init, ready, handshake, ndjson, lifecycle, m1-3
   spec `handle` is never expected to be called.
 - A representative init line:
   ```json
-  {"type":"init","value":{"instructions":"You are a worker.","skills":[{"name":"tdd","content":"# TDD"}],"model":{"provider":"anthropic","name":"claude-sonnet-4","apiKeyEnv":"ANTHROPIC_API_KEY","contextWindow":200000}}}
+  {"type":"init","value":{"instructions":"You are a worker.","skills":[{"name":"tdd","content":"# TDD"}],"model":{"provider":"anthropic","name":"claude-sonnet-4","apiKey":"${ANTHROPIC_API_KEY}","contextWindow":200000}}}
   ```
 
 ## When

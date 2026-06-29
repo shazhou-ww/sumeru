@@ -33,7 +33,7 @@ classDiagram
   class ModelConfig {
     +provider: KnownProvider | CustomProvider
     +name: string
-    +apiKeyEnv: string
+    +apiKey: string    # supports ${VAR} / ${VAR:-default} expansion
     +contextWindow: number
   }
 ```
@@ -52,7 +52,7 @@ Model rules:
   - known string: `anthropic`, `openai`, `openrouter`
   - custom object: `{ baseUrl, apiType }` with `apiType` in `openai|anthropic`
 - `name`: required non-empty string.
-- `apiKeyEnv`: required non-empty string.
+- `apiKey`: required non-empty string. Supports `${VAR}` / `${VAR:-default}` env expansion at load time.
 - `contextWindow`: required finite number.
 
 ## Host Config Context

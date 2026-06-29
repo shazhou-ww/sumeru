@@ -86,7 +86,7 @@ docker run -d --name eval-test \
   sumeru/claude-code:dev
 
 docker exec eval-test node /opt/sumeru/adapter-claude-code/dist/main.js <<'JSONL'
-{"type":"init","value":{"instructions":"","skills":[],"model":{"provider":"anthropic","name":"claude-sonnet-4-20250514","apiKeyEnv":"ANTHROPIC_API_KEY","contextWindow":200000}}}
+{"type":"init","value":{"instructions":"","skills":[],"model":{"provider":"anthropic","name":"claude-sonnet-4-20250514","apiKey":"${ANTHROPIC_API_KEY}","contextWindow":200000}}}
 {"type":"message","value":{"messageId":"eval-1","content":"<prompt>","project":"/workspace","resumeNativeId":null}}
 JSONL
 ```

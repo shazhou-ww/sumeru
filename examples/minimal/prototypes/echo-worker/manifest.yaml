@@ -1,5 +1,5 @@
 # Prototype manifest — validated by validateManifest() in packages/host/src/config.ts.
-# Schema: name (non-empty), model{provider,name,apiKeyEnv,contextWindow}, instructions, skills?
+# Schema: name (non-empty), model{provider,name,apiKey,contextWindow}, instructions, skills?
 # Prototype map key is the DIRECTORY name (echo-worker); manifest.name is the adapter label.
 name: echo-worker
 
@@ -7,7 +7,7 @@ model:
   # provider: "anthropic" | "openai" | "openrouter" | { baseUrl, apiType: openai|anthropic }
   provider: anthropic
   name: claude-sonnet-4
-  apiKeyEnv: ANTHROPIC_API_KEY
+  apiKey: ${ANTHROPIC_API_KEY}
   contextWindow: 200000
 
 instructions: |

@@ -27,7 +27,7 @@ tags: [adapter-core, entrypoint, e2e, lifecycle, dummy-adapter, ndjson, mock-std
 ## When
 - The test calls `createAdapterEntry(dummy)` wired to the in-memory streams, then writes the
   following lines to stdin, each terminated by `\n`, in order:
-  1. `{"type":"init","value":{"instructions":"i","skills":[],"model":{"provider":"anthropic","name":"m","apiKeyEnv":"K","contextWindow":1000}}}`
+  1. `{"type":"init","value":{"instructions":"i","skills":[],"model":{"provider":"anthropic","name":"m","apiKey":"test-key","contextWindow":1000}}}`
   2. `{"type":"message","value":{"messageId":"msg_A","content":"alpha","project":null}}`
   3. `{"type":"message","value":{"messageId":"msg_B","content":"beta","project":"proj1"}}`
 - The test then **ends** stdin (EOF) and waits for the entrypoint to settle.

@@ -42,7 +42,7 @@ tags: [core, types, type-surface, m1-2, issue-123, phase-v2, zero-runtime]
   type ModelConfig = {
     provider: KnownProvider | CustomProvider
     name: string
-    apiKeyEnv: string
+    apiKey: string
     contextWindow: number
   }
   type KnownProvider = 'anthropic' | 'openai' | 'openrouter'
