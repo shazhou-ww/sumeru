@@ -35,7 +35,7 @@ curl -s -X POST "http://127.0.0.1:7901/sessions/${SID}/messages" \
 ```
 
 ## Then
-- HTTP 409 with error envelope `{"ok":false,"error":{"code":"session_busy","message":"Session is already running"}}`
+- HTTP 409 with error envelope `{"type":"@sumeru/error","value":{"error":"session_busy","message":"Session is already running"}}`
 - Session state is unchanged
 - No message is delivered to the adapter
 
@@ -50,7 +50,7 @@ curl -s -X POST "http://127.0.0.1:7901/sessions/nonexistent/messages" \
 ```
 
 ## Then
-- HTTP 404 with error envelope `{"ok":false,"error":{"code":"session_not_found","message":"Session not found"}}`
+- HTTP 404 with error envelope `{"type":"@sumeru/error","value":{"error":"session_not_found","message":"Session not found"}}`
 
 ## Notes
 - `submitMessage` in session-manager.ts guards: not_found → 404, running → 409, no container → 503

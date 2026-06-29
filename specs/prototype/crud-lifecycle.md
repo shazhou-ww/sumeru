@@ -28,9 +28,10 @@ GET /prototypes
 
 ```json
 {
-  "prototypes": [
-    { "name": "code-review", "instructions": "...", "skills": ["git"], "defaults": null },
-    { "name": "test-runner", "instructions": "...", "skills": [], "defaults": null }
+  "type": "@sumeru/prototype-list",
+  "value": [
+    { "name": "code-review", "instructions": "Review code changes.", "skills": ["git"], "defaults": null },
+    { "name": "test-runner", "instructions": "Run project tests.", "skills": [], "defaults": null }
   ]
 }
 ```
@@ -51,7 +52,8 @@ GET /prototypes/code-review
 
 ```json
 {
-  "prototype": {
+  "type": "@sumeru/prototype",
+  "value": {
     "name": "code-review",
     "instructions": "Review code changes for quality and correctness.",
     "skills": ["git"],
@@ -80,8 +82,9 @@ GET /prototypes/ghost
 
 ```json
 {
-  "error": {
-    "code": "prototype_not_found",
+  "type": "@sumeru/error",
+  "value": {
+    "error": "prototype_not_found",
     "message": "Prototype ghost not found"
   }
 }
@@ -115,7 +118,8 @@ Content-Type: application/json
 
 ```json
 {
-  "prototype": {
+  "type": "@sumeru/prototype",
+  "value": {
     "name": "my-agent",
     "instructions": "A general-purpose coding agent.",
     "skills": ["bash"],
@@ -146,8 +150,9 @@ Content-Type: application/json
 
 ```json
 {
-  "error": {
-    "code": "prototype_exists",
+  "type": "@sumeru/error",
+  "value": {
+    "error": "prototype_exists",
     "message": "Prototype my-agent already exists"
   }
 }
@@ -175,8 +180,9 @@ Content-Type: application/json
 
 ```json
 {
-  "error": {
-    "code": "invalid_body",
+  "type": "@sumeru/error",
+  "value": {
+    "error": "invalid_body",
     "message": "Prototype request body field \"name\" (\"agent-b\") must match file name \"agent-a\""
   }
 }
@@ -203,8 +209,9 @@ Content-Type: application/json
 
 ```json
 {
-  "error": {
-    "code": "invalid_body",
+  "type": "@sumeru/error",
+  "value": {
+    "error": "invalid_body",
     "message": "Prototype request body field \"instructions\" must be a string"
   }
 }
@@ -234,7 +241,8 @@ Content-Type: application/json
 
 ```json
 {
-  "prototype": {
+  "type": "@sumeru/prototype",
+  "value": {
     "name": "my-agent",
     "instructions": "Updated instructions for the agent.",
     "skills": [],
@@ -265,8 +273,9 @@ Content-Type: application/json
 
 ```json
 {
-  "error": {
-    "code": "prototype_not_found",
+  "type": "@sumeru/error",
+  "value": {
+    "error": "prototype_not_found",
     "message": "Prototype ghost not found"
   }
 }
@@ -302,8 +311,9 @@ DELETE /prototypes/ghost
 
 ```json
 {
-  "error": {
-    "code": "prototype_not_found",
+  "type": "@sumeru/error",
+  "value": {
+    "error": "prototype_not_found",
     "message": "Prototype ghost not found"
   }
 }

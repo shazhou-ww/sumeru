@@ -18,10 +18,10 @@ export function hostEnvelope(value: HostRootValue): Envelope<HostRootValue> {
 
 export function prototypeListEnvelope(
 	prototypes: Array<PrototypeInfo>,
-): Envelope<Array<{ name: string }>> {
+): Envelope<Array<Prototype>> {
 	return envelope(
 		"@sumeru/prototype-list",
-		prototypes.map((item) => ({ name: item.name })),
+		prototypes.map((item) => item.prototype),
 	);
 }
 

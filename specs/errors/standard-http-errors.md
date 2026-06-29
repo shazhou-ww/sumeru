@@ -694,5 +694,4 @@ curl -X PUT http://localhost:7900/prototypes/new-proto \
 - envelope 格式确保客户端可以统一解析 `type` 字段判断是否为错误
 - `writeSessionError()` 是 session 相关操作的统一错误映射函数，按 error message 字符串 switch 到对应 HTTP 状态码
 - `writePrototypeError()` 和 `writeSkillError()` 分别处理 prototype/skill 操作的错误映射
-- 未来可能增加 429 (queue full) 状态码用于并发限制场景
 - `adapter_io_error` 通过 SSE 事件流推送而非 HTTP 响应返回
