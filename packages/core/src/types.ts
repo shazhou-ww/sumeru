@@ -1,93 +1,111 @@
-// @sumeru/core — shared type definitions (M1 minimal type set).
-// Authoritative source: package-design wiki §1 "@sumeru/core — 共享类型".
+// @sumeru/core — shared type definitions (v3).
+// Authoritative source: spec-v3 wiki + issue #159.
 // Zero runtime: this module is type-only (no runtime values, functions, or classes).
 
-// === Manifest & Model ===
-export type Manifest = {
+// === Token usage ===
+export type TokenUsage = {
+	input: number;
+	output: number;
+	cached: number;
+};
+
+// === Model ===
+export type KnownProvider = "anthropic" | "openai" | "openrouter";
+export type CustomProvider = {
 	name: string;
-	model: ModelConfig;
-	instructions: string;
-	skills: Array<string>;
+	endpoint: string;
+	apiType: "openai" | "anthropic";
 };
 export type ModelConfig = {
 	provider: KnownProvider | CustomProvider;
 	name: string;
-	apiKey: string;
-	contextWindow: number;
-};
-export type KnownProvider = "anthropic" | "openai" | "openrouter";
-export type CustomProvider = {
-	baseUrl: string;
-	apiType: "openai" | "anthropic";
+	apiKey: string | null;
 };
 
-// === Instance ===
-export type InstanceId = string; // inst_<ULID>, master 固定 inst_0
-export type InstanceStatus = "running" | "stopped" | "idle" | "suspended";
-export type InstanceInfo = {
-	id: InstanceId;
-	prototype: string | null; // null = master
-	status: InstanceStatus;
-	createdAt: string; // ISO timestamp
-	projects: Array<string>;
+// === Prototype ===
+export type Prototype = {
+	name: string;
+	instructions: string;
+	skills: Array<string>;
+	defaults: {
+		maxTurns: number;
+		timeout: number;
+		resources: {
+			cpu: number;
+			memory: string;
+		};
+	} | null;
 };
 
-// === 消息协议 (Host <-> Adapter NDJSON 帧) ===
-export type InboxMessage = {
-	messageId: string;
-	content: string;
-	project: string | null;
-};
-export type OutboxFrame =
-	| { type: "turn"; value: TurnValue }
-	| { type: "done"; value: DoneValue }
-	| { type: "suspend"; value: SuspendValue }
-	| { type: "error"; value: ErrorValue };
-export type TurnValue = {
-	index: number;
-	role: "user" | "assistant" | "system";
-	content: string;
-	timestamp: string;
-	toolCalls: Array<ToolCall> | null;
-	tokens: TokenUsage | null;
-};
-export type ToolCall = {
-	tool: string;
-	input: Record<string, unknown>;
-	output: string | null;
-	durationMs: number | null;
-	exitCode: number | null;
-};
-export type DoneValue = {
-	summary: string | null;
-	tokenUsage: TokenUsage | null;
-};
-export type SuspendValue = {
-	reason: "timeout" | "permissionRequest" | "inputRequired";
+// === Session ===
+export type SessionStatus = "running" | "idle";
+export type ExitBase = {
 	elapsedMs: number;
+	turnCount: number;
+	tokenUsage: TokenUsage;
 };
-export type ErrorValue = {
-	code: string;
-	message: string;
+export type ExitSignal = ExitBase &
+	(
+		| { type: "complete"; message: string }
+		| { type: "failed"; message: string }
+		| { type: "needsInput"; message: string }
+		| { type: "timeout" }
+		| { type: "stopped" }
+		| { type: "exhausted" }
+	);
+export type SessionInfo = {
+	id: string;
+	prototype: string;
+	model: ModelConfig;
+	image: string;
+	project: string;
+	task: string;
+	status: SessionStatus;
+	exit: ExitSignal | null;
+	createdAt: string;
 };
-export type TokenUsage = {
-	input: number;
-	output: number;
+
+// === Turn stream ===
+export type ToolCall = {
+	id: string;
+	name: string;
+	arguments: Record<string, unknown>;
 };
+export type AssistantTurn = {
+	id: number;
+	role: "assistant";
+	content: string;
+	toolCalls: Array<ToolCall>;
+	tokenUsage: TokenUsage;
+	durationMs: number;
+	timestamp: string;
+};
+export type ToolTurn = {
+	id: number;
+	role: "tool";
+	callId: string;
+	name: string;
+	result: string;
+	durationMs: number;
+	timestamp: string;
+};
+export type Turn = AssistantTurn | ToolTurn;
 
 // === Host 配置 ===
 export type HostConfig = {
 	name: string;
-	master: MasterConfig;
-	resources: ResourceLimits;
-	dataDir: string | null;
-};
-export type MasterConfig = {
-	adapter: string;
-	config: Record<string, unknown>;
-};
-export type ResourceLimits = {
-	maxMemory: string;
-	maxCpus: number;
-	maxInstances: number;
+	maxRunning: number;
+	workspaceRoot: string;
+	envFile: string;
+	models: {
+		anthropic: { baseUrl: string | null; apiKey: string } | null;
+		openai: { baseUrl: string | null; apiKey: string } | null;
+		openrouter: { baseUrl: string | null; apiKey: string } | null;
+	};
+	resourceLimits: { maxCpu: number; maxMemory: string } | null;
+	defaults: {
+		timeout: number;
+		maxTurns: number;
+		resources: { cpu: number; memory: string };
+	} | null;
 };
