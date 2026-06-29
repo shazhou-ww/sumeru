@@ -6,5 +6,8 @@ services:
     image: sumeru/sarsapa:dev
     mem_limit: 4g
     cpus: 2
+    # Required (#171): bind-mount project dir so adapter cwd (message.project) exists in container.
+    volumes:
+      - "${SUMERU_PROJECT_PATH}:${SUMERU_PROJECT_PATH}"
     environment:
       - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}

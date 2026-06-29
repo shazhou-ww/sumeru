@@ -10,3 +10,6 @@ services:
     stdin_open: true
     tty: false
     restart: "no"
+    # Required (#171): bind-mount project dir so adapter cwd (message.project) exists in container.
+    volumes:
+      - "${SUMERU_PROJECT_PATH}:${SUMERU_PROJECT_PATH}"

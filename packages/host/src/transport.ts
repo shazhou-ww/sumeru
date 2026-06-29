@@ -44,7 +44,11 @@ export function createDockerTransport(
 	const composeBin = options.composeBin ?? "docker";
 
 	return {
-		async up({ projectName, composePath, workDir, env }) {
+		async up({ projectName, composePath, workDir, projectPath, env }) {
+			const composeEnv: Record<string, string> = {
+				...(env ?? {}),
+				SUMERU_PROJECT_PATH: projectPath,
+			};
 			const result = await runCommand(
 				[
 					composeBin,
@@ -57,7 +61,7 @@ export function createDockerTransport(
 					"-d",
 				],
 				workDir,
-				env,
+				composeEnv,
 			);
 			if (result.exitCode !== 0) {
 				throw new Error(
@@ -187,6 +191,7 @@ export type MockTransportCall =
 			projectName: string;
 			composePath: string;
 			workDir: string;
+			projectPath: string;
 			env: Record<string, string> | null;
 	  }
 	| { type: "down"; projectName: string; composePath: string; workDir: string }
