@@ -9,8 +9,9 @@ import type {
 	AdapterImpl,
 	AdapterInboxMessage,
 	AdapterInitConfig,
+	DoneValue,
+	TurnValue,
 } from "@sumeru/adapter-core";
-import type { DoneValue, TurnValue } from "@sumeru/adapter-core";
 import { defaultStreamingSpawn } from "./spawn.js";
 import {
 	doneValueFromResultLine,

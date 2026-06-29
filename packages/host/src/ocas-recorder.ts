@@ -64,11 +64,7 @@ export type TurnRecord = {
 export type OcasRecorder = {
 	/** Append `frame` to the session chain; returns the new node's CAS hash. */
 	append(sessionId: string, frame: OutboxFrame): Hash;
-	getTurns(
-		sessionId: string,
-		limit: number,
-		offset: number,
-	): Array<TurnRecord>;
+	getTurns(sessionId: string, limit: number, offset: number): Array<TurnRecord>;
 	getTurnTotal(sessionId: string): number;
 	/** Drop the session head pointer so its chain is no longer reachable. */
 	clear(sessionId: string): void;
@@ -109,10 +105,7 @@ export function openOcasStore(dataDir: string): OcasStoreHandle {
  * `prev` from the head node. A `seen` set guards against cycles or a corrupted
  * `prev` pointer; a missing node simply terminates the walk.
  */
-export function readChain(
-	store: Store,
-	sessionId: string,
-): Array<ChainEntry> {
+export function readChain(store: Store, sessionId: string): Array<ChainEntry> {
 	const head = store.var.get(chainHeadVarName(sessionId));
 	let cursor: Hash | null = head?.value ?? null;
 	const seen = new Set<Hash>();

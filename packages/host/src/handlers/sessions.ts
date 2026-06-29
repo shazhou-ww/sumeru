@@ -151,9 +151,7 @@ function parseModelBody(
 	return { provider, name };
 }
 
-function parseProvider(
-	value: unknown,
-): ModelConfig["provider"] | "invalid" {
+function parseProvider(value: unknown): ModelConfig["provider"] | "invalid" {
 	if (typeof value === "string") {
 		if (value === "anthropic" || value === "openai" || value === "openrouter") {
 			return value;
@@ -176,7 +174,10 @@ function writeSessionError(res: ServerResponse, err: unknown): void {
 		writeJson(
 			res,
 			400,
-			errorEnvelope("invalid_project", message.slice("invalid_project:".length)),
+			errorEnvelope(
+				"invalid_project",
+				message.slice("invalid_project:".length),
+			),
 		);
 		return;
 	}

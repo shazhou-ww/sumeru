@@ -18,7 +18,7 @@ gateways:
     # at boot. See `specs/adapter-claude-code-timeout-config.md`. The defaults
     # below cover long-running solve-issue runs; trim them for short tasks.
     config:
-      sendTimeoutMs: 1800000        # 30 min — kill a wedged `claude` send
+      sendTimeoutMs: 7200000        # 2 h — kill a wedged `claude` send (aligned with #92 default; #95 will turn timeout into a resumable suspend)
       createSessionTimeoutMs: 300000 # 5 min — kill a stuck initial spawn
       maxTurns: 120
     capabilities:

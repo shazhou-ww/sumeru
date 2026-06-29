@@ -6,7 +6,6 @@ import type { ModelConfig } from "@sumeru/core";
 import type {
 	DoneValue,
 	InboxMessage,
-	OutboxFrame,
 	SuspendValue,
 	TurnValue,
 	WireErrorValue,

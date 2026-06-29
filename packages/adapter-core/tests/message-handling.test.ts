@@ -48,7 +48,10 @@ describe("adapter-core — message handling", () => {
 				handleCalls.push(message);
 				yield turn(0, `re: ${message.content}`);
 				yield turn(1, "done thinking");
-				return { summary: "ok", tokenUsage: { input: 10, output: 20, cached: 0 } };
+				return {
+					summary: "ok",
+					tokenUsage: { input: 10, output: 20, cached: 0 },
+				};
 			},
 		};
 
@@ -84,7 +87,10 @@ describe("adapter-core — message handling", () => {
 			{ type: "turn", value: turn(1, "done thinking") },
 			{
 				type: "done",
-				value: { summary: "ok", tokenUsage: { input: 10, output: 20, cached: 0 } },
+				value: {
+					summary: "ok",
+					tokenUsage: { input: 10, output: 20, cached: 0 },
+				},
 			},
 		]);
 	});

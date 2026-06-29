@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadHostConfig } from "../src/config.js";
 import { VERSION } from "../src/index.js";
-import { createSessionManager } from "../src/session-manager.js";
 import { createHostHandler } from "../src/server.js";
+import { createSessionManager } from "../src/session-manager.js";
 import { createMockTransport } from "../src/transport.js";
 
 function writeHostFixture(rootDir: string, withEmbeddedImages: boolean): void {

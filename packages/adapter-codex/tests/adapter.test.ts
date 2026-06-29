@@ -82,7 +82,11 @@ describe("@sumeru/adapter-codex — adapter", () => {
 		while (true) {
 			const step = await generator.next();
 			if (step.done === true) {
-				expect(step.value.tokenUsage).toEqual({ input: 10, output: 5, cached: 0 });
+				expect(step.value.tokenUsage).toEqual({
+					input: 10,
+					output: 5,
+					cached: 0,
+				});
 				break;
 			}
 			turns.push(step.value);

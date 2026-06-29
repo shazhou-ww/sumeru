@@ -2,7 +2,7 @@
  * JSONL parser for Codex CLI's `codex exec --json` output.
  */
 
-import type { DoneValue, WireToolCall, TurnValue } from "@sumeru/adapter-core";
+import type { DoneValue, TurnValue, WireToolCall } from "@sumeru/adapter-core";
 import type {
 	CodexParsedResult,
 	CodexResultSubtype,

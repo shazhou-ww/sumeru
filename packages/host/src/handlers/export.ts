@@ -4,8 +4,8 @@ import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import { errorEnvelope } from "../envelope.js";
 import { writeJson } from "../http-utils.js";
-import type { SessionManager } from "../session-manager.js";
 import { openOcasStore, readChain } from "../ocas-recorder.js";
+import type { SessionManager } from "../session-manager.js";
 
 export function createExportHandler(manager: SessionManager, dataDir: string) {
 	return async (

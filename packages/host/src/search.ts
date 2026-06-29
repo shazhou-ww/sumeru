@@ -1,4 +1,4 @@
-import type { OutboxFrame, TurnValue } from "@sumeru/adapter-core";
+import type { TurnValue } from "@sumeru/adapter-core";
 import { openOcasStore, readChain, type TurnRecord } from "./ocas-recorder.js";
 
 export type SearchHit = {

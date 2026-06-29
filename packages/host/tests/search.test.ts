@@ -35,10 +35,7 @@ describe("createSearchIndex", () => {
 		const hits = index.search("world", null);
 
 		expect(hits).toHaveLength(2);
-		expect(hits.map((hit) => hit.sessionId).sort()).toEqual([
-			"ses_a",
-			"ses_b",
-		]);
+		expect(hits.map((hit) => hit.sessionId).sort()).toEqual(["ses_a", "ses_b"]);
 	});
 
 	it("filters by session when sessionFilter is set", () => {

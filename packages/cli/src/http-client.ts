@@ -40,7 +40,11 @@ export type HostClient = {
 	deleteSession(id: string): Promise<void>;
 	submitMessage(
 		id: string,
-		body: { content: string; env: Record<string, string> | null; model: CreateSessionBody["model"] },
+		body: {
+			content: string;
+			env: Record<string, string> | null;
+			model: CreateSessionBody["model"];
+		},
 	): Promise<Envelope<{ sessionId: string; messageId: string }>>;
 	stopSession(id: string): Promise<Envelope<SessionInfo>>;
 	streamEvents(
@@ -114,7 +118,11 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			return json;
 		},
 		async createSession(body) {
-			const { json } = await requestJson<SessionInfo>("POST", "/sessions", body);
+			const { json } = await requestJson<SessionInfo>(
+				"POST",
+				"/sessions",
+				body,
+			);
 			return json;
 		},
 		async deleteSession(id) {

@@ -1,12 +1,12 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadHostConfig } from "../src/config.js";
 import { VERSION } from "../src/index.js";
-import { createSessionManager } from "../src/session-manager.js";
 import { createHostHandler } from "../src/server.js";
+import { createSessionManager } from "../src/session-manager.js";
 import { createMockTransport } from "../src/transport.js";
 
 function writeV3HostFixture(rootDir: string): void {

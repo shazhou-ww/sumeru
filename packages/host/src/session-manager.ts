@@ -19,7 +19,6 @@ import {
 } from "./id.js";
 import { createOcasRecorder, type OcasRecorder } from "./ocas-recorder.js";
 import { parseOutboxLine } from "./outbox.js";
-import { wireTurnsToV3, turnRecordsToV3 } from "./wire-turn.js";
 import {
 	createSseBuffer,
 	type SseBuffer,
@@ -34,6 +33,7 @@ import type {
 	MessageRequest,
 	Transport,
 } from "./types.js";
+import { turnRecordsToV3, wireTurnsToV3 } from "./wire-turn.js";
 
 type AdapterRuntime = {
 	initConfig: AdapterInitConfig;
@@ -60,10 +60,7 @@ export type SessionManager = {
 	stopSession(id: string): Promise<ManagedSession>;
 	deleteSession(id: string): Promise<void>;
 	submitMessage(id: string, body: MessageRequest): Promise<void>;
-	subscribeEvents(
-		id: string,
-		onEvent: (event: SseEvent) => void,
-	): () => void;
+	subscribeEvents(id: string, onEvent: (event: SseEvent) => void): () => void;
 	getSseBuffer(id: string): SseBuffer;
 	getHistory(id: string, limit: number, offset: number): HistoryValue;
 	getSessionTurns(id: string, after: number | null): Array<Turn>;
@@ -272,10 +269,7 @@ export function createSessionManager(input: {
 			}
 		}
 		if (body.model !== null) {
-			const nextModel = resolveModelConfig(
-				input.hostConfig.config,
-				body.model,
-			);
+			const nextModel = resolveModelConfig(input.hostConfig.config, body.model);
 			if (modelConfigChanged(record.model, nextModel)) {
 				record.model = nextModel;
 				const runtime = adapters.get(id);
@@ -388,7 +382,10 @@ export function createSessionManager(input: {
 		return event;
 	}
 
-	function appendExitEvent(runtime: AdapterRuntime, exit: ExitSignal): SseEvent {
+	function appendExitEvent(
+		runtime: AdapterRuntime,
+		exit: ExitSignal,
+	): SseEvent {
 		const event = runtime.sseBuffer.append({
 			event: "exit",
 			data: JSON.stringify(exit),
@@ -685,11 +682,7 @@ export function createSessionManager(input: {
 		return prototype.prototypeHash;
 	}
 
-	function getHistory(
-		id: string,
-		limit: number,
-		offset: number,
-	): HistoryValue {
+	function getHistory(id: string, limit: number, offset: number): HistoryValue {
 		const record = sessions.get(id);
 		if (record === undefined) {
 			throw new Error("session_not_found");

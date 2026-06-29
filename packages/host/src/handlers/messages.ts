@@ -1,5 +1,5 @@
-import type { KnownProvider } from "@sumeru/core";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { KnownProvider } from "@sumeru/core";
 import { errorEnvelope, messageAcceptedEnvelope } from "../envelope.js";
 import { readJsonBody, writeJson } from "../http-utils.js";
 import { generateMessageId } from "../id.js";
@@ -44,7 +44,11 @@ export function createMessagesHandler(manager: SessionManager) {
 		const request: MessageRequest = { ...parsed, messageId };
 		try {
 			await manager.submitMessage(id, request);
-			writeJson(res, 202, messageAcceptedEnvelope({ sessionId: id, messageId }));
+			writeJson(
+				res,
+				202,
+				messageAcceptedEnvelope({ sessionId: id, messageId }),
+			);
 		} catch (err) {
 			writeMessagesError(res, err);
 		}

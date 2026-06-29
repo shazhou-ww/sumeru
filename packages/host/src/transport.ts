@@ -191,7 +191,12 @@ export type MockTransportCall =
 	  }
 	| { type: "down"; projectName: string; composePath: string; workDir: string }
 	| { type: "rm"; projectName: string; composePath: string; workDir: string }
-	| { type: "exec"; containerId: string; command: Array<string>; env: Record<string, string> | null }
+	| {
+			type: "exec";
+			containerId: string;
+			command: Array<string>;
+			env: Record<string, string> | null;
+	  }
 	| { type: "inspectStatus"; containerId: string };
 
 export function createMockTransport(

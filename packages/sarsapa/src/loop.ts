@@ -1,5 +1,9 @@
-import type { AdapterHandleYield } from "@sumeru/adapter-core";
-import type { DoneValue, WireToolCall, TurnValue } from "@sumeru/adapter-core";
+import type {
+	AdapterHandleYield,
+	DoneValue,
+	TurnValue,
+	WireToolCall,
+} from "@sumeru/adapter-core";
 import type { Conversation } from "./context.js";
 import { pushAssistant, pushToolResult, toMessages } from "./context.js";
 import { chat } from "./llm/client.js";

@@ -1,4 +1,4 @@
-import type { Prototype, SessionInfo, Turn, Image } from "@sumeru/core";
+import type { Image, Prototype, SessionInfo, Turn } from "@sumeru/core";
 import type {
 	Envelope,
 	ErrorValue,
@@ -47,7 +47,9 @@ export function turnListEnvelope(turns: Array<Turn>): Envelope<Array<Turn>> {
 	return envelope("@sumeru/turn-list", turns);
 }
 
-export function imageListEnvelope(images: Array<Image>): Envelope<Array<Image>> {
+export function imageListEnvelope(
+	images: Array<Image>,
+): Envelope<Array<Image>> {
 	return envelope("@sumeru/image-list", images);
 }
 

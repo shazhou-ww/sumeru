@@ -11,12 +11,12 @@ export {
 	resolveModelConfig,
 	resolveProjectPath,
 } from "./config.js";
-export type { SessionManager } from "./session-manager.js";
-export { createSessionManager } from "./session-manager.js";
 export type { Router } from "./router.js";
 export { createRouter } from "./router.js";
 export type { StartedHost, StartHostConfig } from "./server.js";
 export { createHostHandler, startHost, VERSION } from "./server.js";
+export type { SessionManager } from "./session-manager.js";
+export { createSessionManager } from "./session-manager.js";
 export type { MockTransportCall } from "./transport.js";
 export {
 	createDockerTransport,

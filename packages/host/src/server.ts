@@ -2,8 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer as createHttpServer } from "node:http";
 import { loadHostConfig } from "./config.js";
 import {
-	createExportHandler,
 	createEventsHandler,
+	createExportHandler,
 	createHistoryHandler,
 	createImagesHandler,
 	createMessagesHandler,
@@ -16,8 +16,8 @@ import {
 	writeMethodNotAllowed,
 	writeRouteNotFound,
 } from "./handlers/index.js";
-import { createSessionManager } from "./session-manager.js";
 import { createRouter } from "./router.js";
+import { createSessionManager } from "./session-manager.js";
 import { createDockerTransport } from "./transport.js";
 import type {
 	HostServerOptions,
@@ -69,7 +69,11 @@ export function createHostHandler(input: {
 		.route("GET", "/sessions/:id", sessions.detail)
 		.route("POST", "/sessions/:id/stop", sessions.stop)
 		.route("DELETE", "/sessions/:id", sessions.remove)
-		.route("POST", "/sessions/:id/messages", createMessagesHandler(input.manager))
+		.route(
+			"POST",
+			"/sessions/:id/messages",
+			createMessagesHandler(input.manager),
+		)
 		.route("GET", "/sessions/:id/events", createEventsHandler(input.manager))
 		.route("GET", "/sessions/:id/history", createHistoryHandler(input.manager))
 		.route("GET", "/sessions/:id/turns", createTurnsHandler(input.manager))

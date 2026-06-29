@@ -7,7 +7,6 @@ import {
 import {
 	assertSkillsExist,
 	deletePrototypeFile,
-	deleteSkill,
 	prototypeFileExists,
 	validatePrototype,
 	writePrototypeFile,

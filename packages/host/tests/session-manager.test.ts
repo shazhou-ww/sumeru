@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
-import { afterEach, describe, expect, it } from "vitest";
 import type { Turn } from "@sumeru/core";
+import { afterEach, describe, expect, it } from "vitest";
 import { loadHostConfig } from "../src/config.js";
 import { generateSessionId } from "../src/id.js";
 import { createOcasRecorder } from "../src/ocas-recorder.js";
@@ -218,7 +218,9 @@ describe("session-manager", () => {
 		await sleep(100);
 		expect(thirdStarted).toBe(false);
 
-		const running = manager.listSessions().filter((s) => s.status === "running");
+		const running = manager
+			.listSessions()
+			.filter((s) => s.status === "running");
 		expect(running).toHaveLength(2);
 		await manager.stopSession(running[0]?.id ?? "");
 		const third = await thirdPromise;

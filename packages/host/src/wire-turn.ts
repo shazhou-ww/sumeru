@@ -1,9 +1,17 @@
-import type { AssistantTurn, TokenUsage, ToolCall, ToolTurn, Turn } from "@sumeru/core";
-import type { WireToolCall, TurnValue } from "@sumeru/adapter-core";
+import type { TurnValue, WireToolCall } from "@sumeru/adapter-core";
+import type {
+	AssistantTurn,
+	TokenUsage,
+	ToolCall,
+	ToolTurn,
+	Turn,
+} from "@sumeru/core";
 
 const EMPTY_TOKEN_USAGE: TokenUsage = { input: 0, output: 0, cached: 0 };
 
-export function turnRecordsToV3(records: Array<{ value: TurnValue }>): Array<Turn> {
+export function turnRecordsToV3(
+	records: Array<{ value: TurnValue }>,
+): Array<Turn> {
 	let nextId = 0;
 	const turns: Array<Turn> = [];
 	for (const record of records) {

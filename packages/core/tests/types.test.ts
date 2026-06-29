@@ -165,9 +165,24 @@ describe("@sumeru/core — v3 type set conformance", () => {
 				type: "needsInput",
 				message: "need token",
 			},
-			{ elapsedMs: 1, turnCount: 1, tokenUsage: { input: 0, output: 0, cached: 0 }, type: "timeout" },
-			{ elapsedMs: 1, turnCount: 1, tokenUsage: { input: 0, output: 0, cached: 0 }, type: "stopped" },
-			{ elapsedMs: 1, turnCount: 1, tokenUsage: { input: 0, output: 0, cached: 0 }, type: "exhausted" },
+			{
+				elapsedMs: 1,
+				turnCount: 1,
+				tokenUsage: { input: 0, output: 0, cached: 0 },
+				type: "timeout",
+			},
+			{
+				elapsedMs: 1,
+				turnCount: 1,
+				tokenUsage: { input: 0, output: 0, cached: 0 },
+				type: "stopped",
+			},
+			{
+				elapsedMs: 1,
+				turnCount: 1,
+				tokenUsage: { input: 0, output: 0, cached: 0 },
+				type: "exhausted",
+			},
 		];
 
 		expect(signals.map(describeExit)).toEqual([

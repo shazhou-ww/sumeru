@@ -11,8 +11,10 @@ import type {
 	AdapterImpl,
 	AdapterInboxMessage,
 	AdapterInitConfig,
+	DoneValue,
+	TurnValue,
+	WireToolCall,
 } from "@sumeru/adapter-core";
-import type { DoneValue, WireToolCall, TurnValue } from "@sumeru/adapter-core";
 import { createAcpClient } from "./acp-client.js";
 import type {
 	AcpClient,

@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { isAbsolute, resolve as pathResolve, sep } from "node:path";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve as pathResolve, sep } from "node:path";
 import type { SkillContent } from "@sumeru/adapter-core";
 import type {
 	CustomProvider,
@@ -13,7 +12,6 @@ import type {
 } from "@sumeru/core";
 import { parse as parseYaml } from "yaml";
 import {
-	computePrototypeHash,
 	ensureDataDirs,
 	loadPrototypeInfo,
 	loadPrototypesFromDisk,
@@ -126,7 +124,9 @@ function parseImagesMapping(value: unknown, path: string): Map<string, Image> {
 		throw new Error(`Config ${path} field "images" must be a mapping`);
 	}
 	const images = new Map<string, Image>();
-	for (const [name, entry] of Object.entries(value as Record<string, unknown>)) {
+	for (const [name, entry] of Object.entries(
+		value as Record<string, unknown>,
+	)) {
 		if (name.length === 0) {
 			throw new Error(`Config ${path} image name must be a non-empty string`);
 		}
@@ -278,7 +278,11 @@ export async function extractImageFromCompose(
 		return "unknown";
 	}
 	for (const service of Object.values(services as Record<string, unknown>)) {
-		if (service === null || typeof service !== "object" || Array.isArray(service)) {
+		if (
+			service === null ||
+			typeof service !== "object" ||
+			Array.isArray(service)
+		) {
 			continue;
 		}
 		const image = (service as Record<string, unknown>).image;
