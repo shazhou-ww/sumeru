@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadHostConfig } from "../src/config.js";
+import { loadHostConfig, validateComposeProjectVolume } from "../src/config.js";
 
 function writeV3HostFixture(rootDir: string): void {
 	writeFileSync(
@@ -88,5 +88,34 @@ describe("loadHostConfig — v3 HostConfig", () => {
 			builtAt: "2026-06-29T00:00:00.000Z",
 			digest: "sha256:abc",
 		});
+	});
+});
+
+describe("validateComposeProjectVolume", () => {
+	it("accepts compose files that bind-mount SUMERU_PROJECT_PATH", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-compose-valid-"));
+		const composePath = join(rootDir, "compose.yaml");
+		writeFileSync(
+			composePath,
+			[
+				"services:",
+				"  agent:",
+				"    image: example",
+				"    volumes:",
+				`      - "${"$" + "{SUMERU_PROJECT_PATH}:$" + "{SUMERU_PROJECT_PATH}"}"`,
+			].join("\n"),
+		);
+		await expect(
+			validateComposeProjectVolume(composePath),
+		).resolves.toBeUndefined();
+	});
+
+	it("rejects compose files without project volume mount", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-compose-invalid-"));
+		const composePath = join(rootDir, "compose.yaml");
+		writeFileSync(composePath, "services:\n  agent:\n    image: example\n");
+		await expect(validateComposeProjectVolume(composePath)).rejects.toThrow(
+			"SUMERU_PROJECT_PATH",
+		);
 	});
 });

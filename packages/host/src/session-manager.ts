@@ -152,6 +152,7 @@ export function createSessionManager(input: {
 				projectName,
 				composePath: prototype.composePath,
 				workDir: input.hostConfig.rootDir,
+				projectPath: projectResolution.projectPath,
 				env: sessionEnv,
 			});
 			const record: ManagedSession = {

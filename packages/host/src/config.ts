@@ -39,6 +39,11 @@ export async function loadHostConfig(
 		prototypesDir,
 		skillsDir,
 	});
+	for (const info of prototypes.values()) {
+		if (info.composePath !== null) {
+			await validateComposeProjectVolume(info.composePath);
+		}
+	}
 	const images = await loadImagesConfig(rootDir, doc, configPath);
 	return {
 		rootDir,
@@ -57,6 +62,9 @@ export async function reloadPrototypeInConfig(
 	name: string,
 ): Promise<PrototypeInfo> {
 	const info = await loadPrototypeInfo(toStoreInput(hostConfig), name);
+	if (info.composePath !== null) {
+		await validateComposeProjectVolume(info.composePath);
+	}
 	hostConfig.prototypes.set(name, info);
 	return info;
 }
@@ -291,6 +299,51 @@ export async function extractImageFromCompose(
 		}
 	}
 	return "unknown";
+}
+
+const COMPOSE_PROJECT_VOLUME = "$" + "{SUMERU_PROJECT_PATH}";
+
+export async function validateComposeProjectVolume(
+	composePath: string,
+): Promise<void> {
+	const raw = await readFile(composePath, "utf-8");
+	const doc = parseYamlSafely(raw, composePath);
+	if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+		throw new Error(
+			`Compose ${composePath} must be a YAML mapping with a services section`,
+		);
+	}
+	const services = (doc as Record<string, unknown>).services;
+	if (
+		services === null ||
+		typeof services !== "object" ||
+		Array.isArray(services)
+	) {
+		throw new Error(
+			`Compose ${composePath} must declare services with a project volume mount`,
+		);
+	}
+	for (const service of Object.values(services as Record<string, unknown>)) {
+		if (
+			service === null ||
+			typeof service !== "object" ||
+			Array.isArray(service)
+		) {
+			continue;
+		}
+		const volumes = (service as Record<string, unknown>).volumes;
+		if (!Array.isArray(volumes)) {
+			continue;
+		}
+		for (const entry of volumes) {
+			if (typeof entry === "string" && entry.includes(COMPOSE_PROJECT_VOLUME)) {
+				return;
+			}
+		}
+	}
+	throw new Error(
+		`Compose ${composePath} must bind-mount "${COMPOSE_PROJECT_VOLUME}:${COMPOSE_PROJECT_VOLUME}" on at least one service so adapter cwd exists in the container (issue #171)`,
+	);
 }
 
 export function mergeSessionEnv(

@@ -56,7 +56,16 @@ function writePrototypeFixture(
 	const legacyPrototypeDir = join(rootDir, "prototypes", "claude-code");
 	mkdirSync(legacyPrototypeDir, { recursive: true });
 	const composePath = join(legacyPrototypeDir, "compose.yaml");
-	writeFileSync(composePath, "services:\n  agent:\n    image: example\n");
+	writeFileSync(
+		composePath,
+		[
+			"services:",
+			"  agent:",
+			"    image: example",
+			"    volumes:",
+			`      - "${"$" + "{SUMERU_PROJECT_PATH}:$" + "{SUMERU_PROJECT_PATH}"}"`,
+		].join("\n"),
+	);
 	return { yamlPath, skillsDir, composePath };
 }
 

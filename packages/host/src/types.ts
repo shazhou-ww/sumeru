@@ -111,6 +111,7 @@ export type Transport = {
 		projectName: string;
 		composePath: string;
 		workDir: string;
+		projectPath: string;
 		env: Record<string, string> | null;
 	}): Promise<TransportUpResult>;
 	down(input: {

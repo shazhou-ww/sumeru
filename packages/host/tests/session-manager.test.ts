@@ -39,10 +39,20 @@ function writeHostFixture(rootDir: string, maxRunning = 2): void {
 	);
 	const prototypeDir = join(rootDir, "prototypes", "claude-code");
 	mkdirSync(prototypeDir, { recursive: true });
-	writeFileSync(
-		join(prototypeDir, "compose.yaml"),
-		"services:\n  agent:\n    image: example\n",
-	);
+	writeFileSync(join(prototypeDir, "compose.yaml"), testComposeYaml("example"));
+}
+
+const COMPOSE_PROJECT_VOLUME_MOUNT =
+	"$" + "{SUMERU_PROJECT_PATH}:$" + "{SUMERU_PROJECT_PATH}";
+
+function testComposeYaml(image: string): string {
+	return [
+		"services:",
+		"  agent:",
+		`    image: ${image}`,
+		"    volumes:",
+		`      - "${COMPOSE_PROJECT_VOLUME_MOUNT}"`,
+	].join("\n");
 }
 
 function createSessionBody(overrides: Record<string, unknown> = {}) {
@@ -60,13 +70,16 @@ function createInteractiveTransport(): {
 	transport: Transport;
 	calls: Array<string>;
 	upComposeContents: Array<string>;
+	upProjectPaths: Array<string>;
 } {
 	const calls: Array<string> = [];
 	const upComposeContents: Array<string> = [];
+	const upProjectPaths: Array<string> = [];
 	const transport: Transport = {
 		async up(input) {
 			calls.push(`up:${input.projectName}`);
 			upComposeContents.push(readFileSync(input.composePath, "utf-8"));
+			upProjectPaths.push(input.projectPath);
 			return { containerId: `container-${input.projectName}` };
 		},
 		async down(input) {
@@ -119,7 +132,7 @@ function createInteractiveTransport(): {
 			return "running";
 		},
 	};
-	return { transport, calls, upComposeContents };
+	return { transport, calls, upComposeContents, upProjectPaths };
 }
 
 function createBlockingTransport(): Transport {
@@ -172,6 +185,16 @@ describe("session-manager", () => {
 		const { transport } = createInteractiveTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 		expect(manager.listSessions()).toEqual([]);
+	});
+
+	it("passes resolved projectPath into transport.up", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		const { transport, upProjectPaths } = createInteractiveTransport();
+		const manager = createSessionManager({ hostConfig, transport });
+
+		await manager.createSession(createSessionBody({ project: "demo" }));
+		expect(upProjectPaths[0]).toBe("/tmp/workspaces/demo");
 	});
 
 	it("creates and deletes docker-backed sessions", async () => {
@@ -313,7 +336,7 @@ describe("session-manager", () => {
 
 		writeFileSync(
 			join(rootDir, "prototypes", "claude-code", "compose.yaml"),
-			"services:\n  agent:\n    image: example-v2\n",
+			testComposeYaml("example-v2"),
 		);
 		hostConfig = await loadHostConfig(rootDir);
 		const secondTransport = createInteractiveTransport();
