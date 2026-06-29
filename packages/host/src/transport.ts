@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
-import type { InstanceStatus } from "./legacy-types.js";
 import type { Transport, TransportExecSession } from "./types.js";
 
 const ADAPTER_BASE = "/opt/sumeru";
@@ -9,11 +8,19 @@ const ADAPTER_BASE = "/opt/sumeru";
 function runCommand(
 	args: Array<string>,
 	cwd: string | null = null,
+	env: Record<string, string> | null = null,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
 	return new Promise((resolve, reject) => {
 		const child = spawn(args[0] as string, args.slice(1), {
 			stdio: ["ignore", "pipe", "pipe"],
 			cwd: cwd ?? undefined,
+			env:
+				env === null
+					? undefined
+					: {
+							...process.env,
+							...env,
+						},
 		});
 		const stdoutChunks: Buffer[] = [];
 		const stderrChunks: Buffer[] = [];
@@ -37,7 +44,7 @@ export function createDockerTransport(
 	const composeBin = options.composeBin ?? "docker";
 
 	return {
-		async up({ projectName, composePath, workDir }) {
+		async up({ projectName, composePath, workDir, env }) {
 			const result = await runCommand(
 				[
 					composeBin,
@@ -50,6 +57,7 @@ export function createDockerTransport(
 					"-d",
 				],
 				workDir,
+				env,
 			);
 			if (result.exitCode !== 0) {
 				throw new Error(
@@ -167,7 +175,13 @@ export function defaultAdapterCommand(adapter: string): Array<string> {
 }
 
 export type MockTransportCall =
-	| { type: "up"; projectName: string; composePath: string; workDir: string }
+	| {
+			type: "up";
+			projectName: string;
+			composePath: string;
+			workDir: string;
+			env: Record<string, string> | null;
+	  }
 	| { type: "down"; projectName: string; composePath: string; workDir: string }
 	| { type: "rm"; projectName: string; composePath: string; workDir: string }
 	| { type: "exec"; containerId: string; command: Array<string> }
@@ -176,7 +190,7 @@ export type MockTransportCall =
 export function createMockTransport(
 	options: {
 		containerId?: string;
-		status?: InstanceStatus;
+		status?: "running" | "stopped";
 		execLines?: Array<string>;
 	} = {},
 ): { transport: Transport; calls: Array<MockTransportCall> } {

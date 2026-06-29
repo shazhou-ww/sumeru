@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { errorEnvelope } from "../envelope.js";
 import { writeJson, writeRawSseEvent, writeSseHeaders } from "../http-utils.js";
-import type { InstanceManager } from "../instance-manager.js";
+import type { SessionManager } from "../session-manager.js";
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
-export function createOutboxHandler(manager: InstanceManager) {
+export function createOutboxHandler(manager: SessionManager) {
 	return (
 		req: IncomingMessage,
 		res: ServerResponse,
@@ -14,7 +14,7 @@ export function createOutboxHandler(manager: InstanceManager) {
 		const id = params.id ?? "";
 		const lastEventId = parseLastEventId(req);
 
-		let buffer: ReturnType<InstanceManager["getSseBuffer"]>;
+		let buffer: ReturnType<SessionManager["getSseBuffer"]>;
 		try {
 			buffer = manager.getSseBuffer(id);
 		} catch (err) {
@@ -113,18 +113,11 @@ function writeOutboxSubscribeError(res: ServerResponse, err: unknown): void {
 	}
 	const message = err instanceof Error ? err.message : String(err);
 	switch (message) {
-		case "instance_not_found":
+		case "session_not_found":
 			writeJson(
 				res,
 				404,
-				errorEnvelope("instance_not_found", "Instance not found"),
-			);
-			return;
-		case "master_has_no_outbox":
-			writeJson(
-				res,
-				400,
-				errorEnvelope("invalid_request", "Master instance has no outbox"),
+				errorEnvelope("session_not_found", "Session not found"),
 			);
 			return;
 		default:

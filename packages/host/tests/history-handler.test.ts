@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { describe, expect, it } from "vitest";
 import { createHistoryHandler } from "../src/handlers/history.js";
-import type { InstanceManager } from "../src/instance-manager.js";
-import type { HistoryValue, ManagedInstance } from "../src/types.js";
+import type { SessionManager } from "../src/session-manager.js";
+import type { HistoryValue, ManagedSession } from "../src/types.js";
 
 function createMockResponse(): ServerResponse & {
 	body: unknown;
@@ -30,9 +30,9 @@ function createMockRequest(): IncomingMessage {
 }
 
 describe("createHistoryHandler", () => {
-	it("returns paginated history for an instance", () => {
+	it("returns paginated history for a session", () => {
 		const history: HistoryValue = {
-			instanceId: "inst_abc",
+			sessionId: "ses_abc",
 			total: 2,
 			offset: 0,
 			turns: [
@@ -52,7 +52,7 @@ describe("createHistoryHandler", () => {
 			],
 		};
 		const manager = createMockManager({
-			instance: minimalInstance("inst_abc"),
+			session: minimalSession("ses_abc"),
 			history,
 		});
 		const handler = createHistoryHandler(manager);
@@ -60,8 +60,8 @@ describe("createHistoryHandler", () => {
 		handler(
 			createMockRequest(),
 			res,
-			{ id: "inst_abc" },
-			"/instances/inst_abc/history",
+			{ id: "ses_abc" },
+			"/sessions/ses_abc/history",
 			"limit=1&offset=0",
 		);
 
@@ -72,15 +72,15 @@ describe("createHistoryHandler", () => {
 		});
 	});
 
-	it("returns 404 when instance does not exist", () => {
-		const manager = createMockManager({ instance: null, history: null });
+	it("returns 404 when session does not exist", () => {
+		const manager = createMockManager({ session: null, history: null });
 		const handler = createHistoryHandler(manager);
 		const res = createMockResponse();
 		handler(
 			createMockRequest(),
 			res,
-			{ id: "inst_missing" },
-			"/instances/inst_missing/history",
+			{ id: "ses_missing" },
+			"/sessions/ses_missing/history",
 			"",
 		);
 
@@ -88,15 +88,15 @@ describe("createHistoryHandler", () => {
 		expect(res.body).toEqual({
 			type: "@sumeru/error",
 			value: {
-				error: "instance_not_found",
-				message: "Instance not found",
+				error: "session_not_found",
+				message: "Session not found",
 			},
 		});
 	});
 
 	it("returns 400 for invalid limit", () => {
 		const manager = createMockManager({
-			instance: minimalInstance("inst_abc"),
+			session: minimalSession("ses_abc"),
 			history: null,
 		});
 		const handler = createHistoryHandler(manager);
@@ -104,8 +104,8 @@ describe("createHistoryHandler", () => {
 		handler(
 			createMockRequest(),
 			res,
-			{ id: "inst_abc" },
-			"/instances/inst_abc/history",
+			{ id: "ses_abc" },
+			"/sessions/ses_abc/history",
 			"limit=abc",
 		);
 
@@ -123,12 +123,12 @@ describe("createHistoryHandler", () => {
 	it("caps limit at 1000", () => {
 		let requestedLimit = 0;
 		const manager = createMockManager({
-			instance: minimalInstance("inst_abc"),
+			session: minimalSession("ses_abc"),
 			history: null,
 			getHistory: (_id, limit) => {
 				requestedLimit = limit;
 				return {
-					instanceId: "inst_abc",
+					sessionId: "ses_abc",
 					total: 0,
 					offset: 0,
 					turns: [],
@@ -140,8 +140,8 @@ describe("createHistoryHandler", () => {
 		handler(
 			createMockRequest(),
 			res,
-			{ id: "inst_abc" },
-			"/instances/inst_abc/history",
+			{ id: "ses_abc" },
+			"/sessions/ses_abc/history",
 			"limit=5000",
 		);
 
@@ -150,33 +150,43 @@ describe("createHistoryHandler", () => {
 	});
 });
 
-function minimalInstance(id: string): ManagedInstance {
+function minimalSession(id: string): ManagedSession {
 	return {
 		id,
 		prototype: "claude-code",
+		model: {
+			provider: "anthropic",
+			name: "claude-sonnet-4",
+			apiKey: "sk-test",
+		},
+		image: "example",
+		project: "demo",
+		task: "hello",
 		status: "running",
+		exit: null,
 		createdAt: "2026-06-27T00:00:00.000Z",
-		projects: [],
 		containerId: "container-1",
 		projectName: "proj",
 		composePath: "/compose.yaml",
 		initVersion: null,
+		projectPath: "/tmp/workspaces/demo",
+		sessionEnv: {},
 	};
 }
 
 function createMockManager(input: {
-	instance: ManagedInstance | null;
+	session: ManagedSession | null;
 	history: HistoryValue | null;
-	getHistory?: InstanceManager["getHistory"];
-}): InstanceManager {
+	getHistory?: SessionManager["getHistory"];
+}): SessionManager {
 	return {
-		getInstance: () => input.instance,
+		getSession: () => input.session,
 		getHistory:
 			input.getHistory ??
 			((_id, limit, offset) => {
 				if (input.history === null) {
 					return {
-						instanceId: "inst_abc",
+						sessionId: "ses_abc",
 						total: 0,
 						offset,
 						turns: [],
@@ -188,5 +198,5 @@ function createMockManager(input: {
 					turns: input.history.turns.slice(offset, offset + limit),
 				};
 			}),
-	} as InstanceManager;
+	} as SessionManager;
 }

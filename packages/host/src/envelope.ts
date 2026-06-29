@@ -1,11 +1,9 @@
-import type { Prototype } from "@sumeru/core";
-import type { InstanceInfo } from "./legacy-types.js";
+import type { Prototype, SessionInfo } from "@sumeru/core";
 import type {
 	Envelope,
 	ErrorValue,
 	HostRootValue,
 	InboxAcceptedValue,
-	InstanceStatusValue,
 	PrototypeInfo,
 	SkillValue,
 } from "./types.js";
@@ -35,20 +33,14 @@ export function skillEnvelope(value: SkillValue): Envelope<SkillValue> {
 	return envelope("@sumeru/skill", value);
 }
 
-export function instanceListEnvelope(
-	instances: Array<InstanceInfo>,
-): Envelope<Array<InstanceInfo>> {
-	return envelope("@sumeru/instance-list", instances);
+export function sessionListEnvelope(
+	sessions: Array<SessionInfo>,
+): Envelope<Array<SessionInfo>> {
+	return envelope("@sumeru/session-list", sessions);
 }
 
-export function instanceEnvelope(info: InstanceInfo): Envelope<InstanceInfo> {
-	return envelope("@sumeru/instance", info);
-}
-
-export function instanceStatusEnvelope(
-	value: InstanceStatusValue,
-): Envelope<InstanceStatusValue> {
-	return envelope("@sumeru/instance-status", value);
+export function sessionEnvelope(info: SessionInfo): Envelope<SessionInfo> {
+	return envelope("@sumeru/session", info);
 }
 
 export function inboxAcceptedEnvelope(

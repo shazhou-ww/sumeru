@@ -92,7 +92,7 @@ export function createLocalTransport(options: {
 	const local = createLocalTransportImpl(options);
 
 	return {
-		async up() {
+		async up(_params) {
 			local.create();
 			return { containerId: LOCAL_MASTER_HANDLE };
 		},

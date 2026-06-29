@@ -4,11 +4,10 @@ import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 import { errorEnvelope } from "../envelope.js";
 import { writeJson } from "../http-utils.js";
-import type { InstanceManager } from "../instance-manager.js";
-import type { InstanceId } from "../legacy-types.js";
+import type { SessionManager } from "../session-manager.js";
 import { openOcasStore, readChain } from "../ocas-recorder.js";
 
-export function createExportHandler(manager: InstanceManager, dataDir: string) {
+export function createExportHandler(manager: SessionManager, dataDir: string) {
 	return async (
 		_req: IncomingMessage,
 		res: ServerResponse,
@@ -16,13 +15,13 @@ export function createExportHandler(manager: InstanceManager, dataDir: string) {
 		_path: string,
 		_queryString: string,
 	): Promise<void> => {
-		const id = (params.id ?? "") as InstanceId;
-		const record = manager.getInstance(id);
+		const id = params.id ?? "";
+		const record = manager.getSession(id);
 		if (record === null) {
 			writeJson(
 				res,
 				404,
-				errorEnvelope("instance_not_found", "Instance not found"),
+				errorEnvelope("session_not_found", "Session not found"),
 			);
 			return;
 		}
@@ -34,7 +33,7 @@ export function createExportHandler(manager: InstanceManager, dataDir: string) {
 				writeJson(
 					res,
 					404,
-					errorEnvelope("no_history", "No history for instance"),
+					errorEnvelope("no_history", "No history for session"),
 				);
 				return;
 			}
@@ -64,7 +63,7 @@ export function createExportHandler(manager: InstanceManager, dataDir: string) {
 					writeJson(
 						res,
 						500,
-						errorEnvelope("export_failed", "Failed to export instance history"),
+						errorEnvelope("export_failed", "Failed to export session history"),
 					);
 				}
 			}

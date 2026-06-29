@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import { computePrototypeHash, loadHostConfig } from "../src/config.js";
-import { createInstanceManager } from "../src/instance-manager.js";
+import { createSessionManager } from "../src/session-manager.js";
 import type { Transport, TransportExecSession } from "../src/types.js";
 
 function writeV3HostFixture(rootDir: string): void {
@@ -24,6 +24,7 @@ function writeV3HostFixture(rootDir: string): void {
 			"  openrouter: null",
 		].join("\n"),
 	);
+	mkdirSync("/tmp/workspaces/demo", { recursive: true });
 }
 
 function writePrototypeFixture(
@@ -199,19 +200,16 @@ describe("prototype lazy re-init", () => {
 		});
 		const hostConfig = await loadHostConfig(rootDir);
 		const { transport, initCount } = createInitTrackingTransport();
-		const manager = createInstanceManager({ hostConfig, transport });
-		const created = await manager.createInstance({
+		const manager = createSessionManager({ hostConfig, transport });
+		const created = await manager.createSession({
 			prototype: "claude-code",
-			projects: null,
+			project: "demo",
+			task: "hello",
+			model: null,
+			env: null,
 		});
-
-		await manager.submitInbox(created.id, {
-			messageId: "msg_1",
-			content: "hello",
-			project: null,
-		});
-		await waitUntil(() => initCount() >= 1);
-		expect(manager.getInstance(created.id)?.initVersion).toBe(
+		await waitUntil(() => manager.getSession(created.id)?.status === "idle");
+		expect(manager.getSession(created.id)?.initVersion).toBe(
 			hostConfig.prototypes.get("claude-code")?.prototypeHash,
 		);
 
@@ -242,7 +240,7 @@ describe("prototype lazy re-init", () => {
 		});
 		await waitUntil(() => initCount() >= 2);
 		expect(initCount()).toBe(2);
-		expect(manager.getInstance(created.id)?.initVersion).toBe(
+		expect(manager.getSession(created.id)?.initVersion).toBe(
 			prototype.prototypeHash,
 		);
 	});

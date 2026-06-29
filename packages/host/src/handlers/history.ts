@@ -1,14 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { envelope, errorEnvelope } from "../envelope.js";
 import { writeJson } from "../http-utils.js";
-import type { InstanceManager } from "../instance-manager.js";
+import type { SessionManager } from "../session-manager.js";
 import type { HistoryValue } from "../types.js";
 
 const DEFAULT_LIMIT = 100;
 const DEFAULT_OFFSET = 0;
 const MAX_LIMIT = 1000;
 
-export function createHistoryHandler(manager: InstanceManager) {
+export function createHistoryHandler(manager: SessionManager) {
 	return (
 		_req: IncomingMessage,
 		res: ServerResponse,
@@ -17,12 +17,12 @@ export function createHistoryHandler(manager: InstanceManager) {
 		queryString: string,
 	): void => {
 		const id = params.id ?? "";
-		const record = manager.getInstance(id);
+		const record = manager.getSession(id);
 		if (record === null) {
 			writeJson(
 				res,
 				404,
-				errorEnvelope("instance_not_found", "Instance not found"),
+				errorEnvelope("session_not_found", "Session not found"),
 			);
 			return;
 		}

@@ -1,7 +1,7 @@
 export { createExportHandler } from "./export.js";
 export { createHistoryHandler, historyEnvelope } from "./history.js";
 export { createInboxHandler } from "./inbox.js";
-export { createInstancesHandler } from "./instances.js";
+export { createSessionsHandler } from "./sessions.js";
 export { createOutboxHandler } from "./outbox.js";
 export { createPrototypesHandler } from "./prototypes.js";
 export {

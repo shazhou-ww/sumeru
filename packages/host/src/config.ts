@@ -1,8 +1,15 @@
 import { readFile } from "node:fs/promises";
+import { isAbsolute, resolve as pathResolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { SkillContent } from "@sumeru/adapter-core";
-import type { HostConfig, ModelConfig, Prototype } from "@sumeru/core";
+import type {
+	CustomProvider,
+	HostConfig,
+	KnownProvider,
+	ModelConfig,
+	Prototype,
+} from "@sumeru/core";
 import { parse as parseYaml } from "yaml";
 import {
 	computePrototypeHash,
@@ -120,6 +127,99 @@ export function defaultModelFromHostConfig(config: HostConfig): ModelConfig {
 		name: "claude-sonnet-4",
 		apiKey: null,
 	};
+}
+
+export type ResolveProjectResult =
+	| { ok: true; project: string; projectPath: string }
+	| { ok: false; message: string };
+
+export function resolveProjectPath(
+	workspaceRoot: string,
+	rawProject: string,
+): ResolveProjectResult {
+	if (rawProject.length === 0) {
+		return { ok: false, message: 'Field "project" must be a non-empty string' };
+	}
+	const root = pathResolve(workspaceRoot);
+	const resolved = pathResolve(root, rawProject);
+	if (resolved !== root && !resolved.startsWith(root + sep)) {
+		return {
+			ok: false,
+			message: `project '${rawProject}' resolves outside workspaceRoot '${workspaceRoot}'`,
+		};
+	}
+	if (!isAbsolute(resolved)) {
+		return {
+			ok: false,
+			message: `project '${rawProject}' must resolve to an absolute path`,
+		};
+	}
+	return { ok: true, project: rawProject, projectPath: resolved };
+}
+
+export function resolveModelConfig(
+	hostConfig: HostConfig,
+	requested: { provider: ModelConfig["provider"]; name: string } | null,
+): ModelConfig {
+	const base = requested ?? defaultModelFromHostConfig(hostConfig);
+	const provider = base.provider;
+	if (typeof provider === "string") {
+		const known = provider as KnownProvider;
+		const providerConfig = hostConfig.models[known];
+		return {
+			provider: known,
+			name: base.name,
+			apiKey: providerConfig?.apiKey ?? null,
+		};
+	}
+	const custom = provider as CustomProvider;
+	return {
+		provider: custom,
+		name: base.name,
+		apiKey: null,
+	};
+}
+
+export async function extractImageFromCompose(
+	composePath: string,
+): Promise<string> {
+	const raw = await readFile(composePath, "utf-8");
+	const doc = parseYamlSafely(raw, composePath);
+	if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+		return "unknown";
+	}
+	const services = (doc as Record<string, unknown>).services;
+	if (
+		services === null ||
+		typeof services !== "object" ||
+		Array.isArray(services)
+	) {
+		return "unknown";
+	}
+	for (const service of Object.values(services as Record<string, unknown>)) {
+		if (service === null || typeof service !== "object" || Array.isArray(service)) {
+			continue;
+		}
+		const image = (service as Record<string, unknown>).image;
+		if (typeof image === "string" && image.length > 0) {
+			return image;
+		}
+	}
+	return "unknown";
+}
+
+export function mergeSessionEnv(
+	hostEnvFile: string,
+	sessionEnv: Record<string, string> | null,
+): Record<string, string> {
+	const merged: Record<string, string> = {};
+	if (sessionEnv !== null) {
+		for (const [key, value] of Object.entries(sessionEnv)) {
+			merged[key] = value;
+		}
+	}
+	void hostEnvFile;
+	return merged;
 }
 
 export { computePrototypeHash } from "./data-store.js";
