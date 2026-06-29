@@ -3,9 +3,9 @@ import { createServer as createHttpServer } from "node:http";
 import { loadHostConfig } from "./config.js";
 import {
 	createExportHandler,
+	createEventsHandler,
 	createHistoryHandler,
-	createInboxHandler,
-	createOutboxHandler,
+	createMessagesHandler,
 	createPrototypesHandler,
 	createRootHandler,
 	createSearchHandler,
@@ -64,8 +64,8 @@ export function createHostHandler(input: {
 		.route("GET", "/sessions/:id", sessions.detail)
 		.route("POST", "/sessions/:id/stop", sessions.stop)
 		.route("DELETE", "/sessions/:id", sessions.remove)
-		.route("POST", "/sessions/:id/inbox", createInboxHandler(input.manager))
-		.route("GET", "/sessions/:id/outbox", createOutboxHandler(input.manager))
+		.route("POST", "/sessions/:id/messages", createMessagesHandler(input.manager))
+		.route("GET", "/sessions/:id/events", createEventsHandler(input.manager))
 		.route("GET", "/sessions/:id/history", createHistoryHandler(input.manager))
 		.route(
 			"POST",

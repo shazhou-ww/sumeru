@@ -71,7 +71,7 @@ function createInitTrackingTransport(): {
 		},
 		async down() {},
 		async rm() {},
-		exec() {
+		exec(_input) {
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();
 			stdin.on("data", (chunk: Buffer | string) => {
@@ -191,7 +191,7 @@ describe("prototype lazy re-init", () => {
 		tempDirs.length = 0;
 	});
 
-	it("re-inits adapter when prototype hash changes between inbox messages", async () => {
+	it("re-inits adapter when prototype hash changes between messages", async () => {
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-proto-reinit-"));
 		tempDirs.push(rootDir);
 		writeV3HostFixture(rootDir);
@@ -233,10 +233,11 @@ describe("prototype lazy re-init", () => {
 			prototype.prototype,
 		);
 
-		await manager.submitInbox(created.id, {
+		await manager.submitMessage(created.id, {
 			messageId: "msg_2",
 			content: "hello again",
-			project: null,
+			env: null,
+			model: null,
 		});
 		await waitUntil(() => initCount() >= 2);
 		expect(initCount()).toBe(2);

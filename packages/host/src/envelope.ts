@@ -4,6 +4,7 @@ import type {
 	ErrorValue,
 	HostRootValue,
 	InboxAcceptedValue,
+	MessageAcceptedValue,
 	PrototypeInfo,
 	SkillValue,
 } from "./types.js";
@@ -43,10 +44,17 @@ export function sessionEnvelope(info: SessionInfo): Envelope<SessionInfo> {
 	return envelope("@sumeru/session", info);
 }
 
+export function messageAcceptedEnvelope(
+	value: MessageAcceptedValue,
+): Envelope<MessageAcceptedValue> {
+	return envelope("@sumeru/message-accepted", value);
+}
+
+/** @deprecated Use messageAcceptedEnvelope */
 export function inboxAcceptedEnvelope(
 	value: InboxAcceptedValue,
 ): Envelope<InboxAcceptedValue> {
-	return envelope("@sumeru/inbox-accepted", value);
+	return messageAcceptedEnvelope(value);
 }
 
 export function errorEnvelope(

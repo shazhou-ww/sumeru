@@ -26,20 +26,20 @@ describe("router — host routes", () => {
 		}
 	});
 
-	it("matches POST /sessions/:id/inbox", () => {
+	it("matches POST /sessions/:id/messages", () => {
 		const router = createTestRouter();
-		router.route("POST", "/sessions/:id/inbox", () => {});
-		const result = router.match("POST", "/sessions/ses_01J/inbox");
+		router.route("POST", "/sessions/:id/messages", () => {});
+		const result = router.match("POST", "/sessions/ses_01J/messages");
 		expect(result.type).toBe("match");
 		if (result.type === "match") {
 			expect(result.params).toEqual({ id: "ses_01J" });
 		}
 	});
 
-	it("matches GET /sessions/:id/outbox", () => {
+	it("matches GET /sessions/:id/events", () => {
 		const router = createTestRouter();
-		router.route("GET", "/sessions/:id/outbox", () => {});
-		const result = router.match("GET", "/sessions/ses_01J/outbox");
+		router.route("GET", "/sessions/:id/events", () => {});
+		const result = router.match("GET", "/sessions/ses_01J/events");
 		expect(result.type).toBe("match");
 	});
 
@@ -53,10 +53,10 @@ describe("router — host routes", () => {
 		}
 	});
 
-	it("returns method_not_allowed for wrong verb on inbox", () => {
+	it("returns method_not_allowed for wrong verb on messages", () => {
 		const router = createTestRouter();
-		router.route("POST", "/sessions/:id/inbox", () => {});
-		const result = router.match("GET", "/sessions/ses_01J/inbox");
+		router.route("POST", "/sessions/:id/messages", () => {});
+		const result = router.match("GET", "/sessions/ses_01J/messages");
 		expect(result.type).toBe("method_not_allowed");
 		if (result.type === "method_not_allowed") {
 			expect(result.allow).toBe("POST");

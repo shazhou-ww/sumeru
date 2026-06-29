@@ -1,5 +1,5 @@
 import type { AdapterInitConfig } from "@sumeru/adapter-core";
-import type { ExitSignal, SessionInfo, TokenUsage } from "@sumeru/core";
+import type { ExitSignal, SessionInfo, TokenUsage, Turn } from "@sumeru/core";
 import {
 	extractImageFromCompose,
 	loadPrototypeInitSkills,
@@ -18,7 +18,8 @@ import type {
 	TurnValue,
 } from "./legacy-types.js";
 import { createOcasRecorder, type OcasRecorder } from "./ocas-recorder.js";
-import { outboxFrameToSseEvent, parseOutboxLine } from "./outbox.js";
+import { parseOutboxLine } from "./outbox.js";
+import { wireTurnsToV3 } from "./wire-turn.js";
 import {
 	createSseBuffer,
 	type SseBuffer,
@@ -31,6 +32,7 @@ import type {
 	InboxRequest,
 	LoadedHostConfig,
 	ManagedSession,
+	MessageRequest,
 	Transport,
 } from "./types.js";
 
@@ -47,6 +49,7 @@ type AdapterRuntime = {
 	turnCount: number;
 	tokenUsage: TokenUsage;
 	startedAt: number;
+	nextTurnEventId: number;
 };
 
 const EMPTY_TOKEN_USAGE: TokenUsage = { input: 0, output: 0, cached: 0 };
@@ -57,8 +60,8 @@ export type SessionManager = {
 	createSession(body: CreateSessionRequest): Promise<ManagedSession>;
 	stopSession(id: string): Promise<ManagedSession>;
 	deleteSession(id: string): Promise<void>;
-	submitInbox(id: string, body: InboxRequest): Promise<void>;
-	subscribeOutbox(
+	submitMessage(id: string, body: MessageRequest): Promise<void>;
+	subscribeEvents(
 		id: string,
 		onEvent: (event: SseEvent) => void,
 	): () => void;
@@ -241,27 +244,70 @@ export function createSessionManager(input: {
 		}
 	}
 
-	async function submitInbox(
+	async function submitMessage(
 		id: string,
-		body: InboxRequest,
+		body: MessageRequest,
 	): Promise<void> {
 		const record = sessions.get(id);
 		if (record === undefined) {
 			throw new Error("session_not_found");
 		}
+		if (record.status === "running") {
+			throw new Error("session_busy");
+		}
 		if (record.containerId === null) {
 			throw new Error("session_not_running");
 		}
+
+		if (body.env !== null) {
+			for (const [key, value] of Object.entries(body.env)) {
+				record.sessionEnv[key] = value;
+			}
+		}
+		if (body.model !== null) {
+			const nextModel = resolveModelConfig(
+				input.hostConfig.config,
+				body.model,
+			);
+			if (modelConfigChanged(record.model, nextModel)) {
+				record.model = nextModel;
+				const runtime = adapters.get(id);
+				if (runtime !== undefined) {
+					await invalidateAdapterSession(
+						runtime,
+						record.prototype,
+						record.model,
+					);
+				}
+			}
+		}
+
+		await waitForRunningSlot();
+		record.status = "running";
+		record.exit = null;
+
+		await deliverMessage(id, record, {
+			messageId: body.messageId,
+			content: body.content,
+		});
+	}
+
+	async function deliverMessage(
+		id: string,
+		record: ManagedSession,
+		body: { messageId: string; content: string },
+	): Promise<void> {
 		const message: InboxMessage = {
 			messageId: body.messageId,
 			content: body.content,
-			project: body.project ?? record.projectPath,
+			project: record.projectPath,
 		};
 		await ensureAdapterReady(id, record);
 		const runtime = adapters.get(id);
 		if (runtime === null || runtime === undefined || runtime.session === null) {
 			throw new Error("adapter_unavailable");
 		}
+		resetRuntimeStats(runtime);
 		runtime.session.stdin.write(
 			`${JSON.stringify({
 				type: "message",
@@ -279,11 +325,20 @@ export function createSessionManager(input: {
 				tokens: null,
 			},
 		});
-		if (record.status === "idle") {
-			record.status = "running";
-			record.exit = null;
-			resetRuntimeStats(runtime);
+	}
+
+	async function submitInbox(
+		id: string,
+		body: InboxRequest,
+	): Promise<void> {
+		const record = sessions.get(id);
+		if (record === undefined) {
+			throw new Error("session_not_found");
 		}
+		if (record.containerId === null) {
+			throw new Error("session_not_running");
+		}
+		await deliverMessage(id, record, body);
 	}
 
 	async function sendTask(
@@ -306,7 +361,7 @@ export function createSessionManager(input: {
 		return ensureAdapterRuntime(id).sseBuffer;
 	}
 
-	function subscribeOutbox(
+	function subscribeEvents(
 		id: string,
 		onEvent: (event: SseEvent) => void,
 	): () => void {
@@ -330,21 +385,51 @@ export function createSessionManager(input: {
 		return runtime;
 	}
 
-	function appendOutboxEvent(
-		runtime: AdapterRuntime,
-		frame: OutboxFrame,
-		sessionId: string,
-	): SseEvent {
-		recorder.append(sessionId, frame);
-		const mapped = outboxFrameToSseEvent(frame);
+	function appendTurnEvent(runtime: AdapterRuntime, turn: Turn): SseEvent {
 		const event = runtime.sseBuffer.append({
-			event: mapped.event,
-			data: JSON.stringify(mapped.data),
+			event: "turn",
+			data: JSON.stringify(turn),
 		});
 		for (const subscriber of runtime.subscribers) {
 			subscriber(event);
 		}
 		return event;
+	}
+
+	function appendExitEvent(runtime: AdapterRuntime, exit: ExitSignal): SseEvent {
+		const event = runtime.sseBuffer.append({
+			event: "exit",
+			data: JSON.stringify(exit),
+		});
+		for (const subscriber of runtime.subscribers) {
+			subscriber(event);
+		}
+		return event;
+	}
+
+	function handleAdapterFrame(
+		runtime: AdapterRuntime,
+		frame: OutboxFrame,
+		sessionId: string,
+	): void {
+		recorder.append(sessionId, frame);
+		if (frame.type === "turn") {
+			trackTurn(runtime, frame.value);
+			const mapped = wireTurnsToV3(frame.value, runtime.nextTurnEventId);
+			runtime.nextTurnEventId = mapped.nextId;
+			for (const turn of mapped.turns) {
+				appendTurnEvent(runtime, turn);
+			}
+			return;
+		}
+		if (
+			frame.type === "done" ||
+			frame.type === "suspend" ||
+			frame.type === "error"
+		) {
+			const exit = exitSignalFromFrame(runtime, frame);
+			appendExitEvent(runtime, exit);
+		}
 	}
 
 	async function ensureAdapterReady(
@@ -393,6 +478,7 @@ export function createSessionManager(input: {
 		const session = input.transport.exec({
 			containerId: record.containerId,
 			command: defaultAdapterCommand(prototype.name),
+			env: record.sessionEnv,
 		});
 		runtime.session = session;
 		const activeSession = session;
@@ -454,27 +540,26 @@ export function createSessionManager(input: {
 				}
 				const frame = parseOutboxLine(line);
 				if (frame === null) continue;
-				if (frame.type === "turn") {
-					trackTurn(runtime, frame.value);
-				}
 				if (
 					frame.type === "done" ||
 					frame.type === "suspend" ||
 					frame.type === "error"
 				) {
+					handleAdapterFrame(runtime, frame, id);
 					markIdle(id, frame);
 					runtime.session = null;
 					runtime.initialized = false;
+					continue;
 				}
-				appendOutboxEvent(runtime, frame, id);
+				handleAdapterFrame(runtime, frame, id);
 			}
 		} catch {
 			const errorFrame: OutboxFrame = {
 				type: "error",
 				value: { code: "adapter_io_error", message: "adapter stdout closed" },
 			};
+			handleAdapterFrame(runtime, errorFrame, id);
 			markIdle(id, errorFrame);
-			appendOutboxEvent(runtime, errorFrame, id);
 		} finally {
 			if (runtime.session === activeSession) {
 				runtime.session = null;
@@ -643,8 +728,8 @@ export function createSessionManager(input: {
 		createSession,
 		stopSession,
 		deleteSession,
-		submitInbox,
-		subscribeOutbox,
+		submitMessage,
+		subscribeEvents,
 		getSseBuffer,
 		getHistory,
 		hostRoot,
@@ -668,7 +753,19 @@ function createAdapterRuntime(
 		turnCount: 0,
 		tokenUsage: { ...EMPTY_TOKEN_USAGE },
 		startedAt: Date.now(),
+		nextTurnEventId: 0,
 	};
+}
+
+function modelConfigChanged(
+	current: ManagedSession["model"],
+	next: ManagedSession["model"],
+): boolean {
+	return (
+		current.name !== next.name ||
+		JSON.stringify(current.provider) !== JSON.stringify(next.provider) ||
+		current.apiKey !== next.apiKey
+	);
 }
 
 function resetRuntimeStats(runtime: AdapterRuntime): void {

@@ -29,7 +29,7 @@ describe("local-transport", () => {
 			],
 		});
 		const handleId = local.create();
-		const session = local.spawn(handleId, []);
+		const session = local.spawn(handleId, [], null);
 		const lines: Array<string> = [];
 		const reader = readLines(session.lines, lines);
 		session.stdin.write(`${JSON.stringify({ type: "init", value: {} })}\n`);
@@ -43,7 +43,7 @@ describe("local-transport", () => {
 			adapterCommand: ["node", "-e", "setInterval(() => {}, 1000)"],
 		});
 		const handleId = local.create();
-		local.spawn(handleId, []);
+		local.spawn(handleId, [], null);
 		local.stop(handleId);
 		const probe = spawnSync("node", ["-e", "process.exit(0)"]);
 		expect(probe.status).toBe(0);
@@ -54,7 +54,7 @@ describe("local-transport", () => {
 			adapterCommand: ["node", "-e", "process.exit(0)"],
 		});
 		const handleId = local.create();
-		local.spawn(handleId, []);
+		local.spawn(handleId, [], null);
 		local.stop(handleId);
 		expect(() => local.destroy()).not.toThrow();
 	});

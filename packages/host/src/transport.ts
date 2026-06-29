@@ -122,8 +122,15 @@ export function createDockerTransport(
 			}
 		},
 
-		exec({ containerId, command }) {
-			const child = spawn(dockerBin, ["exec", "-i", containerId, ...command], {
+		exec({ containerId, command, env }) {
+			const args = [dockerBin, "exec", "-i"];
+			if (env !== null) {
+				for (const [key, value] of Object.entries(env)) {
+					args.push("-e", `${key}=${value}`);
+				}
+			}
+			args.push(containerId, ...command);
+			const child = spawn(args[0] as string, args.slice(1), {
 				stdio: ["pipe", "pipe", "pipe"],
 			});
 			if (child.stdin === null || child.stdout === null) {
@@ -184,7 +191,7 @@ export type MockTransportCall =
 	  }
 	| { type: "down"; projectName: string; composePath: string; workDir: string }
 	| { type: "rm"; projectName: string; composePath: string; workDir: string }
-	| { type: "exec"; containerId: string; command: Array<string> }
+	| { type: "exec"; containerId: string; command: Array<string>; env: Record<string, string> | null }
 	| { type: "inspectStatus"; containerId: string };
 
 export function createMockTransport(

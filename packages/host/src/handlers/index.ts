@@ -1,8 +1,8 @@
 export { createExportHandler } from "./export.js";
 export { createHistoryHandler, historyEnvelope } from "./history.js";
-export { createInboxHandler } from "./inbox.js";
+export { createEventsHandler } from "./events.js";
+export { createMessagesHandler } from "./messages.js";
 export { createSessionsHandler } from "./sessions.js";
-export { createOutboxHandler } from "./outbox.js";
 export { createPrototypesHandler } from "./prototypes.js";
 export {
 	createRootHandler,

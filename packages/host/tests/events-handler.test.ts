@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it, vi } from "vitest";
-import { createOutboxHandler } from "../src/handlers/outbox.js";
+import { createEventsHandler } from "../src/handlers/events.js";
 import type { SessionManager } from "../src/session-manager.js";
 import { createSseBuffer, type SseEvent } from "../src/sse-buffer.js";
 
@@ -51,26 +51,40 @@ function createMockRequest(lastEventId: string | null): IncomingMessage {
 	return req;
 }
 
-describe("createOutboxHandler", () => {
+describe("createEventsHandler", () => {
 	it("replays buffered events after Last-Event-ID before subscribing", () => {
 		const buffer = createSseBuffer();
 		buffer.append({
 			event: "turn",
-			data: JSON.stringify({ type: "turn", value: { index: 0 } }),
+			data: JSON.stringify({
+				id: 0,
+				role: "assistant",
+				content: "hello",
+				toolCalls: [],
+				tokenUsage: { input: 0, output: 0, cached: 0 },
+				durationMs: 0,
+				timestamp: "2026-06-29T00:00:00.000Z",
+			}),
 		});
 		buffer.append({
-			event: "done",
-			data: JSON.stringify({ type: "done", value: { summary: "ok" } }),
+			event: "exit",
+			data: JSON.stringify({
+				type: "complete",
+				message: "ok",
+				elapsedMs: 1,
+				turnCount: 1,
+				tokenUsage: { input: 0, output: 0, cached: 0 },
+			}),
 		});
 
 		const manager = createMockManager(buffer);
-		const handler = createOutboxHandler(manager);
+		const handler = createEventsHandler(manager);
 		const res = createMockResponse();
-		handler(createMockRequest("1"), res, { id: "inst_1" });
+		handler(createMockRequest("1"), res, { id: "ses_1" });
 
 		const body = res.chunks.join("");
 		expect(body).toContain("id: 2");
-		expect(body).toContain("event: done");
+		expect(body).toContain("event: exit");
 		expect(res.writableEnded).toBe(true);
 	});
 
@@ -81,9 +95,9 @@ describe("createOutboxHandler", () => {
 		buffer.append({ event: "turn", data: "3" });
 
 		const manager = createMockManager(buffer);
-		const handler = createOutboxHandler(manager);
+		const handler = createEventsHandler(manager);
 		const res = createMockResponse();
-		handler(createMockRequest("1"), res, { id: "inst_1" });
+		handler(createMockRequest("1"), res, { id: "ses_1" });
 
 		expect(res.statusCode).toBe(410);
 		expect(res.chunks.join("")).toContain("sse_buffer_expired");
@@ -94,7 +108,7 @@ describe("createOutboxHandler", () => {
 		let subscriber: ((event: SseEvent) => void) | null = null;
 		const manager: SessionManager = {
 			getSseBuffer: () => buffer,
-			subscribeOutbox: (_id, onEvent) => {
+			subscribeEvents: (_id, onEvent) => {
 				subscriber = onEvent;
 				return () => {
 					subscriber = null;
@@ -102,14 +116,14 @@ describe("createOutboxHandler", () => {
 			},
 		} as SessionManager;
 
-		const handler = createOutboxHandler(manager);
+		const handler = createEventsHandler(manager);
 		const res = createMockResponse();
-		handler(createMockRequest(null), res, { id: "inst_1" });
+		handler(createMockRequest(null), res, { id: "ses_1" });
 
 		subscriber?.({
 			id: 1,
 			event: "turn",
-			data: JSON.stringify({ type: "turn" }),
+			data: JSON.stringify({ id: 0, role: "assistant", content: "hi" }),
 		});
 
 		const body = res.chunks.join("");
@@ -117,18 +131,17 @@ describe("createOutboxHandler", () => {
 		expect(body).toContain("event: turn");
 	});
 
-	it("sends heartbeat events on an interval", () => {
+	it("sends heartbeat comment lines on an interval", () => {
 		vi.useFakeTimers();
 		const buffer = createSseBuffer();
 		const manager = createMockManager(buffer);
-		const handler = createOutboxHandler(manager);
+		const handler = createEventsHandler(manager);
 		const res = createMockResponse();
-		handler(createMockRequest(null), res, { id: "inst_1" });
+		handler(createMockRequest(null), res, { id: "ses_1" });
 
 		vi.advanceTimersByTime(15_000);
 		const body = res.chunks.join("");
-		expect(body).toContain("event: heartbeat");
-		expect(body).toContain("data: {}");
+		expect(body).toContain(": heartbeat");
 		vi.useRealTimers();
 	});
 });
@@ -136,6 +149,6 @@ describe("createOutboxHandler", () => {
 function createMockManager(buffer: ReturnType<typeof createSseBuffer>) {
 	return {
 		getSseBuffer: () => buffer,
-		subscribeOutbox: () => () => undefined,
+		subscribeEvents: () => () => undefined,
 	} as SessionManager;
 }

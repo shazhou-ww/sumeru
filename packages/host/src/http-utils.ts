@@ -66,3 +66,7 @@ export function writeRawSseEvent(
 	res.write(`event: ${evt.event}\n`);
 	res.write(`data: ${evt.data}\n\n`);
 }
+
+export function writeSseComment(res: ServerResponse): void {
+	res.write(": heartbeat\n\n");
+}
