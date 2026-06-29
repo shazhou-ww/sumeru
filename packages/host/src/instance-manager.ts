@@ -620,7 +620,7 @@ function placeholderModel(): AdapterInitConfig["model"] {
 	return {
 		provider: "anthropic",
 		name: "placeholder",
-		apiKeyEnv: "ANTHROPIC_API_KEY",
+		apiKey: process.env.ANTHROPIC_API_KEY ?? "",
 		contextWindow: 200_000,
 	};
 }

@@ -36,9 +36,9 @@ function providerDefaultBaseUrl(provider: string): string {
 }
 
 export async function chat(request: LlmRequest): Promise<LlmResponse> {
-	const apiKey = process.env[request.apiKeyEnv] ?? "";
+	const apiKey = request.apiKey;
 	if (apiKey.length === 0) {
-		throw new Error(`sarsapa: env var ${request.apiKeyEnv} is not set`);
+		throw new Error("sarsapa: apiKey is empty");
 	}
 	const baseUrl = request.baseUrl ?? OPENAI_DEFAULT_BASE_URL;
 	const fetchFn = request.fetchImpl ?? fetch;

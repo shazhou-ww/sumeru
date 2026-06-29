@@ -12,7 +12,7 @@ export type Manifest = {
 export type ModelConfig = {
 	provider: KnownProvider | CustomProvider;
 	name: string;
-	apiKeyEnv: string;
+	apiKey: string;
 	contextWindow: number;
 };
 export type KnownProvider = "anthropic" | "openai" | "openrouter";

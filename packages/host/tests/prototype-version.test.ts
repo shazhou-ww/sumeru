@@ -31,7 +31,7 @@ function writePrototypeFixture(
 			"model:",
 			"  provider: anthropic",
 			"  name: claude-sonnet-4",
-			"  apiKeyEnv: ANTHROPIC_API_KEY",
+			"  apiKey: test-key",
 			"  contextWindow: 200000",
 		].join("\n"),
 	);
@@ -131,7 +131,7 @@ describe("computePrototypeHash", () => {
 				"model:",
 				"  provider: anthropic",
 				"  name: claude-sonnet-4",
-				"  apiKeyEnv: ANTHROPIC_API_KEY",
+				"  apiKey: test-key",
 				"  contextWindow: 200000",
 			].join("\n"),
 		);
@@ -209,7 +209,7 @@ describe("prototype lazy re-init", () => {
 				"model:",
 				"  provider: anthropic",
 				"  name: claude-sonnet-4",
-				"  apiKeyEnv: ANTHROPIC_API_KEY",
+				"  apiKey: test-key",
 				"  contextWindow: 200000",
 			].join("\n"),
 		);

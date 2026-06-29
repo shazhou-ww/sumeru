@@ -8,7 +8,7 @@ import type { LlmToolCall, Tool, ToolContext } from "./types.js";
 
 export type LoopOptions = {
 	model: string;
-	apiKeyEnv: string;
+	apiKey: string;
 	baseUrl: string | null;
 	conversation: Conversation;
 	tools: Array<Tool>;
@@ -88,7 +88,7 @@ export async function* runLoop(
 	for (let iter = 0; iter < opts.maxIterations; iter += 1) {
 		const request: LlmRequest = {
 			model: opts.model,
-			apiKeyEnv: opts.apiKeyEnv,
+			apiKey: opts.apiKey,
 			baseUrl: opts.baseUrl,
 			messages: toMessages(conversation),
 			tools: toolSchemas,

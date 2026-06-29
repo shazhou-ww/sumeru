@@ -19,12 +19,12 @@ function resolveBaseUrl(model: ModelConfig): string | null {
 
 function resolveModel(model: ModelConfig): {
 	name: string;
-	apiKeyEnv: string;
+	apiKey: string;
 	baseUrl: string | null;
 } {
 	return {
 		name: model.name,
-		apiKeyEnv: model.apiKeyEnv,
+		apiKey: model.apiKey,
 		baseUrl: resolveBaseUrl(model),
 	};
 }
@@ -63,7 +63,7 @@ export function createSarsapaAdapter(
 		pushUser(conversation, message.content);
 		return yield* runLoop({
 			model: m.name,
-			apiKeyEnv: m.apiKeyEnv,
+			apiKey: m.apiKey,
 			baseUrl: m.baseUrl,
 			conversation,
 			tools,
