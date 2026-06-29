@@ -1,13 +1,23 @@
 import type { AdapterInitConfig } from "@sumeru/adapter-core";
+import type { HostConfig, Prototype } from "@sumeru/core";
 import type {
-	HostConfig,
 	InstanceId,
 	InstanceInfo,
 	InstanceStatus,
-	Manifest,
 	OutboxFrame,
-} from "@sumeru/core";
+} from "./legacy-types.js";
 import type { TurnRecord } from "./ocas-recorder.js";
+
+export type {
+	DoneValue,
+	InboxMessage,
+	InstanceId,
+	InstanceInfo,
+	InstanceStatus,
+	OutboxFrame,
+	SuspendValue,
+	TurnValue,
+} from "./legacy-types.js";
 
 export type Envelope<T> = {
 	type: string;
@@ -29,21 +39,20 @@ export type HostRootValue = {
 
 export type PrototypeInfo = {
 	name: string;
-	adapter: string;
-	manifest: Manifest;
-	composePath: string;
-	manifestPath: string;
+	prototype: Prototype;
+	yamlPath: string;
 	prototypeHash: string;
+	composePath: string | null;
 };
 
 export type LoadedHostConfig = {
 	rootDir: string;
 	configPath: string;
-	prototypesDir: string;
 	dataDir: string;
+	skillsDir: string;
+	prototypesDir: string;
 	config: HostConfig;
 	prototypes: Map<string, PrototypeInfo>;
-	masterHash: string;
 };
 
 export type ManagedInstance = InstanceInfo & {
@@ -83,6 +92,11 @@ export type HistoryValue = {
 	total: number;
 	offset: number;
 	turns: Array<TurnRecord>;
+};
+
+export type SkillValue = {
+	name: string;
+	content: string;
 };
 
 export type TransportUpResult = {

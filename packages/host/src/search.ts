@@ -1,4 +1,4 @@
-import type { InstanceId, TurnValue } from "@sumeru/core";
+import type { InstanceId, TurnValue } from "./legacy-types.js";
 import { openOcasStore, readChain, type TurnRecord } from "./ocas-recorder.js";
 
 export type SearchHit = {

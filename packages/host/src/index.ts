@@ -1,10 +1,11 @@
 export {
-	buildMasterInitConfig,
-	computeMasterHash,
 	computePrototypeHash,
+	defaultModelFromHostConfig,
+	expandEnvVars,
 	loadHostConfig,
 	loadPrototypeInitSkills,
-	resolveMasterAdapterCommand,
+	reloadPrototypeInConfig,
+	removePrototypeFromConfig,
 } from "./config.js";
 export type { InstanceManager } from "./instance-manager.js";
 export { createInstanceManager } from "./instance-manager.js";
@@ -41,6 +42,7 @@ export type {
 	MatchResult,
 	PrototypeInfo,
 	RouteHandler,
+	SkillValue,
 	Transport,
 	TransportExecSession,
 	TransportUpResult,

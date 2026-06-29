@@ -1,5 +1,4 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { InstanceInfo } from "@sumeru/core";
 import {
 	errorEnvelope,
 	instanceEnvelope,
@@ -8,7 +7,11 @@ import {
 } from "../envelope.js";
 import { readJsonBody, writeJson } from "../http-utils.js";
 import type { InstanceManager } from "../instance-manager.js";
-import type { CreateInstanceRequest, ManagedInstance } from "../types.js";
+import type {
+	CreateInstanceRequest,
+	InstanceInfo,
+	ManagedInstance,
+} from "../types.js";
 
 function toInstanceInfo(record: ManagedInstance): InstanceInfo {
 	return {
@@ -179,6 +182,16 @@ function writeInstanceError(res: ServerResponse, err: unknown): void {
 				res,
 				400,
 				errorEnvelope("invalid_request", "Master instance cannot be modified"),
+			);
+			return;
+		case "prototype_no_compose":
+			writeJson(
+				res,
+				400,
+				errorEnvelope(
+					"prototype_no_compose",
+					"Prototype has no legacy compose.yaml for Docker workers",
+				),
 			);
 			return;
 		default:

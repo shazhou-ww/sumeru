@@ -1,30 +1,25 @@
-# Sumeru v2 — minimal runnable Host config.
+# Sumeru v3 — minimal Host config.
 # Loaded by packages/host/src/config.ts -> loadHostConfig(<rootDir>).
-# Run from the repo root:  node packages/host/dist/main.js examples/minimal
-#
-# Schema (validateHostConfig): name, master{adapter,config}, resources{maxMemory,maxCpus,maxInstances}, dataDir?
 name: minimal-host
 
-master:
-  # adapter: any non-empty string (label only; the real command is resolved below).
-  adapter: hermes
-  config:
-    # resolveMasterAdapterCommand() precedence: config.command > config.binary > fallback.
-    # Explicit command so it resolves regardless of rootDir (cwd = repo root at launch).
-    # Fallback would be node <rootDir>/packages/adapter-hermes/dist/main.js, which does
-    # NOT exist under examples/minimal — see report. The @sumeru/adapter-hermes process
-    # internally drives `hermes acp` and reads credentials from ~/.hermes/config.yaml.
-    command: ["node", "packages/adapter-hermes/dist/main.js"]
-    instructions: "You are the master agent for the minimal Sumeru host."
-    model:
-      provider: anthropic
-      name: claude-sonnet-4
-      apiKey: ${ANTHROPIC_API_KEY}
-      contextWindow: 200000
+maxRunning: 4
+workspaceRoot: /home/azureuser/repos
+envFile: ~/.config/sumeru/.env
 
-resources:
-  maxMemory: "2g"
-  maxCpus: 2
-  maxInstances: 4
+models:
+  anthropic:
+    baseUrl: null
+    apiKey: ${ANTHROPIC_API_KEY:-test-key}
+  openai: null
+  openrouter: null
 
-# dataDir omitted -> defaults to <rootDir>/data (OCAS JSONL recordings). Not committed.
+resourceLimits:
+  maxCpu: 2
+  maxMemory: 2g
+
+defaults:
+  timeout: 7200000
+  maxTurns: 40
+  resources:
+    cpu: 1
+    memory: 2g

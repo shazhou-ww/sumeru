@@ -1,23 +1,20 @@
-import { join } from "node:path";
 import type { AdapterInitConfig } from "@sumeru/adapter-core";
-import type {
-	InboxMessage,
-	InstanceId,
-	InstanceInfo,
-	InstanceStatus,
-	OutboxFrame,
-} from "@sumeru/core";
 import {
-	buildMasterInitConfig,
+	defaultModelFromHostConfig,
 	loadPrototypeInitSkills,
-	resolveMasterAdapterCommand,
 } from "./config.js";
 import {
 	generateInstanceId,
 	MASTER_INSTANCE_ID,
 	projectNameFromInstanceId,
 } from "./id.js";
-import { LOCAL_MASTER_HANDLE } from "./local-transport.js";
+import type {
+	InboxMessage,
+	InstanceId,
+	InstanceInfo,
+	InstanceStatus,
+	OutboxFrame,
+} from "./legacy-types.js";
 import { createOcasRecorder, type OcasRecorder } from "./ocas-recorder.js";
 import { outboxFrameToSseEvent, parseOutboxLine } from "./outbox.js";
 import {
@@ -107,7 +104,7 @@ export function createInstanceManager(input: {
 		const runningCount = [...instances.values()].filter(
 			(item) => item.id !== MASTER_INSTANCE_ID && item.status === "running",
 		).length;
-		if (runningCount >= input.hostConfig.config.resources.maxInstances) {
+		if (runningCount >= input.hostConfig.config.maxRunning) {
 			throw new Error("resource_exhausted");
 		}
 		const prototype = input.hostConfig.prototypes.get(body.prototype);
@@ -116,6 +113,9 @@ export function createInstanceManager(input: {
 		}
 		const id = generateInstanceId();
 		const projectName = projectNameFromInstanceId(id);
+		if (prototype.composePath === null) {
+			throw new Error("prototype_no_compose");
+		}
 		const up = await input.transport.up({
 			projectName,
 			composePath: prototype.composePath,
@@ -174,6 +174,9 @@ export function createInstanceManager(input: {
 		if (prototype === undefined) {
 			throw new Error("prototype_not_found");
 		}
+		if (prototype.composePath === null) {
+			throw new Error("prototype_no_compose");
+		}
 		stopAdapter(id);
 		await input.transport.down({
 			projectName: record.projectName,
@@ -217,6 +220,9 @@ export function createInstanceManager(input: {
 		const record = instances.get(id);
 		if (record === undefined) {
 			throw new Error("instance_not_found");
+		}
+		if (id === MASTER_INSTANCE_ID) {
+			throw new Error("master_not_supported");
 		}
 		if (record.containerId === null) {
 			throw new Error("instance_not_running");
@@ -307,8 +313,7 @@ export function createInstanceManager(input: {
 		record: ManagedInstance,
 	): Promise<void> {
 		if (id === MASTER_INSTANCE_ID) {
-			await ensureMasterAdapterReady(id, record);
-			return;
+			throw new Error("master_not_supported");
 		}
 		if (record.prototype === null) {
 			throw new Error("prototype_not_found");
@@ -359,65 +364,6 @@ export function createInstanceManager(input: {
 		);
 		await waitForReady(id);
 		record.initVersion = currentHash;
-	}
-
-	async function ensureMasterAdapterReady(
-		id: InstanceId,
-		record: ManagedInstance,
-	): Promise<void> {
-		const currentHash = input.hostConfig.masterHash;
-		let runtime = adapters.get(id);
-		if (runtime === undefined) {
-			runtime = createAdapterRuntime(buildMasterInitConfig(input.hostConfig));
-			adapters.set(id, runtime);
-		}
-		const versionStale = record.initVersion !== currentHash;
-		if (
-			versionStale &&
-			runtime.session !== null &&
-			runtime.initialized &&
-			record.status !== "suspended"
-		) {
-			await invalidateMasterAdapterSession(runtime);
-		}
-		if (
-			runtime.session !== null &&
-			runtime.initialized &&
-			record.status !== "suspended" &&
-			!versionStale
-		) {
-			return;
-		}
-		if (record.containerId === null) {
-			throw new Error("instance_not_running");
-		}
-		if (versionStale) {
-			runtime.initConfig = buildMasterInitConfig(input.hostConfig);
-		}
-		runtime.initialized = false;
-		const session = input.transport.exec({
-			containerId: record.containerId,
-			command: resolveMasterAdapterCommand(input.hostConfig),
-		});
-		runtime.session = session;
-		const activeSession = session;
-		runtime.readTask = readAdapterOutput(id, session.lines, activeSession);
-		runtime.session.stdin.write(
-			`${JSON.stringify({ type: "init", value: runtime.initConfig })}\n`,
-		);
-		await waitForReady(id);
-		record.initVersion = currentHash;
-	}
-
-	async function invalidateMasterAdapterSession(
-		runtime: AdapterRuntime,
-	): Promise<void> {
-		if (runtime.session !== null) {
-			runtime.session.stdin.end();
-			runtime.session = null;
-		}
-		runtime.initialized = false;
-		runtime.initConfig = buildMasterInitConfig(input.hostConfig);
 	}
 
 	async function invalidateAdapterSession(
@@ -508,15 +454,14 @@ export function createInstanceManager(input: {
 		if (prototype === undefined) {
 			throw new Error("prototype_not_found");
 		}
-		const prototypeDir = join(input.hostConfig.prototypesDir, prototypeName);
 		const skills = await loadPrototypeInitSkills(
-			prototypeDir,
-			prototype.manifest,
+			input.hostConfig.skillsDir,
+			prototype.prototype,
 		);
 		return {
-			instructions: prototype.manifest.instructions,
+			instructions: prototype.prototype.instructions,
 			skills,
-			model: prototype.manifest.model,
+			model: defaultModelFromHostConfig(input.hostConfig.config),
 		};
 	}
 
@@ -560,18 +505,7 @@ export function createInstanceManager(input: {
 	}
 
 	async function bootMaster(): Promise<void> {
-		const master = instances.get(MASTER_INSTANCE_ID);
-		if (master === undefined) return;
-		const up = await input.transport.up({
-			projectName: master.projectName,
-			composePath: master.composePath,
-			workDir: input.hostConfig.rootDir,
-		});
-		master.containerId = up.containerId;
-		master.status = "running";
-		if (up.containerId === LOCAL_MASTER_HANDLE) {
-			master.status = "running";
-		}
+		// v3 HostConfig has no master section; inst_0 remains a reserved placeholder.
 	}
 
 	return {
@@ -621,8 +555,7 @@ function placeholderModel(): AdapterInitConfig["model"] {
 	return {
 		provider: "anthropic",
 		name: "placeholder",
-		apiKey: process.env.ANTHROPIC_API_KEY ?? "",
-		contextWindow: 200_000,
+		apiKey: process.env.ANTHROPIC_API_KEY ?? null,
 	};
 }
 

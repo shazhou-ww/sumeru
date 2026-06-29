@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
-import type { InstanceStatus } from "@sumeru/core";
+import type { InstanceStatus } from "./legacy-types.js";
 import type { Transport, TransportExecSession } from "./types.js";
 
 const ADAPTER_BASE = "/opt/sumeru";

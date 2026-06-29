@@ -1,6 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import type { InstanceStatus } from "@sumeru/core";
+import type { InstanceStatus } from "./legacy-types.js";
 import type { Transport, TransportExecSession } from "./types.js";
 
 export const LOCAL_MASTER_HANDLE = "master";

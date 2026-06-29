@@ -2,10 +2,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
-import type { InstanceId } from "@sumeru/core";
 import { errorEnvelope } from "../envelope.js";
 import { writeJson } from "../http-utils.js";
 import type { InstanceManager } from "../instance-manager.js";
+import type { InstanceId } from "../legacy-types.js";
 import { openOcasStore, readChain } from "../ocas-recorder.js";
 
 export function createExportHandler(manager: InstanceManager, dataDir: string) {

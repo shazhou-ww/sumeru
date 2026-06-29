@@ -1,4 +1,5 @@
-import type { InstanceInfo, Manifest } from "@sumeru/core";
+import type { Prototype } from "@sumeru/core";
+import type { InstanceInfo } from "./legacy-types.js";
 import type {
 	Envelope,
 	ErrorValue,
@@ -6,6 +7,7 @@ import type {
 	InboxAcceptedValue,
 	InstanceStatusValue,
 	PrototypeInfo,
+	SkillValue,
 } from "./types.js";
 
 export function envelope<T>(type: string, value: T): Envelope<T> {
@@ -18,21 +20,19 @@ export function hostEnvelope(value: HostRootValue): Envelope<HostRootValue> {
 
 export function prototypeListEnvelope(
 	prototypes: Array<PrototypeInfo>,
-): Envelope<Array<{ name: string; adapter: string }>> {
+): Envelope<Array<{ name: string }>> {
 	return envelope(
 		"@sumeru/prototype-list",
-		prototypes.map((item) => ({ name: item.name, adapter: item.adapter })),
+		prototypes.map((item) => ({ name: item.name })),
 	);
 }
 
-export function prototypeEnvelope(
-	info: PrototypeInfo,
-): Envelope<{ name: string; adapter: string; manifest: Manifest }> {
-	return envelope("@sumeru/prototype", {
-		name: info.name,
-		adapter: info.adapter,
-		manifest: info.manifest,
-	});
+export function prototypeEnvelope(info: PrototypeInfo): Envelope<Prototype> {
+	return envelope("@sumeru/prototype", info.prototype);
+}
+
+export function skillEnvelope(value: SkillValue): Envelope<SkillValue> {
+	return envelope("@sumeru/skill", value);
 }
 
 export function instanceListEnvelope(

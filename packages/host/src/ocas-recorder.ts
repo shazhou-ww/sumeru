@@ -7,7 +7,7 @@ import {
 	type Store,
 } from "@ocas/core";
 import { createFsStore, createSqliteVarStore } from "@ocas/fs";
-import type { InstanceId, OutboxFrame, TurnValue } from "@sumeru/core";
+import type { InstanceId, OutboxFrame, TurnValue } from "./legacy-types.js";
 
 /**
  * `@sumeru/chain-node` — one link in an instance's append-only CAS chain.
