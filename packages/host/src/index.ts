@@ -2,13 +2,17 @@ export {
 	computePrototypeHash,
 	defaultModelFromHostConfig,
 	expandEnvVars,
+	extractImageFromCompose,
 	loadHostConfig,
 	loadPrototypeInitSkills,
+	mergeSessionEnv,
 	reloadPrototypeInConfig,
 	removePrototypeFromConfig,
+	resolveModelConfig,
+	resolveProjectPath,
 } from "./config.js";
-export type { InstanceManager } from "./instance-manager.js";
-export { createInstanceManager } from "./instance-manager.js";
+export type { SessionManager } from "./session-manager.js";
+export { createSessionManager } from "./session-manager.js";
 export type { LocalTransport } from "./local-transport.js";
 export {
 	createLocalTransport,
@@ -28,7 +32,7 @@ export {
 } from "./transport.js";
 export type {
 	AdapterBridge,
-	CreateInstanceRequest,
+	CreateSessionRequest,
 	Envelope,
 	ErrorValue,
 	HostRootValue,
@@ -36,9 +40,8 @@ export type {
 	InboxAcceptedValue,
 	InboxBody,
 	InboxRequest,
-	InstanceStatusValue,
 	LoadedHostConfig,
-	ManagedInstance,
+	ManagedSession,
 	MatchResult,
 	PrototypeInfo,
 	RouteHandler,

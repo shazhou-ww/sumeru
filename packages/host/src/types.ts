@@ -1,19 +1,11 @@
 import type { AdapterInitConfig } from "@sumeru/adapter-core";
-import type { HostConfig, Prototype } from "@sumeru/core";
-import type {
-	InstanceId,
-	InstanceInfo,
-	InstanceStatus,
-	OutboxFrame,
-} from "./legacy-types.js";
+import type { HostConfig, ModelConfig, Prototype, SessionInfo } from "@sumeru/core";
+import type { OutboxFrame } from "./legacy-types.js";
 import type { TurnRecord } from "./ocas-recorder.js";
 
 export type {
 	DoneValue,
 	InboxMessage,
-	InstanceId,
-	InstanceInfo,
-	InstanceStatus,
 	OutboxFrame,
 	SuspendValue,
 	TurnValue,
@@ -32,9 +24,8 @@ export type ErrorValue = {
 export type HostRootValue = {
 	name: string;
 	version: string;
-	master: InstanceId;
 	prototypes: Array<string>;
-	instances: Array<InstanceId>;
+	sessions: Array<string>;
 };
 
 export type PrototypeInfo = {
@@ -55,17 +46,27 @@ export type LoadedHostConfig = {
 	prototypes: Map<string, PrototypeInfo>;
 };
 
-export type ManagedInstance = InstanceInfo & {
+export type ManagedSession = SessionInfo & {
 	containerId: string | null;
 	projectName: string;
 	composePath: string;
 	initVersion: string | null;
+	projectPath: string;
+	sessionEnv: Record<string, string>;
 };
 
-export type CreateInstanceRequest = {
+export type CreateSessionRequest = {
 	prototype: string;
-	projects: Array<string> | null;
+	project: string;
+	task: string;
+	model: {
+		provider: ModelConfig["provider"];
+		name: string;
+	} | null;
+	env: Record<string, string> | null;
 };
+
+export type SessionModelRequest = CreateSessionRequest["model"];
 
 export type InboxBody = {
 	content: string;
@@ -77,18 +78,12 @@ export type InboxRequest = InboxBody & {
 };
 
 export type InboxAcceptedValue = {
-	instanceId: InstanceId;
+	sessionId: string;
 	messageId: string;
 };
 
-export type InstanceStatusValue = {
-	id: InstanceId;
-	status: InstanceStatus;
-	containerId: string | null;
-};
-
 export type HistoryValue = {
-	instanceId: InstanceId;
+	sessionId: string;
 	total: number;
 	offset: number;
 	turns: Array<TurnRecord>;
@@ -114,6 +109,7 @@ export type Transport = {
 		projectName: string;
 		composePath: string;
 		workDir: string;
+		env: Record<string, string> | null;
 	}): Promise<TransportUpResult>;
 	down(input: {
 		projectName: string;
@@ -129,7 +125,7 @@ export type Transport = {
 		containerId: string;
 		command: Array<string>;
 	}): TransportExecSession;
-	inspectStatus(containerId: string): Promise<InstanceStatus>;
+	inspectStatus(containerId: string): Promise<"running" | "stopped">;
 };
 
 export type AdapterBridge = {

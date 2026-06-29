@@ -6,19 +6,19 @@ import { Writable } from "node:stream";
 import { createGunzip } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { createExportHandler } from "../src/handlers/export.js";
-import type { InstanceManager } from "../src/instance-manager.js";
 import { createOcasRecorder } from "../src/ocas-recorder.js";
-import type { ManagedInstance } from "../src/types.js";
+import type { SessionManager } from "../src/session-manager.js";
+import type { ManagedSession } from "../src/types.js";
 
 const HASH_RE = /^[0-9A-HJKMNP-TV-Z]{13}$/;
 
 describe("createExportHandler", () => {
 	it("streams gzipped ndjson from CAS chain", async () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "sumeru-export-"));
-		const instanceId = "inst_export";
+		const sessionId = "ses_export";
 
 		const recorder = createOcasRecorder(dataDir);
-		recorder.append(instanceId, {
+		recorder.append(sessionId, {
 			type: "turn",
 			value: {
 				index: 0,
@@ -29,7 +29,7 @@ describe("createExportHandler", () => {
 				tokens: null,
 			},
 		});
-		recorder.append(instanceId, {
+		recorder.append(sessionId, {
 			type: "done",
 			value: { summary: "ok", tokenUsage: null },
 		});
@@ -37,21 +37,21 @@ describe("createExportHandler", () => {
 		const chunks: Buffer[] = [];
 		const res = createStreamResponse(chunks);
 		const handler = createExportHandler(
-			createMockManager(minimalInstance(instanceId)),
+			createMockManager(minimalSession(sessionId)),
 			dataDir,
 		);
 		await handler(
 			createMockRequest(),
 			res,
-			{ id: instanceId },
-			`/instances/${instanceId}/export`,
+			{ id: sessionId },
+			`/sessions/${sessionId}/export`,
 			"",
 		);
 
 		expect(res.statusCode).toBe(200);
 		expect(res.headers["content-type"]).toBe("application/gzip");
 		expect(res.headers["content-disposition"]).toBe(
-			`attachment; filename="${instanceId}.ndjson.gz"`,
+			`attachment; filename="${sessionId}.ndjson.gz"`,
 		);
 
 		const decompressed = await gunzipBuffer(Buffer.concat(chunks));
@@ -73,15 +73,15 @@ describe("createExportHandler", () => {
 		expect(second.type).toBe("done");
 	});
 
-	it("returns 404 when instance does not exist", async () => {
+	it("returns 404 when session does not exist", async () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "sumeru-export-"));
 		const res = createJsonResponse();
 		const handler = createExportHandler(createMockManager(null), dataDir);
 		await handler(
 			createMockRequest(),
 			res,
-			{ id: "inst_missing" },
-			"/instances/inst_missing/export",
+			{ id: "ses_missing" },
+			"/sessions/ses_missing/export",
 			"",
 		);
 
@@ -89,25 +89,25 @@ describe("createExportHandler", () => {
 		expect(res.body).toEqual({
 			type: "@sumeru/error",
 			value: {
-				error: "instance_not_found",
-				message: "Instance not found",
+				error: "session_not_found",
+				message: "Session not found",
 			},
 		});
 	});
 
-	it("returns 404 when instance has no chain history", async () => {
+	it("returns 404 when session has no chain history", async () => {
 		const dataDir = mkdtempSync(join(tmpdir(), "sumeru-export-"));
-		const instanceId = "inst_empty";
+		const sessionId = "ses_empty";
 		const res = createJsonResponse();
 		const handler = createExportHandler(
-			createMockManager(minimalInstance(instanceId)),
+			createMockManager(minimalSession(sessionId)),
 			dataDir,
 		);
 		await handler(
 			createMockRequest(),
 			res,
-			{ id: instanceId },
-			`/instances/${instanceId}/export`,
+			{ id: sessionId },
+			`/sessions/${sessionId}/export`,
 			"",
 		);
 
@@ -116,7 +116,7 @@ describe("createExportHandler", () => {
 			type: "@sumeru/error",
 			value: {
 				error: "no_history",
-				message: "No history for instance",
+				message: "No history for session",
 			},
 		});
 	});
@@ -133,24 +133,34 @@ function gunzipBuffer(buf: Buffer): Promise<Buffer> {
 	});
 }
 
-function minimalInstance(id: string): ManagedInstance {
+function minimalSession(id: string): ManagedSession {
 	return {
 		id,
 		prototype: "claude-code",
+		model: {
+			provider: "anthropic",
+			name: "claude-sonnet-4",
+			apiKey: "sk-test",
+		},
+		image: "example",
+		project: "demo",
+		task: "hello",
 		status: "running",
+		exit: null,
 		createdAt: "2026-06-27T00:00:00.000Z",
-		projects: [],
 		containerId: "container-1",
 		projectName: "proj",
 		composePath: "/compose.yaml",
 		initVersion: null,
+		projectPath: "/tmp/workspaces/demo",
+		sessionEnv: {},
 	};
 }
 
-function createMockManager(instance: ManagedInstance | null): InstanceManager {
+function createMockManager(session: ManagedSession | null): SessionManager {
 	return {
-		getInstance: () => instance,
-	} as InstanceManager;
+		getSession: () => session,
+	} as SessionManager;
 }
 
 function createMockRequest(): IncomingMessage {

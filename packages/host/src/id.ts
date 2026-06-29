@@ -7,10 +7,8 @@ const RAND_LEN = 16;
 let lastTime = 0;
 let lastRandom: number[] = new Array<number>(RAND_LEN).fill(0);
 
-export const MASTER_INSTANCE_ID = "inst_0";
-
-export function generateInstanceId(): string {
-	return `inst_${generateUlid()}`;
+export function generateSessionId(): string {
+	return `ses_${generateUlid()}`;
 }
 
 export function generateMessageId(): string {
@@ -67,6 +65,6 @@ function encodeRandom(values: number[]): string {
 	return out.join("");
 }
 
-export function projectNameFromInstanceId(instanceId: string): string {
-	return instanceId.replaceAll("_", "-").toLowerCase();
+export function projectNameFromSessionId(sessionId: string): string {
+	return sessionId.replaceAll("_", "-").toLowerCase();
 }

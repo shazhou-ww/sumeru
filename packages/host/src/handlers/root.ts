@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { errorEnvelope, hostEnvelope } from "../envelope.js";
 import { writeJson } from "../http-utils.js";
-import type { InstanceManager } from "../instance-manager.js";
+import type { SessionManager } from "../session-manager.js";
 
 export function createRootHandler(input: {
-	manager: InstanceManager;
+	manager: SessionManager;
 	version: string;
 }) {
 	return (_req: IncomingMessage, res: ServerResponse): void => {
@@ -15,9 +15,8 @@ export function createRootHandler(input: {
 			hostEnvelope({
 				name: root.name,
 				version: input.version,
-				master: root.master,
 				prototypes: root.prototypes,
-				instances: root.instances,
+				sessions: root.sessions,
 			}),
 		);
 	};

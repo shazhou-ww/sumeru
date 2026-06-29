@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadHostConfig } from "../src/config.js";
 import { VERSION } from "../src/index.js";
-import { createInstanceManager } from "../src/instance-manager.js";
+import { createSessionManager } from "../src/session-manager.js";
 import { createHostHandler } from "../src/server.js";
 import { createMockTransport } from "../src/transport.js";
 
@@ -77,9 +77,9 @@ describe("skills and prototypes CRUD routes", () => {
 
 	async function startTestServer(rootDir: string): Promise<Server> {
 		const hostConfig = await loadHostConfig(rootDir);
-		const manager = createInstanceManager({
+		const manager = createSessionManager({
 			hostConfig,
-			transport: createMockTransport(),
+			transport: createMockTransport().transport,
 		});
 		const handler = createHostHandler({
 			hostConfig,

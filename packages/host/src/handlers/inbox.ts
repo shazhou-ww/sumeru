@@ -2,14 +2,14 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { errorEnvelope, inboxAcceptedEnvelope } from "../envelope.js";
 import { readJsonBody, writeJson } from "../http-utils.js";
 import { generateMessageId } from "../id.js";
-import type { InstanceManager } from "../instance-manager.js";
+import type { SessionManager } from "../session-manager.js";
 import type { InboxBody, InboxRequest } from "../types.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function createInboxHandler(manager: InstanceManager) {
+export function createInboxHandler(manager: SessionManager) {
 	return async (
 		req: IncomingMessage,
 		res: ServerResponse,
@@ -43,7 +43,7 @@ export function createInboxHandler(manager: InstanceManager) {
 		const request: InboxRequest = { ...parsed, messageId };
 		try {
 			await manager.submitInbox(id, request);
-			writeJson(res, 202, inboxAcceptedEnvelope({ instanceId: id, messageId }));
+			writeJson(res, 202, inboxAcceptedEnvelope({ sessionId: id, messageId }));
 		} catch (err) {
 			writeInboxError(res, err);
 		}
@@ -65,21 +65,14 @@ function parseInboxBody(body: unknown): InboxBody | null {
 function writeInboxError(res: ServerResponse, err: unknown): void {
 	const message = err instanceof Error ? err.message : String(err);
 	switch (message) {
-		case "instance_not_found":
+		case "session_not_found":
 			writeJson(
 				res,
 				404,
-				errorEnvelope("instance_not_found", "Instance not found"),
+				errorEnvelope("session_not_found", "Session not found"),
 			);
 			return;
-		case "master_has_no_inbox":
-			writeJson(
-				res,
-				400,
-				errorEnvelope("invalid_request", "Master instance has no inbox"),
-			);
-			return;
-		case "instance_not_running":
+		case "session_not_running":
 		case "adapter_unavailable":
 		case "adapter_ready_timeout":
 			writeJson(res, 503, errorEnvelope("adapter_unavailable", message));

@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import { createOutboxHandler } from "../src/handlers/outbox.js";
-import type { InstanceManager } from "../src/instance-manager.js";
+import type { SessionManager } from "../src/session-manager.js";
 import { createSseBuffer, type SseEvent } from "../src/sse-buffer.js";
 
 function createMockResponse(): ServerResponse & {
@@ -92,7 +92,7 @@ describe("createOutboxHandler", () => {
 	it("streams live events with ids after replay", () => {
 		const buffer = createSseBuffer();
 		let subscriber: ((event: SseEvent) => void) | null = null;
-		const manager: InstanceManager = {
+		const manager: SessionManager = {
 			getSseBuffer: () => buffer,
 			subscribeOutbox: (_id, onEvent) => {
 				subscriber = onEvent;
@@ -100,7 +100,7 @@ describe("createOutboxHandler", () => {
 					subscriber = null;
 				};
 			},
-		} as InstanceManager;
+		} as SessionManager;
 
 		const handler = createOutboxHandler(manager);
 		const res = createMockResponse();
@@ -137,5 +137,5 @@ function createMockManager(buffer: ReturnType<typeof createSseBuffer>) {
 	return {
 		getSseBuffer: () => buffer,
 		subscribeOutbox: () => () => undefined,
-	} as InstanceManager;
+	} as SessionManager;
 }

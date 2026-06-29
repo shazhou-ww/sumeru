@@ -5,16 +5,16 @@ import {
 	createExportHandler,
 	createHistoryHandler,
 	createInboxHandler,
-	createInstancesHandler,
 	createOutboxHandler,
 	createPrototypesHandler,
 	createRootHandler,
 	createSearchHandler,
+	createSessionsHandler,
 	createSkillsHandler,
 	writeMethodNotAllowed,
 	writeRouteNotFound,
 } from "./handlers/index.js";
-import { createInstanceManager } from "./instance-manager.js";
+import { createSessionManager } from "./session-manager.js";
 import { createRouter } from "./router.js";
 import { createDockerTransport } from "./transport.js";
 import type {
@@ -40,12 +40,12 @@ export type StartedHost = {
 
 export function createHostHandler(input: {
 	hostConfig: LoadedHostConfig;
-	manager: ReturnType<typeof createInstanceManager>;
+	manager: ReturnType<typeof createSessionManager>;
 	version: string;
 }): (req: IncomingMessage, res: ServerResponse) => void {
 	const prototypes = createPrototypesHandler(input.hostConfig);
 	const skills = createSkillsHandler(input.hostConfig);
-	const instances = createInstancesHandler(input.manager);
+	const sessions = createSessionsHandler(input.manager);
 	const router = createRouter({
 		methodNotAllowed: writeMethodNotAllowed,
 		notFound: writeRouteNotFound,
@@ -59,17 +59,17 @@ export function createHostHandler(input: {
 		.route("GET", "/skills/:name", skills.get)
 		.route("PUT", "/skills/:name", skills.put)
 		.route("DELETE", "/skills/:name", skills.remove)
-		.route("GET", "/instances", instances.list)
-		.route("POST", "/instances", instances.create)
-		.route("DELETE", "/instances/:id", instances.remove)
-		.route("GET", "/instances/:id/status", instances.status)
-		.route("POST", "/instances/:id/reset", instances.reset)
-		.route("POST", "/instances/:id/inbox", createInboxHandler(input.manager))
-		.route("GET", "/instances/:id/outbox", createOutboxHandler(input.manager))
-		.route("GET", "/instances/:id/history", createHistoryHandler(input.manager))
+		.route("GET", "/sessions", sessions.list)
+		.route("POST", "/sessions", sessions.create)
+		.route("GET", "/sessions/:id", sessions.detail)
+		.route("POST", "/sessions/:id/stop", sessions.stop)
+		.route("DELETE", "/sessions/:id", sessions.remove)
+		.route("POST", "/sessions/:id/inbox", createInboxHandler(input.manager))
+		.route("GET", "/sessions/:id/outbox", createOutboxHandler(input.manager))
+		.route("GET", "/sessions/:id/history", createHistoryHandler(input.manager))
 		.route(
 			"POST",
-			"/instances/:id/export",
+			"/sessions/:id/export",
 			createExportHandler(input.manager, input.hostConfig.dataDir),
 		)
 		.route("GET", "/search", createSearchHandler(input.hostConfig.dataDir));
@@ -82,8 +82,7 @@ export function createHostHandler(input: {
 export async function startHost(config: StartHostConfig): Promise<StartedHost> {
 	const hostConfig = await loadHostConfig(config.rootDir);
 	const transport = config.transport ?? createDockerTransport();
-	const manager = createInstanceManager({ hostConfig, transport });
-	await manager.bootMaster();
+	const manager = createSessionManager({ hostConfig, transport });
 	const handler = createHostHandler({
 		hostConfig,
 		manager,
