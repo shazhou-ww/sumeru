@@ -24,6 +24,19 @@ export function wireTurnsToV3(
 	if (wire.role === "user") {
 		return { turns: [], nextId: startId };
 	}
+	if (wire.role === "tool") {
+		// Progressive tool turn emitted independently by the adapter (#182).
+		const toolTurn: ToolTurn = {
+			id: startId,
+			role: "tool",
+			callId: wire.callId,
+			name: wire.name,
+			result: wire.result,
+			durationMs: normalizeDurationMs(wire.durationMs),
+			timestamp: wire.timestamp,
+		};
+		return { turns: [toolTurn], nextId: startId + 1 };
+	}
 
 	// Pass adapter-reported usage through unchanged; null stays null so the
 	// client can tell "unknown" apart from "zero consumption" (#178).
@@ -69,7 +82,7 @@ function mapLegacyToolCalls(toolCalls: Array<WireToolCall> | null): {
 	for (let index = 0; index < toolCalls.length; index += 1) {
 		const legacy = toolCalls[index];
 		if (legacy === undefined) continue;
-		const callId = `call_${index}`;
+		const callId = legacy.id;
 		calls.push({
 			id: callId,
 			name: legacy.tool,

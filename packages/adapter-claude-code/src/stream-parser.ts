@@ -65,6 +65,7 @@ function extractToolCalls(content: unknown[]): Array<WireToolCall> {
 							: JSON.stringify(item.input ?? null),
 				};
 		calls.push({
+			id: typeof item.id === "string" ? item.id : `call_${calls.length}`,
 			tool: item.name,
 			input,
 			output: null,

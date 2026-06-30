@@ -30,7 +30,10 @@ export function createSearchIndex(dataDir: string): SearchIndex {
 			if (sessionFilter !== null && entry.sessionId !== sessionFilter) {
 				continue;
 			}
-			const content = entry.turn.value.content;
+			const content =
+				entry.turn.value.role === "tool"
+					? entry.turn.value.result
+					: entry.turn.value.content;
 			const matchIndex = content.toLowerCase().indexOf(lowerQuery);
 			if (matchIndex === -1) continue;
 			hits.push({
@@ -75,7 +78,7 @@ function loadTurnEntries(dataDir: string): Array<TurnEntry> {
 			for (const entry of readChain(handle.store, sessionId)) {
 				if (entry.payload.type !== "turn") continue;
 				const value = entry.payload.value as TurnValue;
-				if (typeof value.content !== "string") continue;
+				if (value.role === "tool") continue;
 				entries.push({
 					sessionId,
 					turn: {

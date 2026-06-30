@@ -12,10 +12,12 @@ import type {
 } from "./wire-types.js";
 
 export type {
+	AssistantTurnValue,
 	DoneValue,
 	InboxMessage,
 	OutboxFrame,
 	SuspendValue,
+	ToolTurnValue,
 	TurnValue,
 	WireErrorValue,
 	WireToolCall,
