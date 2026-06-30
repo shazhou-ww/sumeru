@@ -48,6 +48,10 @@ type AdapterRuntime = {
 	turnCount: number;
 	tokenUsage: TokenUsage;
 	startedAt: number;
+	// Wall-clock timestamp (ms) of the most recent turn frame arrival, or null
+	// before the first turn of the current send. Used to derive per-turn
+	// durationMs as the delta from the previous boundary (#178).
+	lastTurnAt: number | null;
 	nextTurnEventId: number;
 };
 
@@ -325,6 +329,7 @@ export function createSessionManager(input: {
 				timestamp: new Date().toISOString(),
 				toolCalls: null,
 				tokens: null,
+				durationMs: null,
 			},
 		});
 	}
@@ -402,16 +407,18 @@ export function createSessionManager(input: {
 		frame: OutboxFrame,
 		sessionId: string,
 	): void {
-		recorder.append(sessionId, frame);
 		if (frame.type === "turn") {
-			trackTurn(runtime, frame.value);
-			const mapped = wireTurnsToV3(frame.value, runtime.nextTurnEventId);
+			const stamped = stampTurnDuration(runtime, frame.value);
+			recorder.append(sessionId, { type: "turn", value: stamped });
+			trackTurn(runtime, stamped);
+			const mapped = wireTurnsToV3(stamped, runtime.nextTurnEventId);
 			runtime.nextTurnEventId = mapped.nextId;
 			for (const turn of mapped.turns) {
 				appendTurnEvent(runtime, turn);
 			}
 			return;
 		}
+		recorder.append(sessionId, frame);
 		if (
 			frame.type === "done" ||
 			frame.type === "suspend" ||
@@ -420,6 +427,27 @@ export function createSessionManager(input: {
 			const exit = exitSignalFromFrame(runtime, frame);
 			appendExitEvent(runtime, exit);
 		}
+	}
+
+	// Derive the host-trusted wall-clock durationMs for a turn frame. The
+	// adapter may already carry a measured durationMs (preferred); otherwise the
+	// host measures the delta from the previous boundary — the prior turn's
+	// arrival, or the send start (runtime.startedAt) for the first turn (#178).
+	function stampTurnDuration(
+		runtime: AdapterRuntime,
+		value: TurnValue,
+	): TurnValue {
+		const now = Date.now();
+		if (value.role !== "assistant") {
+			runtime.lastTurnAt = now;
+			return value;
+		}
+		const boundary = runtime.lastTurnAt ?? runtime.startedAt;
+		runtime.lastTurnAt = now;
+		if (value.durationMs !== null) {
+			return value;
+		}
+		return { ...value, durationMs: Math.max(1, now - boundary) };
 	}
 
 	async function ensureAdapterReady(
@@ -763,6 +791,7 @@ function createAdapterRuntime(
 		turnCount: 0,
 		tokenUsage: { ...EMPTY_TOKEN_USAGE },
 		startedAt: Date.now(),
+		lastTurnAt: null,
 		nextTurnEventId: 0,
 	};
 }
@@ -782,6 +811,7 @@ function resetRuntimeStats(runtime: AdapterRuntime): void {
 	runtime.turnCount = 0;
 	runtime.tokenUsage = { ...EMPTY_TOKEN_USAGE };
 	runtime.startedAt = Date.now();
+	runtime.lastTurnAt = null;
 }
 
 function trackTurn(runtime: AdapterRuntime, turn: TurnValue): void {

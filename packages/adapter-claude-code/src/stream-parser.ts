@@ -147,6 +147,7 @@ function processAssistantLine(
 		timestamp: state.now,
 		toolCalls: toolCalls.length > 0 ? toolCalls : null,
 		tokens: null,
+		durationMs: null,
 	};
 	state.turns.push(turn);
 
@@ -190,6 +191,7 @@ function processUserLine(
 		timestamp: state.now,
 		toolCalls: null,
 		tokens: null,
+		durationMs: null,
 	});
 }
 

@@ -58,6 +58,7 @@ function processItemCompleted(
 			timestamp: state.now,
 			toolCalls: null,
 			tokens: null,
+			durationMs: null,
 		};
 		state.turns.push(turn);
 		return;
@@ -86,6 +87,7 @@ function processItemCompleted(
 			timestamp: state.now,
 			toolCalls: [toolCall],
 			tokens: null,
+			durationMs: null,
 		};
 		state.turns.push(turn);
 	}

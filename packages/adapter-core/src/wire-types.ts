@@ -23,6 +23,11 @@ export type TurnValue = {
 	timestamp: string;
 	toolCalls: Array<WireToolCall> | null;
 	tokens: TokenUsage | null;
+	// Wall-clock duration of this turn in milliseconds. null means the producer
+	// did not measure it; the host then derives it from frame arrival timing
+	// (see packages/host/src/session-manager.ts). Never the sum of tool-call
+	// durations (#178).
+	durationMs: number | null;
 };
 
 export type DoneValue = {
