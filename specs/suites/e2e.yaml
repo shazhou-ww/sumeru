@@ -1,0 +1,11 @@
+suite: e2e
+description: 端到端主干流程 — 覆盖 session 创建、provider 配置、环境变量展开
+prerequisites:
+  - Sumeru host running with host.yaml (custom baseUrl configured)
+  - sumeru/hermes:dev image built from latest main
+  - LLM endpoint (copilot-bridge or compatible) reachable from container
+
+scenarios:
+  - session/create-and-start/tc-happy-path-hello-world.md
+  - session/create-and-start/tc-custom-provider-promotion.md
+  - session/create-and-start/tc-env-var-expansion.md
