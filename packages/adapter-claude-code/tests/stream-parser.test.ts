@@ -54,6 +54,7 @@ describe("parseStreamJson — tool_use folded into ToolCall.output", () => {
 		);
 		expect(assistantTurn).toBeDefined();
 		expect(assistantTurn?.toolCalls?.length).toBe(1);
+		expect(assistantTurn?.toolCalls?.[0]?.id).toBe("toolu_abc1");
 		expect(assistantTurn?.toolCalls?.[0]?.tool).toBe("Bash");
 		expect(assistantTurn?.toolCalls?.[0]?.input).toEqual({
 			command: "ls -la",
