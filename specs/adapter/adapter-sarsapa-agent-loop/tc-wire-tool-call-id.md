@@ -46,7 +46,7 @@ echo "toolTurn.callId = $TOOL_TURN_CALL_ID"
 ## Expected
 
 - [ ] `TOOL_CALL_ID` 非空且非 "null"
-- [ ] `TOOL_CALL_ID` 以 `call_` 开头（OpenAI tool_call.id 格式）
+- [ ] `TOOL_CALL_ID` 是非空字符串（格式取决于上游 LLM：OpenAI 用 `call_` 前缀，Anthropic 用 `tooluse_` 前缀）
 - [ ] `TOOL_TURN_CALL_ID` === `TOOL_CALL_ID`（id 透传一致）
 
 ## Failure Signals
