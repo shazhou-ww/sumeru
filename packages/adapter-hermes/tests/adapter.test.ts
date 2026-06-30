@@ -212,12 +212,38 @@ describe("@sumeru/adapter-hermes — buildHermesConfig", () => {
 			[
 				"custom_providers:",
 				"  - name: local-llm",
-				'    endpoint: "http://localhost:8080/v1"',
-				"    api_type: openai",
+				'    base_url: "http://localhost:8080/v1"',
+				"    api_mode: chat_completions",
 				"    api_key: local-key",
 				"model:",
 				"  provider: custom:local-llm",
 				"  default: gpt-4o-mini",
+				"",
+			].join("\n"),
+		);
+	});
+
+	it("auto-appends /v1 to custom provider endpoint when missing", () => {
+		expect(
+			buildHermesConfig({
+				provider: {
+					name: "proxy",
+					endpoint: "http://host.docker.internal:4141",
+					apiType: "anthropic",
+				},
+				name: "claude-opus-4.6",
+				apiKey: "sk-test",
+			}),
+		).toBe(
+			[
+				"custom_providers:",
+				"  - name: proxy",
+				'    base_url: "http://host.docker.internal:4141/v1"',
+				"    api_mode: chat_completions",
+				"    api_key: sk-test",
+				"model:",
+				"  provider: custom:proxy",
+				"  default: claude-opus-4.6",
 				"",
 			].join("\n"),
 		);

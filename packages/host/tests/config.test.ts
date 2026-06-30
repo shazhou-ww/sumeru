@@ -2,7 +2,12 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadHostConfig, validateComposeProjectVolume } from "../src/config.js";
+import {
+	defaultModelFromHostConfig,
+	loadHostConfig,
+	resolveModelConfig,
+	validateComposeProjectVolume,
+} from "../src/config.js";
 
 function writeV3HostFixture(rootDir: string): void {
 	writeFileSync(
@@ -117,5 +122,105 @@ describe("validateComposeProjectVolume", () => {
 		await expect(validateComposeProjectVolume(composePath)).rejects.toThrow(
 			"SUMERU_PROJECT_PATH",
 		);
+	});
+});
+
+describe("defaultModelFromHostConfig — baseUrl promotion", () => {
+	const baseConfig = {
+		name: "test",
+		maxRunning: 1,
+		workspaceRoot: "/tmp",
+		envFile: "/dev/null",
+		resourceLimits: null,
+		defaults: null,
+	};
+
+	it("returns KnownProvider when baseUrl is null", () => {
+		const model = defaultModelFromHostConfig({
+			...baseConfig,
+			models: {
+				anthropic: { baseUrl: null, apiKey: "sk-test" },
+				openai: null,
+				openrouter: null,
+			},
+		});
+		expect(model.provider).toBe("anthropic");
+		expect(model.apiKey).toBe("sk-test");
+	});
+
+	it("promotes to CustomProvider when baseUrl is set", () => {
+		const model = defaultModelFromHostConfig({
+			...baseConfig,
+			models: {
+				anthropic: {
+					baseUrl: "http://host.docker.internal:4141",
+					apiKey: "sk-proxy",
+				},
+				openai: null,
+				openrouter: null,
+			},
+		});
+		expect(typeof model.provider).toBe("object");
+		if (typeof model.provider === "object") {
+			expect(model.provider.name).toBe("anthropic");
+			expect(model.provider.endpoint).toBe("http://host.docker.internal:4141");
+			expect(model.provider.apiType).toBe("anthropic");
+		}
+		expect(model.apiKey).toBe("sk-proxy");
+		expect(model.name).toBe("claude-sonnet-4");
+	});
+});
+
+describe("resolveModelConfig — baseUrl promotion", () => {
+	const hostConfig = {
+		name: "test",
+		maxRunning: 1,
+		workspaceRoot: "/tmp",
+		envFile: "/dev/null",
+		models: {
+			anthropic: {
+				baseUrl: "http://host.docker.internal:4141",
+				apiKey: "sk-proxy",
+			},
+			openai: null,
+			openrouter: null,
+		},
+		resourceLimits: null,
+		defaults: null,
+	};
+
+	it("promotes known provider with baseUrl when using default model", () => {
+		const model = resolveModelConfig(hostConfig, null);
+		expect(typeof model.provider).toBe("object");
+		if (typeof model.provider === "object") {
+			expect(model.provider.endpoint).toBe("http://host.docker.internal:4141");
+		}
+	});
+
+	it("promotes known provider with baseUrl when explicitly requested", () => {
+		const model = resolveModelConfig(hostConfig, {
+			provider: "anthropic",
+			name: "claude-opus-4",
+		});
+		expect(typeof model.provider).toBe("object");
+		if (typeof model.provider === "object") {
+			expect(model.provider.endpoint).toBe("http://host.docker.internal:4141");
+		}
+		expect(model.name).toBe("claude-opus-4");
+		expect(model.apiKey).toBe("sk-proxy");
+	});
+
+	it("keeps known provider when baseUrl is null", () => {
+		const noBaseUrl = {
+			...hostConfig,
+			models: {
+				anthropic: { baseUrl: null, apiKey: "sk-real" },
+				openai: null,
+				openrouter: null,
+			},
+		};
+		const model = resolveModelConfig(noBaseUrl, null);
+		expect(model.provider).toBe("anthropic");
+		expect(model.apiKey).toBe("sk-real");
 	});
 });

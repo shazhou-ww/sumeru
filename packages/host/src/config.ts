@@ -189,27 +189,55 @@ export async function loadPrototypeInitSkills(
 	return skills;
 }
 
+/** Map a KnownProvider key to the apiType that hermes custom_providers expects. */
+const KNOWN_API_TYPE: Record<KnownProvider, "anthropic" | "openai"> = {
+	anthropic: "anthropic",
+	openai: "openai",
+	openrouter: "openai",
+};
+
+const KNOWN_DEFAULT_MODEL: Record<KnownProvider, string> = {
+	anthropic: "claude-sonnet-4",
+	openai: "gpt-4o",
+	openrouter: "anthropic/claude-sonnet-4",
+};
+
+/**
+ * When a known provider has a `baseUrl`, promote it to a CustomProvider so
+ * that `buildHermesConfig` generates a `custom_providers` block pointing at
+ * the right endpoint (e.g. a local copilot-bridge proxy).
+ */
+function promoteIfCustomEndpoint(
+	known: KnownProvider,
+	providerConfig: { baseUrl: string | null; apiKey: string },
+): ModelConfig {
+	if (providerConfig.baseUrl !== null) {
+		return {
+			provider: {
+				name: known,
+				endpoint: providerConfig.baseUrl,
+				apiType: KNOWN_API_TYPE[known],
+			},
+			name: KNOWN_DEFAULT_MODEL[known],
+			apiKey: providerConfig.apiKey,
+		};
+	}
+	return {
+		provider: known,
+		name: KNOWN_DEFAULT_MODEL[known],
+		apiKey: providerConfig.apiKey,
+	};
+}
+
 export function defaultModelFromHostConfig(config: HostConfig): ModelConfig {
 	if (config.models.anthropic !== null) {
-		return {
-			provider: "anthropic",
-			name: "claude-sonnet-4",
-			apiKey: config.models.anthropic.apiKey,
-		};
+		return promoteIfCustomEndpoint("anthropic", config.models.anthropic);
 	}
 	if (config.models.openai !== null) {
-		return {
-			provider: "openai",
-			name: "gpt-4o",
-			apiKey: config.models.openai.apiKey,
-		};
+		return promoteIfCustomEndpoint("openai", config.models.openai);
 	}
 	if (config.models.openrouter !== null) {
-		return {
-			provider: "openrouter",
-			name: "anthropic/claude-sonnet-4",
-			apiKey: config.models.openrouter.apiKey,
-		};
+		return promoteIfCustomEndpoint("openrouter", config.models.openrouter);
 	}
 	return {
 		provider: "anthropic",
@@ -255,10 +283,16 @@ export function resolveModelConfig(
 	if (typeof provider === "string") {
 		const known = provider as KnownProvider;
 		const providerConfig = hostConfig.models[known];
+		if (providerConfig !== null && providerConfig !== undefined) {
+			// When a baseUrl is configured, promote to CustomProvider so the
+			// adapter generates the right endpoint in hermes config.yaml.
+			const promoted = promoteIfCustomEndpoint(known, providerConfig);
+			return { ...promoted, name: base.name };
+		}
 		return {
 			provider: known,
 			name: base.name,
-			apiKey: providerConfig?.apiKey ?? null,
+			apiKey: null,
 		};
 	}
 	const custom = provider as CustomProvider;

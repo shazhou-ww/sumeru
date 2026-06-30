@@ -278,10 +278,16 @@ export function buildHermesConfig(model: ModelConfig): string {
 
 	if (isCustomProvider(model.provider)) {
 		const custom = model.provider;
+		// Hermes custom_providers use base_url (with /v1 suffix for chat_completions)
+		// and api_mode instead of our protocol-level endpoint / apiType.
+		let baseUrl = custom.endpoint;
+		if (!baseUrl.endsWith("/v1") && !baseUrl.endsWith("/v1/")) {
+			baseUrl = `${baseUrl.replace(/\/$/, "")}/v1`;
+		}
 		lines.push("custom_providers:");
 		lines.push(`  - name: ${yamlScalar(custom.name)}`);
-		lines.push(`    endpoint: ${yamlScalar(custom.endpoint)}`);
-		lines.push(`    api_type: ${yamlScalar(custom.apiType)}`);
+		lines.push(`    base_url: ${yamlScalar(baseUrl)}`);
+		lines.push(`    api_mode: chat_completions`);
 		appendApiKey(lines, "    ", model.apiKey);
 		lines.push("model:");
 		lines.push(`  provider: custom:${yamlScalar(custom.name)}`);
