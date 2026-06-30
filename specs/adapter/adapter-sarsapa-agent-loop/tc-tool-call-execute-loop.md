@@ -1,39 +1,83 @@
 ---
-tc: tool_call → 执行工具 → 下一轮 LLM → 最终回复
+tc: tool_call → 执行工具 → 结果回填 → 下一轮 LLM → 最终回复
 spec: adapter-sarsapa-agent-loop
-tags: [adapter, sarsapa, tool-call, happy-path]
+tags: [adapter, sarsapa, e2e, tool-call, happy-path]
 status: PASS
 ---
 
 # TC: tool call → execute → final answer
 
-## Setup
+## Preconditions
 
-Mock fetch 返回两轮响应：
-1. 第一轮：`tool_calls: [{ id: "call_1", function: { name: "terminal", arguments: '{"command":"echo hello"}' } }]`
-2. 第二轮：`content: "done"`，无 tool_calls
+- Sumeru host running (port 7901)
+- Prototype `sarsapa` available（内建 adapter，无外部 CLI 依赖）
+- OpenAI-compatible endpoint 可达（host 配置中的 model/apiKey 有效）
 
 ## Steps
 
-1. 调用 `adapter.handle({ content: "echo hello" })`
-2. 收集产出的 turns 和 done value
+1. **创建 session（触发工具调用的任务）**：
+
+```bash
+SID=$(curl -s -X POST http://127.0.0.1:7901/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"prototype":"sarsapa","project":"sumeru","task":"Run terminal command: echo sarsapa-check"}' \
+  | jq -r '.value.id')
+echo "Session: $SID"
+```
+
+2. **等待 session idle**（最多 2 分钟）：
+
+```bash
+for i in $(seq 1 60); do
+  STATUS=$(curl -s http://127.0.0.1:7901/sessions/$SID | jq -r '.value.status')
+  [ "$STATUS" != "running" ] && break
+  sleep 2
+done
+echo "Final status: $STATUS"
+```
+
+3. **获取全部 turns**：
+
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID/turns | jq '.value'
+```
+
+4. **找带 toolCalls 的 assistant turn**：
+
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID/turns | \
+  jq '.value[] | select(.role=="assistant" and .toolCalls != null and (.toolCalls | length) > 0)'
+```
+
+5. **找 tool turn**：
+
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID/turns | \
+  jq '.value[] | select(.role=="tool")'
+```
+
+6. **找最终回复的 assistant turn**：
+
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID/turns | \
+  jq '.value | map(select(.role=="assistant")) | last'
+```
 
 ## Expected
 
-- [ ] `turns.length === 2`（第一轮带 toolCalls + 第二轮 final answer）
-- [ ] `turns[0].toolCalls` 为非空数组
-- [ ] `turns[0].toolCalls[0].id === "call_1"`（透传自 LlmToolCall.id）
-- [ ] `turns[0].toolCalls[0].output` 非 null（工具已执行）
-- [ ] `turns[1].content === "done"`
-- [ ] `turns[1].toolCalls === null`
-- [ ] `done.tokenUsage.input === 30`（10 + 20 跨迭代累加）
-- [ ] `done.tokenUsage.output === 10`（5 + 5）
+- [ ] Step 2 最终 status = `idle`
+- [ ] Step 3 至少有 3 个 turns（assistant → tool → assistant）
+- [ ] Step 4 的 assistant turn 有 `toolCalls`，`toolCalls[0].tool` = "terminal"
+- [ ] Step 4 的 `toolCalls[0].output` 包含 "sarsapa-check"
+- [ ] Step 5 存在 tool turn，`role === "tool"`
+- [ ] tool turn 的 `callId` 与 assistant turn 的 `toolCalls[0].id` 一致
+- [ ] tool turn 的 `result` 包含 "sarsapa-check"
+- [ ] tool turn 的 `durationMs` ≥ 0
+- [ ] Step 6 最终 assistant turn 的 content 非空（LLM 基于工具结果的回复）
 
-## Notes
+## Failure Signals
 
-sarsapa 的 assistant turn 内联 `toolCalls[]`（含 output），走 host legacy 路径派生 ToolTurn。
-
-## Covered by
-
-`packages/sarsapa/tests/loop.test.ts`
-— `"runs a tool call then finishes with done"` test
+- status = `error` → 检查 exit.message，常见：LLM endpoint 不可达、apiKey 无效
+- 无 toolCalls → LLM 没选择调用工具（换更明确的 task prompt）
+- output 为空 → tool 执行正常但结果未回填到 WireToolCall
+- 无 tool turn → host 未从 WireToolCall.output 派生 ToolTurn

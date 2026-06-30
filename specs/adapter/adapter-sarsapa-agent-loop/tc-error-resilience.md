@@ -1,54 +1,69 @@
 ---
-tc: 异常工具执行（未知工具 / JSON 错误 / 工具抛异常）不崩溃，产出错误 WireToolCall
+tc: 异常工具执行（未知工具 / 参数错误）不崩溃，session 正常结束
 spec: adapter-sarsapa-agent-loop
-tags: [adapter, sarsapa, error-handling, resilience]
+tags: [adapter, sarsapa, e2e, error-handling, resilience]
 status: PASS
 ---
 
-# TC: 异常工具执行 → 错误 WireToolCall
+# TC: 异常工具执行 → 不崩溃
 
-## Behavior under test
+## Preconditions
 
-`executeToolCall` 在三种异常情况下不崩溃，而是返回带错误信息的 `WireToolCall`，
-让 LLM 能看到错误并自行决策（重试或放弃）。
+- Sumeru host running (port 7901)
+- Prototype `sarsapa` available
 
-## Scenario A: 未知工具
+## Steps
 
-### Given
-`call.name` 不匹配任何注册的 tool
+1. **创建 session（诱导 LLM 调用不存在的工具或错误参数）**：
 
-### Expected
-- [ ] `output === "Error: unknown tool '...'"` 
-- [ ] `exitCode === null`
-- [ ] `id === call.id`（仍透传）
-- [ ] 不抛异常，agent loop 继续
+```bash
+SID=$(curl -s -X POST http://127.0.0.1:7901/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"prototype":"sarsapa","project":"sumeru","task":"Call the tool named nonexistent_xyz_tool with argument {\"x\":1}. If you cannot, just say CANNOT."}' \
+  | jq -r '.value.id')
+echo "Session: $SID"
+```
 
-## Scenario B: arguments 不是合法 JSON
+2. **等待 session 结束**（最多 2 分钟）：
 
-### Given
-`call.arguments` 为非法 JSON 字符串
+```bash
+for i in $(seq 1 60); do
+  STATUS=$(curl -s http://127.0.0.1:7901/sessions/$SID | jq -r '.value.status')
+  [ "$STATUS" != "running" ] && break
+  sleep 2
+done
+echo "Final status: $STATUS"
+```
 
-### Expected
-- [ ] `output` 包含 `"Error: arguments is not valid JSON"` + parse 错误 + raw 前 300 字符
-- [ ] `exitCode === 1`
-- [ ] `input === {}`（空对象 fallback）
+3. **检查 session 是否正常结束**：
 
-## Scenario C: 工具执行抛异常
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID | jq '.value | {status, exit}'
+```
 
-### Given
-`tool.execute` throws Error
+4. **检查 turns 中是否有错误 tool turn**：
 
-### Expected
-- [ ] `output === "Error: tool '...' threw (...)"`
-- [ ] `exitCode === 1`
-- [ ] `durationMs` 为正整数（记录到抛异常为止的耗时）
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID/turns | \
+  jq '.value[] | select(.role=="tool") | {callId, result, durationMs}'
+```
+
+## Expected
+
+- [ ] Step 2 最终 status = `idle`（不是 `error`）— session 没崩溃
+- [ ] session 在 2 分钟内结束（不 hang）
+- [ ] 如果 LLM 调用了不存在的工具：tool turn 的 `result` 包含 "Error" 或错误描述
+- [ ] 如果 LLM 拒绝调用（回复 "CANNOT"）：assistant turn content 包含 "CANNOT"
+- [ ] 无论哪种情况，session 正常收尾
+
+## Failure Signals
+
+- status = `error` 且 exit.message 包含 "unknown tool" → executeToolCall 的错误没被 catch，直接 throw 了
+- session hang 超时 → 工具错误后 loop 没继续下一轮
+- 0 turns → adapter 在错误时 panic 没产出任何 turn
 
 ## Notes
 
-这三个分支的行为保证 agent loop 的韧性——单个工具失败不会中断整个 session。
-错误信息上行给 LLM，由模型决定下一步。
-
-## Covered by
-
-TypeCheck 保证 `WireToolCall` 结构完整。
-runtime 行为由 `packages/sarsapa/src/loop.ts:29-86` 源码分支覆盖。
+由于 LLM 有时会拒绝调用不存在的工具（直接回复 CANNOT），此 tc 验证的是
+**无论 LLM 的行为如何，session 都不会崩溃**。如果需要强制触发错误分支，
+可以在 sarsapa 的 tools 配置中注册一个永远 throw 的 mock tool。

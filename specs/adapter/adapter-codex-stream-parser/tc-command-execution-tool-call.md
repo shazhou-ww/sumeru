@@ -1,41 +1,69 @@
 ---
-tc: command_execution 产出带 toolCalls 的 assistant turn（含 output + exitCode）
+tc: command_execution 产出 assistant turn（含 toolCalls）+ host 派生 ToolTurn
 spec: adapter-codex-stream-parser
-tags: [adapter, codex, tool-call, command-execution]
+tags: [adapter, codex, e2e, tool-call, command-execution]
 status: PASS
 ---
 
-# TC: command_execution → WireToolCall（含 output）
+# TC: command_execution → toolCalls + ToolTurn
 
-## Setup
+## Preconditions
 
-构造包含 `command_execution` item 的 JSONL：
-
-```json
-{"type":"item.completed","item":{"type":"command_execution","id":"exec_1","status":"completed","command":"echo hello","aggregated_output":"hello\n","exit_code":0}}
-```
+- Sumeru host running (port 7901)
+- Prototype `codex` available
 
 ## Steps
 
-1. 调用 `parseCodexJson(jsonl)`
-2. 找到含 `toolCalls !== null` 的 turn
+1. **创建 session（触发命令执行的任务）**：
+
+```bash
+SID=$(curl -s -X POST http://127.0.0.1:7901/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"prototype":"codex","project":"sumeru","task":"Run the command: echo codex-tc-check"}' \
+  | jq -r '.value.id')
+echo "Session: $SID"
+```
+
+2. **等待 session idle**（最多 2 分钟）：
+
+```bash
+for i in $(seq 1 60); do
+  STATUS=$(curl -s http://127.0.0.1:7901/sessions/$SID | jq -r '.value.status')
+  [ "$STATUS" != "running" ] && break
+  sleep 2
+done
+echo "Final status: $STATUS"
+```
+
+3. **找带 toolCalls 的 assistant turn**：
+
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID/turns | \
+  jq '.value[] | select(.role=="assistant" and .toolCalls != null and (.toolCalls | length) > 0)'
+```
+
+4. **找 tool turn**：
+
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID/turns | \
+  jq '.value[] | select(.role=="tool")'
+```
 
 ## Expected
 
-- [ ] turn 的 `toolCalls.length === 1`
-- [ ] `toolCalls[0].tool === "command_execution"`
-- [ ] `toolCalls[0].id` 为非空字符串（来自 `item.id` 或 UUID）
-- [ ] `toolCalls[0].input` 包含 `{ command: "echo hello" }`
-- [ ] `toolCalls[0].output === "hello\n"`（已填充，非 null）
-- [ ] `toolCalls[0].exitCode === 0`
-- [ ] **不**产出独立 `role: "tool"` turn（走 legacy 路径，host 派生）
+- [ ] Step 3 找到至少 1 个 assistant turn 带 toolCalls
+- [ ] `toolCalls[0].tool` 存在（command_execution 映射的工具名）
+- [ ] `toolCalls[0].id` 存在（string，UUID 格式）
+- [ ] `toolCalls[0].input` 包含 "echo codex-tc-check" 相关内容
+- [ ] `toolCalls[0].output` 包含 "codex-tc-check"（命令执行结果）
+- [ ] `toolCalls[0].exitCode` 为 0
+- [ ] Step 4 至少有 1 个 `role === "tool"` turn
+- [ ] tool turn 的 `callId` 与 `toolCalls[0].id` 一致
+- [ ] tool turn 的 `result` 包含 "codex-tc-check"
 
-## Notes
+## Failure Signals
 
-- `status !== "completed"` 的 command_execution 应被忽略（不产出 turn）
-- Codex 的 command_execution item 自带执行结果，不需要后续回填
-
-## Covered by
-
-`packages/adapter-codex/tests/adapter.test.ts`（当前 fixture 不含 command_execution，
-此 tc 描述的是 `stream-parser.ts:68-95` 的行为规范）
+- 无 toolCalls → stream-parser 未解析 command_execution items
+- id 为空 → codex JSONL 无 id 字段且 UUID 生成逻辑失效
+- output 为空 → command_execution 的 output 字段未被提取
+- 无 tool turn → WireToolCall.output 未被填充，host 无法派生

@@ -1,42 +1,62 @@
 ---
-tc: 异常终止（max_turns / incomplete / malformed）正确处理
+tc: 异常终止（max_turns / error）session 正确收尾，不 hang
 spec: adapter-claude-code-stream-parser
-tags: [adapter, claude-code, error-handling]
+tags: [adapter, claude-code, e2e, error-handling]
 status: PASS
 ---
 
-# TC: 异常终止场景
+# TC: 异常终止正确收尾
 
-## Scenario A: error_max_turns
+## Preconditions
 
-### Setup
-使用 `cc-stream.max-turns.ndjson` fixture。
+- Sumeru host running (port 7901)
+- Prototype `claude-code` available
 
-### Expected
-- [ ] `result.subtype === "error_max_turns"`
-- [ ] `result.turns.length >= 1`（已累积的 turns 不丢弃）
+## Steps
 
-## Scenario B: incomplete（无 result 行）
+1. **创建 session（触发 max_turns 限制的任务）**：
 
-### Setup
-使用 `cc-stream.incomplete.ndjson` fixture。
+```bash
+SID=$(curl -s -X POST http://127.0.0.1:7901/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"prototype":"claude-code","project":"sumeru","task":"Keep running commands in a loop: ls, pwd, date, whoami, repeat forever. Do not stop.","model":"claude-sonnet-4-20250514"}' \
+  | jq -r '.value.id')
+echo "Session: $SID"
+```
 
-### Expected
-- [ ] `parseStreamJson` 返回非 null（降级处理，不崩溃）
-- [ ] `result.subtype === "incomplete"`
-- [ ] 已解析的 turns 保留
+2. **等待 session 结束**（max_turns 触发后 CC CLI 会自动结束）：
 
-## Scenario C: malformed 输入
+```bash
+for i in $(seq 1 90); do
+  STATUS=$(curl -s http://127.0.0.1:7901/sessions/$SID | jq -r '.value.status')
+  [ "$STATUS" != "running" ] && break
+  sleep 2
+done
+echo "Final status: $STATUS"
+```
 
-### Setup
-使用 `cc-stream.malformed.ndjson` fixture 或空字符串。
+3. **检查 session exit 信息**：
 
-### Expected
-- [ ] `parseStreamJson` 返回 `null`（无法提取任何有效数据）
-- [ ] 空输入返回 `null`
-- [ ] 不抛异常
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID | jq '.value.exit'
+```
 
-## Covered by
+4. **检查 turns 是否有内容**：
 
-`packages/adapter-claude-code/tests/stream-parser.test.ts`
-— `"parseStreamJson — error_max_turns"`, `"— incomplete"`, `"— malformed input"` describe blocks
+```bash
+TURN_COUNT=$(curl -s http://127.0.0.1:7901/sessions/$SID/turns | jq '.value | length')
+echo "Turn count: $TURN_COUNT"
+```
+
+## Expected
+
+- [ ] Step 2 最终 status 为 `idle` 或 `error`（不卡在 `running`）
+- [ ] 如果 status = `idle`：exit.subtype 可能为 "error_max_turns"
+- [ ] Step 4 的 TURN_COUNT ≥ 1（即使异常终止也有 turns）
+- [ ] session 在 3 分钟内结束（不 hang）
+
+## Failure Signals
+
+- 超过 3 分钟仍 running → adapter 未处理 CC CLI 的异常退出
+- 0 turns → stream-parser 遇到异常后丢弃了所有已解析的 turns
+- exit 为 null → host 未记录 adapter 的退出信息

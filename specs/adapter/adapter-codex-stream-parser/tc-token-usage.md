@@ -1,37 +1,53 @@
 ---
-tc: turn.completed 提取 token usage 到 DoneValue
+tc: turn.completed 提取 token usage 到 assistant turn
 spec: adapter-codex-stream-parser
-tags: [adapter, codex, token-usage]
+tags: [adapter, codex, e2e, token-usage]
 status: PASS
 ---
 
-# TC: turn.completed → DoneValue token usage
+# TC: token usage 出现在 assistant turn
 
-## Setup
+## Preconditions
 
-JSONL 包含 `turn.completed` 行：
-
-```json
-{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}
-```
+- Sumeru host running (port 7901)
+- Prototype `codex` available
 
 ## Steps
 
-1. 通过 `adapter.handle()` 消费到 `done`
-2. 检查 `done.tokenUsage`
+1. **创建 session**：
+
+```bash
+SID=$(curl -s -X POST http://127.0.0.1:7901/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"prototype":"codex","project":"sumeru","task":"Reply with exactly: hi"}' \
+  | jq -r '.value.id')
+```
+
+2. **等待 session idle**：
+
+```bash
+for i in $(seq 1 30); do
+  STATUS=$(curl -s http://127.0.0.1:7901/sessions/$SID | jq -r '.value.status')
+  [ "$STATUS" != "running" ] && break
+  sleep 2
+done
+```
+
+3. **检查最后一个 assistant turn 的 tokenUsage**：
+
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID/turns | \
+  jq '.value | map(select(.role=="assistant")) | last | .tokenUsage'
+```
 
 ## Expected
 
-- [ ] `tokenUsage.input === 10`
-- [ ] `tokenUsage.output === 5`
-- [ ] `tokenUsage.cached === 0`（Codex 不报告 cache tokens）
+- [ ] tokenUsage 不是 `null`（adapter 从 turn.completed 拿到了 usage）
+- [ ] tokenUsage.input 是非负整数
+- [ ] tokenUsage.output 是非负整数
+- [ ] tokenUsage.input + tokenUsage.output > 0
 
-## Notes
+## Failure Signals
 
-- 无 `turn.completed` 时为 incomplete 结果，usage 归零
-- `assembleResult` 从 `state.resultLine.usage` 提取
-
-## Covered by
-
-`packages/adapter-codex/tests/adapter.test.ts`
-— `"handle spawns codex exec and yields assistant turns"` test (checks `tokenUsage`)
+- tokenUsage = null → stream-parser 未从 JSONL turn.completed 提取 usage
+- tokenUsage 全为 0 → turn.completed 有 usage 但 parseCodexJson 映射有误

@@ -1,30 +1,55 @@
 ---
-tc: result 行提取 token usage 到 DoneValue
+tc: result line 提取 token usage 到 DoneValue → assistant turn 有 tokenUsage
 spec: adapter-claude-code-stream-parser
-tags: [adapter, claude-code, token-usage]
+tags: [adapter, claude-code, e2e, token-usage]
 status: PASS
 ---
 
-# TC: result 行 → DoneValue token usage
+# TC: token usage 出现在 assistant turn
 
-## Setup
+## Preconditions
 
-使用 `cc-stream.success.ndjson` 或 `cc-stream.tool-use.ndjson` fixture。
+- Sumeru host running (port 7901)
+- Prototype `claude-code` available
 
 ## Steps
 
-1. 调用 `parseStreamJson(fixture)`
-2. 检查 `result.usage`（即 `DoneValue.tokenUsage`）
+1. **创建 session**：
+
+```bash
+SID=$(curl -s -X POST http://127.0.0.1:7901/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"prototype":"claude-code","project":"sumeru","task":"Reply with exactly: hi"}' \
+  | jq -r '.value.id')
+```
+
+2. **等待 session idle**：
+
+```bash
+for i in $(seq 1 30); do
+  STATUS=$(curl -s http://127.0.0.1:7901/sessions/$SID | jq -r '.value.status')
+  [ "$STATUS" != "running" ] && break
+  sleep 2
+done
+```
+
+3. **检查最后一个 assistant turn 的 tokenUsage**：
+
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID/turns | \
+  jq '.value | map(select(.role=="assistant")) | last | .tokenUsage'
+```
 
 ## Expected
 
-- [ ] `tokenUsage.input > 0`（来自 result 行的 `usage.input_tokens`）
-- [ ] `tokenUsage.output > 0`（来自 result 行的 `usage.output_tokens`）
-- [ ] `tokenUsage.cached >= 0`（来自 `cache_read_input_tokens`）
-- [ ] `result.subtype` 正确映射（`"success"` / `"error_max_turns"` / `"incomplete"`）
-- [ ] `result.durationMs` 为正整数
+- [ ] tokenUsage 不是 `null`（adapter 从 CC result line 拿到了 usage）
+- [ ] tokenUsage.input 是非负整数
+- [ ] tokenUsage.output 是非负整数
+- [ ] tokenUsage.cached 是非负整数（或 0）
+- [ ] tokenUsage.input + tokenUsage.output > 0
 
-## Covered by
+## Failure Signals
 
-`packages/adapter-claude-code/tests/stream-parser.test.ts`
-— `"populates subtype and usage from the result line"` test
+- tokenUsage = null → stream-parser 未解析 result line 的 usage 字段
+- tokenUsage 全为 0 → result line 有 usage 但映射逻辑错误
+- session error → CC CLI 未正确返回 result line
