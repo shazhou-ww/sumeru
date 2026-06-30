@@ -68,8 +68,14 @@ describe("parseStreamJson — tool_use folded into ToolCall.output", () => {
 		expect(toolCall?.output).toContain("total 0");
 	});
 
-	it("does NOT emit a separate Turn for the tool_result user line", () => {
-		expect(parsed?.turns.length).toBe(3);
+	it("emits a progressive ToolTurnValue for the tool_result (#182)", () => {
+		// 3 original turns + 1 progressive tool turn = 4
+		expect(parsed?.turns.length).toBe(4);
+		const toolTurn = parsed?.turns.find((t) => t.role === "tool");
+		expect(toolTurn).toBeDefined();
+		expect(toolTurn?.role).toBe("tool");
+		expect((toolTurn as { callId?: string })?.callId).toBe("toolu_abc1");
+		expect((toolTurn as { result?: string })?.result).toContain("total 0");
 	});
 });
 

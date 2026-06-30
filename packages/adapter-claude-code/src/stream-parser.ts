@@ -177,6 +177,19 @@ function processUserLine(
 		if (target !== undefined) {
 			target.output = text;
 			state.pendingToolCalls.delete(toolUseId);
+			// Emit a progressive ToolTurnValue so the host records the tool
+			// result as an independent turn (#182). The backfill above still
+			// patches the assistant turn's WireToolCall.output for legacy
+			// consumers that read turns from a single frame.
+			state.turns.push({
+				index: state.turnIndex++,
+				role: "tool",
+				name: target.tool,
+				callId: target.id,
+				result: text,
+				durationMs: target.durationMs,
+				timestamp: state.now,
+			});
 		}
 		return;
 	}

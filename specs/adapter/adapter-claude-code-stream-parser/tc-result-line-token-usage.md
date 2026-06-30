@@ -33,7 +33,13 @@ for i in $(seq 1 30); do
 done
 ```
 
-3. **检查最后一个 assistant turn 的 tokenUsage**：
+3. **检查 session exit 的 tokenUsage**（CC CLI 只在 result line 报总量，不提供 per-turn breakdown）：
+
+```bash
+curl -s http://127.0.0.1:7901/sessions/$SID | jq '.value.exit.tokenUsage'
+```
+
+4. **确认 assistant turn 的 tokenUsage 为 null**（CC CLI 行为）：
 
 ```bash
 curl -s http://127.0.0.1:7901/sessions/$SID/turns | \
@@ -42,14 +48,13 @@ curl -s http://127.0.0.1:7901/sessions/$SID/turns | \
 
 ## Expected
 
-- [ ] tokenUsage 不是 `null`（adapter 从 CC result line 拿到了 usage）
-- [ ] tokenUsage.input 是非负整数
-- [ ] tokenUsage.output 是非负整数
-- [ ] tokenUsage.cached 是非负整数（或 0）
-- [ ] tokenUsage.input + tokenUsage.output > 0
+- [ ] session exit tokenUsage 不是 `null`（adapter 从 CC result line 拿到了 usage）
+- [ ] exit.tokenUsage.input 是非负整数且 > 0
+- [ ] exit.tokenUsage.output 是非负整数且 > 0
+- [ ] assistant turn 的 tokenUsage 为 `null`（CC CLI 不提供 per-turn breakdown，这是正常行为）
 
 ## Failure Signals
 
-- tokenUsage = null → stream-parser 未解析 result line 的 usage 字段
-- tokenUsage 全为 0 → result line 有 usage 但映射逻辑错误
+- session exit tokenUsage = null → stream-parser 未解析 result line 的 usage 字段，或 DoneValue 未传递
+- exit tokenUsage 全为 0 → result line 有 usage 但映射逻辑错误
 - session error → CC CLI 未正确返回 result line
