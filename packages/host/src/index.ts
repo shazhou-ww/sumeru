@@ -11,6 +11,8 @@ export {
 	resolveModelConfig,
 	resolveProjectPath,
 } from "./config.js";
+export type { UnhandledRejectionGuardOptions } from "./process-guards.js";
+export { installUnhandledRejectionGuard } from "./process-guards.js";
 export type { Router } from "./router.js";
 export { createRouter } from "./router.js";
 export type { StartedHost, StartHostConfig } from "./server.js";
