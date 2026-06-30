@@ -1,13 +1,5 @@
 import type { TurnValue, WireToolCall } from "@sumeru/adapter-core";
-import type {
-	AssistantTurn,
-	TokenUsage,
-	ToolCall,
-	ToolTurn,
-	Turn,
-} from "@sumeru/core";
-
-const EMPTY_TOKEN_USAGE: TokenUsage = { input: 0, output: 0, cached: 0 };
+import type { AssistantTurn, ToolCall, ToolTurn, Turn } from "@sumeru/core";
 
 export function turnRecordsToV3(
 	records: Array<{ value: TurnValue }>,
@@ -33,7 +25,9 @@ export function wireTurnsToV3(
 		return { turns: [], nextId: startId };
 	}
 
-	const tokenUsage = wire.tokens ?? EMPTY_TOKEN_USAGE;
+	// Pass adapter-reported usage through unchanged; null stays null so the
+	// client can tell "unknown" apart from "zero consumption" (#178).
+	const tokenUsage = wire.tokens;
 	const mappedToolCalls = mapLegacyToolCalls(wire.toolCalls);
 	let nextId = startId;
 	const turns: Array<Turn> = [];
@@ -44,7 +38,9 @@ export function wireTurnsToV3(
 		content: wire.content,
 		toolCalls: mappedToolCalls.calls,
 		tokenUsage,
-		durationMs: sumToolDuration(wire.toolCalls),
+		// Wall-clock duration measured/stamped by the host — never the sum of
+		// tool-call durations (#178). Always a positive integer.
+		durationMs: normalizeDurationMs(wire.durationMs),
 		timestamp: wire.timestamp,
 	};
 	turns.push(assistant);
@@ -94,13 +90,10 @@ function mapLegacyToolCalls(toolCalls: Array<WireToolCall> | null): {
 	return { calls, toolTurns };
 }
 
-function sumToolDuration(toolCalls: Array<WireToolCall> | null): number {
-	if (toolCalls === null) return 0;
-	let total = 0;
-	for (const call of toolCalls) {
-		if (call.durationMs !== null) {
-			total += call.durationMs;
-		}
-	}
-	return total;
+function normalizeDurationMs(durationMs: number | null): number {
+	// An emitted assistant turn always took *some* wall-clock time, even a pure
+	// "pong" with no tool calls. Clamp unknown/zero/sub-millisecond values up to
+	// 1 so the contract (integer >= 1) holds (#178).
+	if (durationMs === null || !Number.isFinite(durationMs)) return 1;
+	return Math.max(1, Math.round(durationMs));
 }

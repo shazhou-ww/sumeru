@@ -76,7 +76,11 @@ export type AssistantTurn = {
 	role: "assistant";
 	content: string;
 	toolCalls: Array<ToolCall>;
-	tokenUsage: TokenUsage;
+	// null when the adapter did not report token usage for this turn — do NOT
+	// fabricate { input: 0, output: 0, cached: 0 } to represent "unknown" (#178).
+	tokenUsage: TokenUsage | null;
+	// Wall-clock milliseconds from turn start to adapter response; always >= 1
+	// for an emitted turn. Never derived from the sum of tool-call durations.
 	durationMs: number;
 	timestamp: string;
 };

@@ -118,6 +118,10 @@ export type AcpClientOptions = AcpClientCreateOptions & {
 export type AcpStreamState = {
 	pendingToolCalls: Array<WireToolCall>;
 	pendingText: string;
+	// Cumulative usage for this handle — surfaced on the trailing `done` frame.
 	usage: { input: number; output: number; cached: number } | null;
+	// Usage reported since the last flush, attributed to the next flushed turn
+	// and then cleared so it is never double-counted onto a later turn (#178).
+	pendingUsage: { input: number; output: number; cached: number } | null;
 	nextIndex: number;
 };

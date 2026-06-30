@@ -180,6 +180,7 @@ export function createHermesAdapter(
 			pendingToolCalls: [],
 			pendingText: "",
 			usage: null,
+			pendingUsage: null,
 			nextIndex: nextTurnIndex,
 		};
 		const turnQueue: Array<TurnValue> = [];
@@ -317,7 +318,8 @@ function mapUpdateToTurns(
 				content: state.pendingText,
 				timestamp: new Date().toISOString(),
 				toolCalls: null,
-				tokens: null,
+				tokens: takePendingUsage(state),
+				durationMs: null,
 			});
 			state.pendingText = "";
 		}
@@ -325,16 +327,30 @@ function mapUpdateToTurns(
 		return results;
 	}
 	if (update.sessionUpdate === "usage_update") {
-		state.usage = {
+		const usage = {
 			input: update.input_tokens,
 			output: update.output_tokens,
 			cached: 0,
 		};
+		// `usage` is the cumulative snapshot surfaced on the `done` frame;
+		// `pendingUsage` is attributed to the next flushed turn (#178).
+		state.usage = usage;
+		state.pendingUsage = { ...usage };
 		return [];
 	}
 	// agent_message_chunk — accumulate text, don't yield yet
 	state.pendingText += update.content.text;
 	return [];
+}
+
+// Return the usage reported since the last flush and clear it, so the same
+// usage is never attributed to more than one turn (#178).
+function takePendingUsage(
+	state: AcpStreamState,
+): { input: number; output: number; cached: number } | null {
+	const pending = state.pendingUsage;
+	state.pendingUsage = null;
+	return pending;
 }
 
 function flushPending(state: AcpStreamState): Array<TurnValue> {
@@ -349,7 +365,8 @@ function flushPending(state: AcpStreamState): Array<TurnValue> {
 			content: state.pendingText,
 			timestamp: new Date().toISOString(),
 			toolCalls,
-			tokens: null,
+			tokens: takePendingUsage(state),
+			durationMs: null,
 		});
 		state.pendingText = "";
 	} else if (state.pendingToolCalls.length > 0) {
@@ -361,7 +378,8 @@ function flushPending(state: AcpStreamState): Array<TurnValue> {
 			content: "",
 			timestamp: new Date().toISOString(),
 			toolCalls,
-			tokens: null,
+			tokens: takePendingUsage(state),
+			durationMs: null,
 		});
 	}
 	return results;

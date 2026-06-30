@@ -306,6 +306,29 @@ describe("session-manager", () => {
 		});
 	});
 
+	it("emits turn events with wall-clock durationMs >= 1 and null tokenUsage (bug #178)", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		const { transport } = createInteractiveTransport();
+		const manager = createSessionManager({ hostConfig, transport });
+		const created = await manager.createSession(createSessionBody());
+
+		await waitUntil(() => manager.getSession(created.id)?.status === "idle");
+		const turnEvent = manager
+			.getSseBuffer(created.id)
+			.eventsAfter(0)
+			.find((event) => event.event === "turn");
+		const turn = JSON.parse(turnEvent?.data ?? "{}") as Turn;
+
+		if (turn.role !== "assistant") throw new Error("expected assistant turn");
+		// durationMs is wall-clock, never 0, never the sum of tool durations.
+		expect(Number.isInteger(turn.durationMs)).toBe(true);
+		expect(turn.durationMs).toBeGreaterThanOrEqual(1);
+		// The interactive transport reports tokens: null → host must surface null,
+		// not a fabricated { input: 0, output: 0, cached: 0 }.
+		expect(turn.tokenUsage).toBeNull();
+	});
+
 	it("stopSession transitions running to idle with stopped exit", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);

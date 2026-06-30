@@ -330,6 +330,162 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 		expect(adapter.getNativeId?.()).toBe(nativeId);
 	});
 
+	it("attaches usage_update tokens to the flushed turn frame (bug #178)", async () => {
+		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-turn-tokens-"));
+		await mkdir(hermesDir, { recursive: true });
+		const acpClientFactory = createRecordingAcpClientFactory({
+			sessionId: "20260630_021918_aaaa11",
+			onPrompt: (_content, emit) => {
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "pong" },
+				});
+				emit({
+					sessionUpdate: "usage_update",
+					input_tokens: 100,
+					output_tokens: 20,
+				});
+			},
+		});
+		const adapter = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			acpClientFactory,
+		});
+		await adapter.init(INIT_CONFIG);
+
+		const generator = adapter.handle({
+			messageId: "msg_tokens",
+			content: "ping",
+			project: null,
+		});
+		const turns = [];
+		while (true) {
+			const step = await generator.next();
+			if (step.done === true) break;
+			if (
+				typeof step.value === "object" &&
+				step.value !== null &&
+				"type" in step.value
+			) {
+				continue;
+			}
+			turns.push(step.value);
+		}
+
+		expect(turns).toHaveLength(1);
+		expect(turns[0]?.content).toBe("pong");
+		// The turn frame must carry the per-turn token usage, not null.
+		expect(turns[0]?.tokens).toEqual({ input: 100, output: 20, cached: 0 });
+	});
+
+	it("leaves tokens null on a turn that never saw a usage_update (bug #178)", async () => {
+		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-turn-no-tokens-"));
+		await mkdir(hermesDir, { recursive: true });
+		const acpClientFactory = createRecordingAcpClientFactory({
+			sessionId: "20260630_021918_bbbb22",
+			onPrompt: (_content, emit) => {
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "pong" },
+				});
+			},
+		});
+		const adapter = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			acpClientFactory,
+		});
+		await adapter.init(INIT_CONFIG);
+
+		const generator = adapter.handle({
+			messageId: "msg_no_tokens",
+			content: "ping",
+			project: null,
+		});
+		const turns = [];
+		while (true) {
+			const step = await generator.next();
+			if (step.done === true) break;
+			if (
+				typeof step.value === "object" &&
+				step.value !== null &&
+				"type" in step.value
+			) {
+				continue;
+			}
+			turns.push(step.value);
+		}
+
+		expect(turns).toHaveLength(1);
+		expect(turns[0]?.tokens).toBeNull();
+	});
+
+	it("does not double-count usage across multiple flushed turns (bug #178)", async () => {
+		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-turn-tokens-multi-"));
+		await mkdir(hermesDir, { recursive: true });
+		const acpClientFactory = createRecordingAcpClientFactory({
+			sessionId: "20260630_021918_cccc33",
+			onPrompt: (_content, emit) => {
+				// First assistant turn with its own usage.
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "first" },
+				});
+				emit({
+					sessionUpdate: "usage_update",
+					input_tokens: 100,
+					output_tokens: 20,
+				});
+				// A tool_call flushes the accumulated text as turn #0.
+				emit({
+					sessionUpdate: "tool_call",
+					toolCallId: "tc_1",
+					name: "terminal",
+					input: { command: "ls" },
+				});
+				// Second assistant turn — no further usage_update.
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "second" },
+				});
+			},
+		});
+		const adapter = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			acpClientFactory,
+		});
+		await adapter.init(INIT_CONFIG);
+
+		const generator = adapter.handle({
+			messageId: "msg_multi",
+			content: "ping",
+			project: null,
+		});
+		const turns = [];
+		while (true) {
+			const step = await generator.next();
+			if (step.done === true) break;
+			if (
+				typeof step.value === "object" &&
+				step.value !== null &&
+				"type" in step.value
+			) {
+				continue;
+			}
+			turns.push(step.value);
+		}
+
+		expect(turns).toHaveLength(2);
+		// The usage belongs to the first flushed turn only.
+		expect(turns[0]?.content).toBe("first");
+		expect(turns[0]?.tokens).toEqual({ input: 100, output: 20, cached: 0 });
+		// The second turn must not re-claim the same usage.
+		expect(turns[1]?.content).toBe("second");
+		expect(turns[1]?.tokens).toBeNull();
+	});
+
 	it("reuses the long-lived ACP client across subsequent handle calls", async () => {
 		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-reuse-"));
 		const nativeId = "20260627_130000_abcd12";

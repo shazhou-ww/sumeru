@@ -99,7 +99,9 @@ export async function* runLoop(
 			signal: null,
 			fetchImpl: opts.fetchImpl,
 		};
+		const turnStart = Date.now();
 		const res = await chat(request);
+		const turnDurationMs = Math.max(1, Date.now() - turnStart);
 		if (res.tokens !== null) {
 			inputTokens += res.tokens.input;
 			outputTokens += res.tokens.output;
@@ -113,6 +115,7 @@ export async function* runLoop(
 				timestamp: nowIso(),
 				toolCalls: null,
 				tokens: res.tokens,
+				durationMs: turnDurationMs,
 			};
 			yield turn;
 			return {
@@ -142,6 +145,7 @@ export async function* runLoop(
 			timestamp: nowIso(),
 			toolCalls: executed,
 			tokens: res.tokens,
+			durationMs: turnDurationMs,
 		};
 		index += 1;
 		yield turn;
