@@ -107,9 +107,21 @@ export type HostConfig = {
 	workspaceRoot: string;
 	envFile: string;
 	models: {
-		anthropic: { baseUrl: string | null; apiKey: string } | null;
-		openai: { baseUrl: string | null; apiKey: string } | null;
-		openrouter: { baseUrl: string | null; apiKey: string } | null;
+		anthropic: {
+			baseUrl: string | null;
+			apiKey: string;
+			model: string | null;
+		} | null;
+		openai: {
+			baseUrl: string | null;
+			apiKey: string;
+			model: string | null;
+		} | null;
+		openrouter: {
+			baseUrl: string | null;
+			apiKey: string;
+			model: string | null;
+		} | null;
 	};
 	resourceLimits: { maxCpu: number; maxMemory: string } | null;
 	defaults: {

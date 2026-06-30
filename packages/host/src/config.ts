@@ -215,7 +215,11 @@ const KNOWN_DEFAULT_MODEL: Record<KnownProvider, string> = {
  */
 function promoteIfCustomEndpoint(
 	known: KnownProvider,
-	providerConfig: { baseUrl: string | null; apiKey: string },
+	providerConfig: {
+		baseUrl: string | null;
+		apiKey: string;
+		model: string | null;
+	},
 ): ModelConfig {
 	if (providerConfig.baseUrl !== null) {
 		return {
@@ -237,13 +241,22 @@ function promoteIfCustomEndpoint(
 
 export function defaultModelFromHostConfig(config: HostConfig): ModelConfig {
 	if (config.models.anthropic !== null) {
-		return promoteIfCustomEndpoint("anthropic", config.models.anthropic);
+		return {
+			...promoteIfCustomEndpoint("anthropic", config.models.anthropic),
+			name: config.models.anthropic.model ?? KNOWN_DEFAULT_MODEL.anthropic,
+		};
 	}
 	if (config.models.openai !== null) {
-		return promoteIfCustomEndpoint("openai", config.models.openai);
+		return {
+			...promoteIfCustomEndpoint("openai", config.models.openai),
+			name: config.models.openai.model ?? KNOWN_DEFAULT_MODEL.openai,
+		};
 	}
 	if (config.models.openrouter !== null) {
-		return promoteIfCustomEndpoint("openrouter", config.models.openrouter);
+		return {
+			...promoteIfCustomEndpoint("openrouter", config.models.openrouter),
+			name: config.models.openrouter.model ?? KNOWN_DEFAULT_MODEL.openrouter,
+		};
 	}
 	return {
 		provider: "anthropic",
@@ -464,7 +477,7 @@ function validateHostConfig(doc: unknown, path: string): HostConfig {
 function parseProviderConfig(
 	value: unknown,
 	label: string,
-): { baseUrl: string | null; apiKey: string } | null {
+): { baseUrl: string | null; apiKey: string; model: string | null } | null {
 	if (value === undefined || value === null) {
 		return null;
 	}
@@ -484,7 +497,15 @@ function parseProviderConfig(
 		}
 		baseUrl = baseUrlRaw;
 	}
-	return { baseUrl, apiKey };
+	const modelRaw = obj.model;
+	let model: string | null = null;
+	if (modelRaw !== undefined && modelRaw !== null) {
+		if (typeof modelRaw !== "string" || modelRaw.length === 0) {
+			throw new Error(`${label}.model must be a non-empty string when set`);
+		}
+		model = modelRaw;
+	}
+	return { baseUrl, apiKey, model };
 }
 
 function parseResourceLimits(
