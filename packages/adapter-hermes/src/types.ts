@@ -1,5 +1,3 @@
-import type { WireToolCall } from "@sumeru/adapter-core";
-
 export type HermesAdapterOptions = {
 	profile: string;
 	hermesBin: string | null;
@@ -50,6 +48,12 @@ export type AcpSessionUpdate =
 			toolCallId: string;
 			name: string;
 			input: Record<string, unknown>;
+	  }
+	| {
+			sessionUpdate: "tool_result";
+			toolCallId: string;
+			result: string;
+			durationMs: number | null;
 	  }
 	| {
 			sessionUpdate: "usage_update";
@@ -116,8 +120,11 @@ export type AcpClientOptions = AcpClientCreateOptions & {
 };
 
 export type AcpStreamState = {
-	pendingToolCalls: Array<WireToolCall>;
 	pendingText: string;
+	// Maps an ACP toolCallId to the tool name reported on its `tool_call`, so a
+	// later `tool_result` (which carries only the id) can be surfaced as a
+	// `role:"tool"` turn with the correct name (#182).
+	toolNamesById: Map<string, string>;
 	// Cumulative usage for this handle — surfaced on the trailing `done` frame.
 	usage: { input: number; output: number; cached: number } | null;
 	// Usage reported since the last flush, attributed to the next flushed turn

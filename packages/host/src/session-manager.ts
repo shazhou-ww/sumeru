@@ -818,7 +818,7 @@ function trackTurn(runtime: AdapterRuntime, turn: TurnValue): void {
 	if (turn.role === "assistant") {
 		runtime.turnCount += 1;
 	}
-	if (turn.tokens !== null) {
+	if (turn.role !== "tool" && turn.tokens !== null) {
 		runtime.tokenUsage = {
 			input: runtime.tokenUsage.input + turn.tokens.input,
 			output: runtime.tokenUsage.output + turn.tokens.output,

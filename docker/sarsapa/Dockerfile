@@ -22,14 +22,14 @@ COPY packages/core/package.json ./core/
 COPY packages/core/dist ./core/dist/
 COPY packages/adapter-core/package.json ./adapter-core/
 COPY packages/adapter-core/dist ./adapter-core/dist/
-COPY packages/sarsapa/package.json ./sarsapa/
-COPY packages/sarsapa/dist ./sarsapa/dist/
+COPY packages/sarsapa/package.json ./adapter-sarsapa/
+COPY packages/sarsapa/dist ./adapter-sarsapa/dist/
 
 # Workspace packages have no external runtime deps — link @sumeru/* for Node resolution.
 RUN mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/core node_modules/@sumeru/core \
 	&& ln -s /opt/sumeru/adapter-core node_modules/@sumeru/adapter-core \
-	&& ln -s /opt/sumeru/sarsapa node_modules/@sumeru/sarsapa
+	&& ln -s /opt/sumeru/adapter-sarsapa node_modules/@sumeru/sarsapa
 
 RUN chown -R node:node /opt/sumeru \
 	&& mkdir -p /workspace && chown node:node /workspace

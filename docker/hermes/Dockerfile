@@ -45,6 +45,9 @@ RUN chown -R node:node /opt/sumeru /opt/hermes-venv /usr/local/uv \
 
 ENV HOME=/home/node
 USER node
-WORKDIR /workspace
+WORKDIR /opt/sumeru
+
+# /workspace for user project files (mounted by host)
+RUN mkdir -p /workspace
 
 CMD ["sleep", "infinity"]

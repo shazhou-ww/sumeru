@@ -9,6 +9,7 @@ export type InboxMessage = {
 };
 
 export type WireToolCall = {
+	id: string;
 	tool: string;
 	input: Record<string, unknown>;
 	output: string | null;
@@ -16,7 +17,11 @@ export type WireToolCall = {
 	exitCode: number | null;
 };
 
-export type TurnValue = {
+export type TurnValue = AssistantTurnValue | ToolTurnValue;
+
+// The assistant/user/system variant. `role` discriminates against the tool
+// variant below. This is the original wire turn shape (#178).
+export type AssistantTurnValue = {
 	index: number;
 	role: "user" | "assistant" | "system";
 	content: string;
@@ -28,6 +33,21 @@ export type TurnValue = {
 	// (see packages/host/src/session-manager.ts). Never the sum of tool-call
 	// durations (#178).
 	durationMs: number | null;
+};
+
+// An independent tool-result turn, emitted progressively after the assistant
+// turn that requested the call (#182). Carries only tool-turn fields — never
+// `content` / `toolCalls` / `tokens`. The host surfaces it as a public
+// `ToolTurn` (see packages/host/src/wire-turn.ts) instead of deriving one from
+// `WireToolCall.output`.
+export type ToolTurnValue = {
+	index: number;
+	role: "tool";
+	name: string;
+	callId: string;
+	result: string;
+	durationMs: number | null;
+	timestamp: string;
 };
 
 export type DoneValue = {

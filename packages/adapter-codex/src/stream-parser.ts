@@ -2,6 +2,7 @@
  * JSONL parser for Codex CLI's `codex exec --json` output.
  */
 
+import crypto from "node:crypto";
 import type { DoneValue, TurnValue, WireToolCall } from "@sumeru/adapter-core";
 import type {
 	CodexParsedResult,
@@ -73,6 +74,7 @@ function processItemCompleted(
 		const exitCode = typeof item.exit_code === "number" ? item.exit_code : null;
 
 		const toolCall: WireToolCall = {
+			id: typeof item.id === "string" ? item.id : crypto.randomUUID(),
 			tool: "command_execution",
 			input: { command },
 			output: aggregatedOutput,

@@ -127,7 +127,7 @@ export function createDockerTransport(
 		},
 
 		exec({ containerId, command, env }) {
-			const args = [dockerBin, "exec", "-i"];
+			const args = [dockerBin, "exec", "-i", "-w", ADAPTER_BASE];
 			if (env !== null) {
 				for (const [key, value] of Object.entries(env)) {
 					args.push("-e", `${key}=${value}`);

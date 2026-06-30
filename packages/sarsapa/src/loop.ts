@@ -42,6 +42,7 @@ async function executeToolCall(
 	}
 	if (parseError !== null) {
 		return {
+			id: call.id,
 			tool: call.name,
 			input: parsedArgs,
 			output: `Error: arguments is not valid JSON (${parseError}). Make sure string values escape newlines as \\n and quotes as \\". Raw (first 300 chars): ${call.arguments.slice(0, 300)}`,
@@ -51,6 +52,7 @@ async function executeToolCall(
 	}
 	if (tool === null) {
 		return {
+			id: call.id,
 			tool: call.name,
 			input: parsedArgs,
 			output: `Error: unknown tool '${call.name}'`,
@@ -62,6 +64,7 @@ async function executeToolCall(
 	try {
 		const result = await tool.execute(parsedArgs, ctx);
 		return {
+			id: call.id,
 			tool: call.name,
 			input: parsedArgs,
 			output: result.output,
@@ -72,6 +75,7 @@ async function executeToolCall(
 		// surface the real error to the LLM — do not swallow or guess.
 		const msg = err instanceof Error ? err.message : String(err);
 		return {
+			id: call.id,
 			tool: call.name,
 			input: parsedArgs,
 			output: `Error: tool '${call.name}' threw (${msg})`,

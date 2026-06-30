@@ -30,6 +30,31 @@ type MockServerOptions = {
 	onPrompt: (content: string, emit: (update: AcpSessionUpdate) => void) => void;
 };
 
+// Drive an adapter `handle()` generator to completion, collecting the emitted
+// turn frames (skipping suspend/control frames) and the final tokenUsage.
+async function drainTurns(
+	generator: AsyncGenerator<unknown, { tokenUsage: unknown }>,
+): Promise<{ turns: Array<Record<string, unknown>>; tokenUsage: unknown }> {
+	const turns: Array<Record<string, unknown>> = [];
+	let tokenUsage: unknown = null;
+	while (true) {
+		const step = await generator.next();
+		if (step.done === true) {
+			tokenUsage = step.value.tokenUsage;
+			break;
+		}
+		if (
+			typeof step.value === "object" &&
+			step.value !== null &&
+			"type" in step.value
+		) {
+			continue;
+		}
+		turns.push(step.value as Record<string, unknown>);
+	}
+	return { turns, tokenUsage };
+}
+
 function createMockAcpProcess(options: MockServerOptions): AcpProcess {
 	const stdin = new PassThrough();
 	const stdout = new PassThrough();
@@ -526,21 +551,32 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 		]);
 	});
 
-	it("accumulates tool_call updates and yields them with the next message chunk", async () => {
-		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-tools-"));
+	// Scenario 1 + 2 + 3 + 4: the full progressive sequence (#182).
+	it("emits progressive turns: assistant(toolCalls) → tool → assistant", async () => {
+		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-progressive-"));
 		const nativeId = "20260627_150000_abcd12";
 		const acpClientFactory = createRecordingAcpClientFactory({
 			sessionId: nativeId,
 			onPrompt: (_content, emit) => {
 				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "让我查看一下..." },
+				});
+				emit({
 					sessionUpdate: "tool_call",
 					toolCallId: "tc_1",
 					name: "terminal",
-					input: { command: "ls" },
+					input: { command: "ls /tmp" },
+				});
+				emit({
+					sessionUpdate: "tool_result",
+					toolCallId: "tc_1",
+					result: "file1.txt file2.txt",
+					durationMs: 150,
 				});
 				emit({
 					sessionUpdate: "agent_message_chunk",
-					content: { type: "text", text: "listed files" },
+					content: { type: "text", text: "目录下有 file1.txt 和 file2.txt" },
 				});
 			},
 		});
@@ -551,35 +587,194 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 		});
 		await adapter.init(INIT_CONFIG);
 
-		const generator = adapter.handle({
-			messageId: "msg_tools",
-			content: "list files",
-			project: null,
-		});
-		const turns = [];
-		while (true) {
-			const step = await generator.next();
-			if (step.done === true) break;
-			if (
-				typeof step.value === "object" &&
-				step.value !== null &&
-				"type" in step.value
-			) {
-				continue;
-			}
-			turns.push(step.value);
-		}
+		const { turns } = await drainTurns(
+			adapter.handle({
+				messageId: "msg_tools",
+				content: "list files",
+				project: null,
+			}),
+		);
 
-		expect(turns).toHaveLength(1);
+		// Scenario 4: exactly three turns, in order, not collapsed into one.
+		expect(turns).toHaveLength(3);
+
+		// Scenario 1: the triggering text is bound to the SAME frame as the call.
+		expect(turns[0]?.role).toBe("assistant");
+		expect(turns[0]?.content).toBe("让我查看一下...");
 		expect(turns[0]?.toolCalls).toEqual([
 			{
+				id: "tc_1",
 				tool: "terminal",
-				input: { command: "ls" },
+				input: { command: "ls /tmp" },
 				output: null,
 				durationMs: null,
 				exitCode: null,
 			},
 		]);
+		expect(turns[0]?.index).toBe(0);
+
+		// Scenario 2: an independent role:"tool" turn for the tool_result.
+		expect(turns[1]).toEqual({
+			index: 1,
+			role: "tool",
+			name: "terminal",
+			callId: "tc_1",
+			result: "file1.txt file2.txt",
+			durationMs: 150,
+			timestamp: expect.any(String),
+		});
+
+		// Scenario 3: trailing text flushed as the final assistant turn.
+		expect(turns[2]?.role).toBe("assistant");
+		expect(turns[2]?.content).toBe("目录下有 file1.txt 和 file2.txt");
+		expect(turns[2]?.toolCalls).toBeNull();
+		expect(turns[2]?.index).toBe(2);
+	});
+
+	// Scenario 1: tool_call flushes prior text bound WITH the tool call (not null).
+	it("binds pending text and the tool call into one assistant frame on tool_call", async () => {
+		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-toolcall-flush-"));
+		const acpClientFactory = createRecordingAcpClientFactory({
+			sessionId: "20260627_150100_abcd12",
+			onPrompt: (_content, emit) => {
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "让我查看一下..." },
+				});
+				emit({
+					sessionUpdate: "tool_call",
+					toolCallId: "tc_1",
+					name: "terminal",
+					input: { command: "ls /tmp" },
+				});
+			},
+		});
+		const adapter = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			acpClientFactory,
+		});
+		await adapter.init(INIT_CONFIG);
+
+		const { turns } = await drainTurns(
+			adapter.handle({ messageId: "m", content: "go", project: null }),
+		);
+
+		const assistant = turns.find((t) => t.role === "assistant");
+		expect(assistant?.content).toBe("让我查看一下...");
+		// The call must be bound here, NOT deferred to a later assistant turn.
+		expect(assistant?.toolCalls).not.toBeNull();
+		expect((assistant?.toolCalls as Array<unknown>).length).toBe(1);
+	});
+
+	// Scenario 5: two tool rounds in one handle, each assistant carries only its
+	// own round's call (no cross-talk), each tool turn follows its assistant.
+	it("emits each loop round independently for multi-round tool use", async () => {
+		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-multiround-"));
+		const acpClientFactory = createRecordingAcpClientFactory({
+			sessionId: "20260627_150200_abcd12",
+			onPrompt: (_content, emit) => {
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "text_a" },
+				});
+				emit({
+					sessionUpdate: "tool_call",
+					toolCallId: "A",
+					name: "toolA",
+					input: { n: 1 },
+				});
+				emit({
+					sessionUpdate: "tool_result",
+					toolCallId: "A",
+					result: "resA",
+					durationMs: 10,
+				});
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "text_b" },
+				});
+				emit({
+					sessionUpdate: "tool_call",
+					toolCallId: "B",
+					name: "toolB",
+					input: { n: 2 },
+				});
+				emit({
+					sessionUpdate: "tool_result",
+					toolCallId: "B",
+					result: "resB",
+					durationMs: 20,
+				});
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "text_c" },
+				});
+			},
+		});
+		const adapter = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			acpClientFactory,
+		});
+		await adapter.init(INIT_CONFIG);
+
+		const { turns } = await drainTurns(
+			adapter.handle({ messageId: "m", content: "go", project: null }),
+		);
+
+		expect(turns).toHaveLength(5);
+		expect(turns[0]?.content).toBe("text_a");
+		expect((turns[0]?.toolCalls as Array<{ tool: string }>)[0]?.tool).toBe(
+			"toolA",
+		);
+		expect(turns[1]).toMatchObject({
+			role: "tool",
+			name: "toolA",
+			callId: "A",
+		});
+		expect(turns[2]?.content).toBe("text_b");
+		expect((turns[2]?.toolCalls as Array<{ tool: string }>)[0]?.tool).toBe(
+			"toolB",
+		);
+		expect(turns[3]).toMatchObject({
+			role: "tool",
+			name: "toolB",
+			callId: "B",
+		});
+		expect(turns[4]?.content).toBe("text_c");
+		expect(turns[4]?.toolCalls).toBeNull();
+		// Indices are monotonically increasing across the whole loop.
+		expect(turns.map((t) => t.index)).toEqual([0, 1, 2, 3, 4]);
+	});
+
+	// Scenario 6: pure-text reply must not regress to multiple/zero turns.
+	it("still emits exactly one assistant turn for a pure-text reply (#178 no-regress)", async () => {
+		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-puretext-"));
+		const acpClientFactory = createRecordingAcpClientFactory({
+			sessionId: "20260627_150300_abcd12",
+			onPrompt: (_content, emit) => {
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "pong" },
+				});
+			},
+		});
+		const adapter = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			acpClientFactory,
+		});
+		await adapter.init(INIT_CONFIG);
+
+		const { turns } = await drainTurns(
+			adapter.handle({ messageId: "m", content: "ping", project: null }),
+		);
+
+		expect(turns).toHaveLength(1);
+		expect(turns[0]?.role).toBe("assistant");
+		expect(turns[0]?.content).toBe("pong");
+		expect(turns[0]?.toolCalls).toBeNull();
 	});
 });
 
@@ -618,5 +813,48 @@ describe("@sumeru/adapter-hermes — acp-client", () => {
 				content: { type: "text", text: "streamed" },
 			},
 		]);
+	});
+
+	it("parses tool_result session updates (#182)", async () => {
+		const sessionId = "sess_mock_tool_result";
+		const client = createAcpClient({
+			command: "hermes",
+			args: ["acp", "--accept-hooks"],
+			cwd: process.cwd(),
+			clientInfo: { name: "test-client", version: "0.0.1" },
+			spawnProcess: () =>
+				createMockAcpProcess({
+					sessionId,
+					onPrompt: (_content, emit) => {
+						emit({
+							sessionUpdate: "tool_call",
+							toolCallId: "tc_1",
+							name: "terminal",
+							input: { command: "ls" },
+						});
+						emit({
+							sessionUpdate: "tool_result",
+							toolCallId: "tc_1",
+							result: "file1.txt",
+							durationMs: 42,
+						});
+					},
+				}),
+		});
+
+		await client.initialize();
+		await client.newSession(process.cwd());
+
+		const updates: Array<AcpSessionUpdate> = [];
+		await client.prompt(sessionId, "hello", (update) => {
+			updates.push(update);
+		});
+
+		expect(updates).toContainEqual({
+			sessionUpdate: "tool_result",
+			toolCallId: "tc_1",
+			result: "file1.txt",
+			durationMs: 42,
+		});
 	});
 });

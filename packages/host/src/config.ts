@@ -297,8 +297,12 @@ export function resolveModelConfig(
 	hostConfig: HostConfig,
 	requested: { provider: ModelConfig["provider"]; name: string } | null,
 ): ModelConfig {
-	const base = requested ?? defaultModelFromHostConfig(hostConfig);
-	const provider = base.provider;
+	// When no model is explicitly requested, defaultModelFromHostConfig already
+	// returns a fully-resolved ModelConfig (with apiKey). Return it directly.
+	if (requested === null || requested === undefined) {
+		return defaultModelFromHostConfig(hostConfig);
+	}
+	const provider = requested.provider;
 	if (typeof provider === "string") {
 		const known = provider as KnownProvider;
 		const providerConfig = hostConfig.models[known];
@@ -306,18 +310,18 @@ export function resolveModelConfig(
 			// When a baseUrl is configured, promote to CustomProvider so the
 			// adapter generates the right endpoint in hermes config.yaml.
 			const promoted = promoteIfCustomEndpoint(known, providerConfig);
-			return { ...promoted, name: base.name };
+			return { ...promoted, name: requested.name };
 		}
 		return {
 			provider: known,
-			name: base.name,
+			name: requested.name,
 			apiKey: null,
 		};
 	}
 	const custom = provider as CustomProvider;
 	return {
 		provider: custom,
-		name: base.name,
+		name: requested.name,
 		apiKey: null,
 	};
 }

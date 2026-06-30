@@ -254,15 +254,49 @@ function parseSessionUpdate(
 		};
 	}
 	if (kind === "tool_call") {
-		const toolCallId = update.toolCallId;
-		const name = update.name;
-		const input = update.input;
-		if (typeof toolCallId !== "string" || typeof name !== "string") return null;
+		// Hermes ACP uses snake_case `tool_call_id` and puts the tool name in
+		// the `title` field (e.g. "terminal: echo hi") rather than a `name` key.
+		const toolCallId =
+			typeof update.tool_call_id === "string"
+				? update.tool_call_id
+				: typeof update.toolCallId === "string"
+					? update.toolCallId
+					: null;
+		const rawName =
+			typeof update.name === "string"
+				? update.name
+				: typeof update.title === "string"
+					? update.title.split(":")[0].trim()
+					: null;
+		if (toolCallId === null || rawName === null) return null;
+		const input = isRecord(update.input)
+			? update.input
+			: isRecord(update.raw_input)
+				? update.raw_input
+				: {};
 		return {
 			sessionUpdate: "tool_call",
 			toolCallId,
-			name,
-			input: isRecord(input) ? input : {},
+			name: rawName,
+			input,
+		};
+	}
+	if (kind === "tool_result" || kind === "tool_call_update") {
+		// Hermes ACP emits "tool_call_update" with status "completed" for tool
+		// results.  The result text lives in content[0].content.text.
+		const toolCallId =
+			typeof update.tool_call_id === "string"
+				? update.tool_call_id
+				: typeof update.toolCallId === "string"
+					? update.toolCallId
+					: null;
+		if (toolCallId === null) return null;
+		const result = stringifyToolResult(update.result ?? update.content);
+		return {
+			sessionUpdate: "tool_result",
+			toolCallId,
+			result,
+			durationMs: typeof update.durationMs === "number" ? update.durationMs : null,
 		};
 	}
 	if (kind === "usage_update") {
@@ -282,4 +316,21 @@ function parseSessionUpdate(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// Normalize an ACP tool_result payload to a plain string. ACP may report the
+// result as a bare string, an array of `{ type: "text", text }` content blocks,
+// or a structured object; collapse all of these to text for the tool turn.
+function stringifyToolResult(raw: unknown): string {
+	if (typeof raw === "string") return raw;
+	if (Array.isArray(raw)) {
+		return raw.map((block) => stringifyToolResult(block)).join("");
+	}
+	if (isRecord(raw)) {
+		if (typeof raw.text === "string") return raw.text;
+		if (typeof raw.output === "string") return raw.output;
+		return JSON.stringify(raw);
+	}
+	if (raw === null || raw === undefined) return "";
+	return String(raw);
 }

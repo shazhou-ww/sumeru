@@ -177,8 +177,8 @@ export function createHermesAdapter(
 		}
 
 		const state: AcpStreamState = {
-			pendingToolCalls: [],
 			pendingText: "",
+			toolNamesById: new Map(),
 			usage: null,
 			pendingUsage: null,
 			nextIndex: nextTurnIndex,
@@ -309,21 +309,38 @@ function mapUpdateToTurns(
 	state: AcpStreamState,
 ): Array<TurnValue> {
 	if (update.sessionUpdate === "tool_call") {
-		// Flush accumulated text before yielding tool call
+		// Record the tool name so a later tool_result (which carries only the id)
+		// can be surfaced with the correct name (#182).
+		state.toolNamesById.set(update.toolCallId, update.name);
+		const toolCall = mapToolCall(update);
+		// Flush accumulated text bound WITH the tool call on the same assistant
+		// frame — not separately with toolCalls: null (#182 fix).
 		const results: Array<TurnValue> = [];
-		if (state.pendingText.length > 0) {
-			results.push({
-				index: state.nextIndex++,
-				role: "assistant",
-				content: state.pendingText,
-				timestamp: new Date().toISOString(),
-				toolCalls: null,
-				tokens: takePendingUsage(state),
-				durationMs: null,
-			});
-			state.pendingText = "";
-		}
-		state.pendingToolCalls.push(mapToolCall(update));
+		results.push({
+			index: state.nextIndex++,
+			role: "assistant",
+			content: state.pendingText,
+			timestamp: new Date().toISOString(),
+			toolCalls: [toolCall],
+			tokens: takePendingUsage(state),
+			durationMs: null,
+		});
+		state.pendingText = "";
+		return results;
+	}
+	if (update.sessionUpdate === "tool_result") {
+		// Emit an independent role:"tool" turn for progressive streaming (#182).
+		const name = state.toolNamesById.get(update.toolCallId) ?? "unknown";
+		const results: Array<TurnValue> = [];
+		results.push({
+			index: state.nextIndex++,
+			role: "tool",
+			name,
+			callId: update.toolCallId,
+			result: update.result,
+			durationMs: update.durationMs,
+			timestamp: new Date().toISOString(),
+		});
 		return results;
 	}
 	if (update.sessionUpdate === "usage_update") {
@@ -356,31 +373,16 @@ function takePendingUsage(
 function flushPending(state: AcpStreamState): Array<TurnValue> {
 	const results: Array<TurnValue> = [];
 	if (state.pendingText.length > 0) {
-		const toolCalls =
-			state.pendingToolCalls.length > 0 ? [...state.pendingToolCalls] : null;
-		state.pendingToolCalls = [];
 		results.push({
 			index: state.nextIndex++,
 			role: "assistant",
 			content: state.pendingText,
 			timestamp: new Date().toISOString(),
-			toolCalls,
+			toolCalls: null,
 			tokens: takePendingUsage(state),
 			durationMs: null,
 		});
 		state.pendingText = "";
-	} else if (state.pendingToolCalls.length > 0) {
-		const toolCalls = [...state.pendingToolCalls];
-		state.pendingToolCalls = [];
-		results.push({
-			index: state.nextIndex++,
-			role: "assistant",
-			content: "",
-			timestamp: new Date().toISOString(),
-			toolCalls,
-			tokens: takePendingUsage(state),
-			durationMs: null,
-		});
 	}
 	return results;
 }
@@ -389,6 +391,7 @@ function mapToolCall(
 	update: Extract<AcpSessionUpdate, { sessionUpdate: "tool_call" }>,
 ): WireToolCall {
 	return {
+		id: update.toolCallId,
 		tool: update.name,
 		input: update.input,
 		output: null,
