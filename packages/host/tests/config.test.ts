@@ -1,9 +1,10 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
 	defaultModelFromHostConfig,
+	expandEnvVars,
 	loadHostConfig,
 	resolveModelConfig,
 	validateComposeProjectVolume,
@@ -222,5 +223,140 @@ describe("resolveModelConfig — baseUrl promotion", () => {
 		const model = resolveModelConfig(noBaseUrl, null);
 		expect(model.provider).toBe("anthropic");
 		expect(model.apiKey).toBe("sk-real");
+	});
+});
+
+describe("expandEnvVars", () => {
+	const savedEnv: Record<string, string | undefined> = {};
+
+	afterEach(() => {
+		for (const [key, val] of Object.entries(savedEnv)) {
+			if (val === undefined) {
+				delete process.env[key];
+			} else {
+				process.env[key] = val;
+			}
+		}
+		for (const key of Object.keys(savedEnv)) {
+			delete savedEnv[key];
+		}
+	});
+
+	function setEnv(key: string, value: string): void {
+		savedEnv[key] = process.env[key];
+		process.env[key] = value;
+	}
+
+	function unsetEnv(key: string): void {
+		savedEnv[key] = process.env[key];
+		delete process.env[key];
+	}
+
+	it("expands ${VAR} from process.env", () => {
+		setEnv("MY_VAR", "hello-world");
+		const result = expandEnvVars("apiKey: ${MY_VAR}", "test");
+		expect(result).toBe("apiKey: hello-world");
+	});
+
+	it("applies ${VAR:-default} fallback when VAR is not set", () => {
+		unsetEnv("MISSING_VAR");
+		const result = expandEnvVars(
+			"apiKey: ${MISSING_VAR:-fallback-key}",
+			"test",
+		);
+		expect(result).toBe("apiKey: fallback-key");
+	});
+
+	it("prefers env value over default when VAR is set", () => {
+		setEnv("PRESENT_VAR", "real-value");
+		const result = expandEnvVars("apiKey: ${PRESENT_VAR:-fallback}", "test");
+		expect(result).toBe("apiKey: real-value");
+	});
+
+	it("leaves plain YAML without env vars unchanged", () => {
+		const yaml = "name: test-host\nmaxRunning: 3\n";
+		expect(expandEnvVars(yaml, "test")).toBe(yaml);
+	});
+
+	it("throws when VAR is not set and has no default", () => {
+		unsetEnv("UNSET_NO_DEFAULT");
+		expect(() => expandEnvVars("key: ${UNSET_NO_DEFAULT}", "ctx")).toThrow(
+			"UNSET_NO_DEFAULT",
+		);
+	});
+});
+
+describe("loadHostConfig — env var expansion", () => {
+	const savedEnv: Record<string, string | undefined> = {};
+
+	afterEach(() => {
+		for (const [key, val] of Object.entries(savedEnv)) {
+			if (val === undefined) {
+				delete process.env[key];
+			} else {
+				process.env[key] = val;
+			}
+		}
+		for (const key of Object.keys(savedEnv)) {
+			delete savedEnv[key];
+		}
+	});
+
+	function setEnv(key: string, value: string): void {
+		savedEnv[key] = process.env[key];
+		process.env[key] = value;
+	}
+
+	it("expands env vars in YAML before parsing", async () => {
+		setEnv("TEST_API_KEY", "sk-expanded");
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-host-envvar-"));
+		mkdirSync(join(rootDir, "data", "skills"), { recursive: true });
+		mkdirSync(join(rootDir, "data", "prototypes"), { recursive: true });
+		writeFileSync(
+			join(rootDir, "host.yaml"),
+			[
+				"name: test-host",
+				"maxRunning: 3",
+				"workspaceRoot: /tmp/workspaces",
+				"envFile: /dev/null",
+				"models:",
+				"  anthropic:",
+				"    baseUrl: null",
+				"    apiKey: ${TEST_API_KEY}",
+				"  openai: null",
+				"  openrouter: null",
+			].join("\n"),
+		);
+
+		const loaded = await loadHostConfig(rootDir);
+		expect(loaded.config.models.anthropic?.apiKey).toBe("sk-expanded");
+	});
+
+	it("uses default when env var is not set", async () => {
+		// Make sure the var does not exist
+		savedEnv["NONEXISTENT_KEY"] = process.env["NONEXISTENT_KEY"];
+		delete process.env["NONEXISTENT_KEY"];
+
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-host-envdefault-"));
+		mkdirSync(join(rootDir, "data", "skills"), { recursive: true });
+		mkdirSync(join(rootDir, "data", "prototypes"), { recursive: true });
+		writeFileSync(
+			join(rootDir, "host.yaml"),
+			[
+				"name: test-host",
+				"maxRunning: 3",
+				"workspaceRoot: /tmp/workspaces",
+				"envFile: /dev/null",
+				"models:",
+				"  anthropic:",
+				"    baseUrl: null",
+				"    apiKey: ${NONEXISTENT_KEY:-sk-default}",
+				"  openai: null",
+				"  openrouter: null",
+			].join("\n"),
+		);
+
+		const loaded = await loadHostConfig(rootDir);
+		expect(loaded.config.models.anthropic?.apiKey).toBe("sk-default");
 	});
 });

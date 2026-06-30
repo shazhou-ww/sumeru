@@ -27,9 +27,15 @@ export async function loadHostConfig(
 ): Promise<LoadedHostConfig> {
 	const configPath = join(rootDir, DEFAULT_HOST_FILE);
 	const raw = await readFileSafely(configPath);
-	const doc = parseYamlSafely(raw, configPath);
+	// Pass 1: light-parse envFile so we can populate process.env before expansion
+	const envFilePath = extractEnvFilePath(raw);
+	if (envFilePath !== null) {
+		await applyEnvFile(envFilePath);
+	}
+	// Pass 2: expand ${VAR} / ${VAR:-default} references against process.env
+	const expanded = expandEnvVars(raw, configPath);
+	const doc = parseYamlSafely(expanded, configPath);
 	const config = validateHostConfig(doc, configPath);
-	await applyEnvFile(config.envFile);
 	const dataDir = join(rootDir, DEFAULT_DATA_DIR);
 	const skillsDir = join(dataDir, "skills");
 	const prototypesDir = join(dataDir, "prototypes");
@@ -558,6 +564,24 @@ function parseHostDefaults(
 		maxTurns,
 		resources: { cpu, memory },
 	};
+}
+
+/**
+ * Light regex extraction of envFile from raw YAML text (before full parse).
+ * Returns null if the field isn't found so the caller can skip applyEnvFile.
+ */
+function extractEnvFilePath(raw: string): string | null {
+	const match = raw.match(/^envFile:\s*(.+)$/m);
+	if (match === null) return null;
+	let value = match[1].trim();
+	// Strip optional YAML quotes
+	if (
+		(value.startsWith('"') && value.endsWith('"')) ||
+		(value.startsWith("'") && value.endsWith("'"))
+	) {
+		value = value.slice(1, -1);
+	}
+	return value.length > 0 ? value : null;
 }
 
 async function applyEnvFile(envFilePath: string): Promise<void> {
