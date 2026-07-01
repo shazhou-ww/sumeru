@@ -95,7 +95,17 @@ export function createDockerTransport(
 
 		async down({ projectName, composePath, workDir }) {
 			const result = await runCommand(
-				[composeBin, "compose", "-f", composePath, "-p", projectName, "down", "-t", "2"],
+				[
+					composeBin,
+					"compose",
+					"-f",
+					composePath,
+					"-p",
+					projectName,
+					"down",
+					"-t",
+					"2",
+				],
 				workDir,
 			);
 			if (result.exitCode !== 0) {

@@ -874,7 +874,10 @@ function trackTurn(runtime: AdapterRuntime, turn: TurnValue): void {
 	}
 }
 
-function toSessionInfo(record: ManagedSession, tokenUsage: TokenUsage | null): SessionInfo {
+function toSessionInfo(
+	record: ManagedSession,
+	tokenUsage: TokenUsage | null,
+): SessionInfo {
 	return {
 		id: record.id,
 		prototype: record.prototype,

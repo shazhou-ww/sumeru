@@ -1,4 +1,5 @@
 import process from "node:process";
+import { logger, TAG_GUARD } from "./logger.js";
 
 /** Minimal event-target surface needed to (de)register a process guard. */
 type GuardTarget = {
@@ -16,7 +17,7 @@ export type UnhandledRejectionGuardOptions = {
 	 * real process-wide listeners.
 	 */
 	target?: GuardTarget;
-	/** Sink for the rejection report. Defaults to `console.error`. */
+	/** Sink for the rejection report. Defaults to structured logger. */
 	log?: (message: string, reason: unknown) => void;
 };
 
@@ -42,7 +43,7 @@ export function installUnhandledRejectionGuard(
 	const log =
 		options.log ??
 		((message: string, reason: unknown) => {
-			console.error(message, reason);
+			logger.error(TAG_GUARD, `${message} ${String(reason)}`);
 		});
 
 	const listener = (reason: unknown): void => {

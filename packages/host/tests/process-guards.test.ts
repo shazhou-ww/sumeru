@@ -61,16 +61,21 @@ describe("installUnhandledRejectionGuard", () => {
 		expect(process.listenerCount("unhandledRejection")).toBe(before);
 	});
 
-	it("defaults to console.error when no logger is injected", () => {
+	it("defaults to structured logger when no log option is provided", async () => {
+		const loggerMod = await import("../src/logger.js");
+		const errorSpy = vi.spyOn(loggerMod.logger, "error").mockImplementation(() => {});
 		const target = new EventEmitter();
-		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		const uninstall = installUnhandledRejectionGuard({ target });
 
 		const reason = new Error("boom");
 		target.emit("unhandledRejection", reason);
 
-		expect(errorSpy).toHaveBeenCalledWith("[host] unhandledRejection", reason);
+		expect(errorSpy).toHaveBeenCalledWith(
+			"SMRGRP00",
+			expect.stringContaining("unhandledRejection"),
+		);
 
 		uninstall();
+		errorSpy.mockRestore();
 	});
 });

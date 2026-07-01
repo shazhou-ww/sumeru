@@ -16,6 +16,7 @@ import {
 	loadPrototypeInfo,
 	loadPrototypesFromDisk,
 } from "./data-store.js";
+import { logger, TAG_CFG } from "./logger.js";
 import { openDatabase, type SqliteStore } from "./sqlite-store.js";
 import type {
 	LoadedHostConfig,
@@ -418,13 +419,15 @@ function validateHostConfig(doc: unknown, path: string): HostConfig {
 		);
 	}
 	if (obj.models !== undefined && obj.models !== null) {
-		console.warn(
-			`[sumeru] ${path}: "models" section is deprecated — use SQLite Provider/Model entities instead`,
+		logger.warn(
+			TAG_CFG,
+			`${path}: "models" section is deprecated — use SQLite Provider/Model entities instead`,
 		);
 	}
 	if (obj.resourceLimits !== undefined && obj.resourceLimits !== null) {
-		console.warn(
-			`[sumeru] ${path}: "resourceLimits" section is deprecated and ignored`,
+		logger.warn(
+			TAG_CFG,
+			`${path}: "resourceLimits" section is deprecated and ignored`,
 		);
 	}
 	return {
