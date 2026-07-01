@@ -88,7 +88,7 @@ export async function runImageBuild(
 	const digest = inspectImageDigest(dockerTag);
 	const builtAt = new Date().toISOString();
 	const client = createHostClient({ baseUrl: options.baseUrl });
-	await client.createImage(options.name, {
+	await client.addImage(options.name, {
 		name: options.name,
 		description: `Sumeru ${agent} image (${dockerTag})`,
 		dockerfile: `docker/${agent}/Dockerfile`,

@@ -59,12 +59,18 @@ importers:
 
   packages/cli:
     dependencies:
+      '@ocas/cli-kit':
+        specifier: ^0.3.0
+        version: 0.3.0
       '@sumeru/core':
         specifier: workspace:*
         version: link:../core
       '@sumeru/host':
         specifier: workspace:*
         version: link:../host
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/core: {}
 
@@ -315,6 +321,10 @@ packages:
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
+
+  '@ocas/cli-kit@0.3.0':
+    resolution: {integrity: sha512-le9oni0St6pG0MRys7KyuXMMNnSCU+nPe/uXduZ2wLlCjKgxnK6nkTsM9s3mW2n8g6V33lT0vcwFEmjZMGqN+g==}
+    engines: {node: '>=24.15.0'}
 
   '@ocas/core@0.5.0':
     resolution: {integrity: sha512-5NMGWBaWdq3l9QeWcm45KeKzRQU2E8dYFP6bChuw8Hk0Dkxu+baGAG1aoVhQTilUONpX2tDZNexoFXYRCYobIA==}
@@ -910,6 +920,9 @@ packages:
     engines: {node: '>= 14.6'}
     hasBin: true
 
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
 snapshots:
 
   '@biomejs/biome@2.5.0':
@@ -1026,6 +1039,10 @@ snapshots:
     optional: true
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
+
+  '@ocas/cli-kit@0.3.0':
+    dependencies:
+      zod: 4.4.3
 
   '@ocas/core@0.5.0':
     dependencies:
@@ -1589,3 +1606,5 @@ snapshots:
   xxhash-wasm@1.1.0: {}
 
   yaml@2.9.0: {}
+
+  zod@4.4.3: {}

@@ -16,7 +16,7 @@ export function createImagesHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, imageListEnvelope(images));
 		},
 
-		detail(
+		get(
 			_req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
@@ -34,7 +34,7 @@ export function createImagesHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, imageEnvelope(image));
 		},
 
-		async create(
+		async add(
 			req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,

@@ -1,4 +1,10 @@
-import type { Image, Model, Provider, SessionInfo } from "@sumeru/core";
+import type {
+	Image,
+	Model,
+	Persona,
+	Provider,
+	SessionInfo,
+} from "@sumeru/core";
 import type { HostRootValue, PrototypeListItem } from "./http-client.js";
 
 export type TableColumn<T> = {
@@ -102,6 +108,18 @@ export function formatImageTable(images: Array<Image>): string {
 		{ header: "DIGEST", width: 20, value: (row) => row.digest },
 		{ header: "BUILT AT", width: 28, value: (row) => row.builtAt },
 		{ header: "DOCKERFILE", width: 32, value: (row) => row.dockerfile },
+	]);
+}
+
+export function formatPersonaTable(personas: Array<Persona>): string {
+	return formatTable(personas, [
+		{ header: "NAME", width: 20, value: (row) => row.name },
+		{
+			header: "SKILLS",
+			width: 40,
+			value: (row) => row.skills.join(", ") || "(none)",
+		},
+		{ header: "UPDATED", width: 24, value: (row) => row.updatedAt },
 	]);
 }
 

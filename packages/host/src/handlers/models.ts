@@ -16,7 +16,7 @@ export function createModelsHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, modelListEnvelope(models));
 		},
 
-		detail(
+		get(
 			_req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
@@ -34,7 +34,7 @@ export function createModelsHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, modelEnvelope(model));
 		},
 
-		async create(
+		async add(
 			req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,

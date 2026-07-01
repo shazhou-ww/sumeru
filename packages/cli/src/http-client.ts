@@ -1,4 +1,12 @@
-import type { Image, Model, Provider, SessionInfo } from "@sumeru/core";
+import type {
+	Image,
+	Model,
+	Persona,
+	Provider,
+	SessionInfo,
+	Skill,
+	Turn,
+} from "@sumeru/core";
 
 export type HostClientOptions = {
 	baseUrl: string;
@@ -47,20 +55,54 @@ export type CreateSessionBody = {
 	env: Record<string, string> | null;
 };
 
+export type HistoryEntry = {
+	role: "user" | "assistant" | "tool";
+	content: string;
+	timestamp: string;
+};
+
+export type HistoryValue = {
+	sessionId: string;
+	messages: Array<HistoryEntry>;
+	total: number;
+	offset: number;
+	limit: number;
+};
+
+export type SearchHit = {
+	sessionId: string;
+	turnId: number;
+	role: string;
+	content: string;
+	score: number;
+};
+
+export type SearchValue = {
+	query: string;
+	hits: Array<SearchHit>;
+};
+
 export type HostClient = {
+	// Root
 	getRoot(): Promise<Envelope<HostRootValue>>;
+
+	// Prototypes
 	listPrototypes(): Promise<Envelope<Array<PrototypeListItem>>>;
-	createPrototype(
+	getPrototype(name: string): Promise<Envelope<PrototypeDetail>>;
+	addPrototype(
 		name: string,
-		body: {
-			persona: string;
-			model: string;
-			image: string;
-		},
+		body: { persona: string; model: string; image: string },
 	): Promise<Envelope<PrototypeDetail>>;
-	deletePrototype(name: string): Promise<void>;
+	updatePrototype(
+		name: string,
+		body: { persona?: string; model?: string; image?: string },
+	): Promise<Envelope<PrototypeDetail>>;
+	removePrototype(name: string): Promise<void>;
+
+	// Providers
 	listProviders(): Promise<Envelope<Array<Provider>>>;
-	createProvider(
+	getProvider(name: string): Promise<Envelope<Provider>>;
+	addProvider(
 		name: string,
 		body: {
 			apiType: Provider["apiType"];
@@ -68,9 +110,20 @@ export type HostClient = {
 			apiKey: string | null;
 		},
 	): Promise<Envelope<Provider>>;
-	deleteProvider(name: string): Promise<void>;
+	updateProvider(
+		name: string,
+		body: {
+			apiType?: Provider["apiType"];
+			baseUrl?: string | null;
+			apiKey?: string | null;
+		},
+	): Promise<Envelope<Provider>>;
+	removeProvider(name: string): Promise<void>;
+
+	// Models
 	listModels(): Promise<Envelope<Array<Model>>>;
-	createModel(
+	getModel(id: string): Promise<Envelope<Model>>;
+	addModel(
 		id: string,
 		body: {
 			provider: string;
@@ -81,9 +134,23 @@ export type HostClient = {
 			metadata: Record<string, unknown> | null;
 		},
 	): Promise<Envelope<Model>>;
-	deleteModel(id: string): Promise<void>;
+	updateModel(
+		id: string,
+		body: {
+			provider?: string;
+			model?: string;
+			contextWindow?: number | null;
+			toolUse?: boolean;
+			streaming?: boolean;
+			metadata?: Record<string, unknown> | null;
+		},
+	): Promise<Envelope<Model>>;
+	removeModel(id: string): Promise<void>;
+
+	// Images
 	listImages(): Promise<Envelope<Array<Image>>>;
-	createImage(
+	getImage(name: string): Promise<Envelope<Image>>;
+	addImage(
 		name: string,
 		body: {
 			name: string;
@@ -93,10 +160,35 @@ export type HostClient = {
 			digest: string;
 		},
 	): Promise<Envelope<Image>>;
-	deleteImage(name: string): Promise<void>;
+	removeImage(name: string): Promise<void>;
+
+	// Personas
+	listPersonas(): Promise<Envelope<Array<Persona>>>;
+	getPersona(name: string): Promise<Envelope<Persona>>;
+	addPersona(
+		name: string,
+		body: { instructions: string; skills: Array<string> },
+	): Promise<Envelope<Persona>>;
+	updatePersona(
+		name: string,
+		body: { instructions?: string; skills?: Array<string> },
+	): Promise<Envelope<Persona>>;
+	removePersona(name: string): Promise<void>;
+
+	// Skills
+	getSkill(name: string): Promise<Envelope<{ name: string; content: string }>>;
+	putSkill(
+		name: string,
+		content: string,
+	): Promise<Envelope<{ name: string; content: string }>>;
+	removeSkill(name: string): Promise<void>;
+
+	// Sessions
 	listSessions(): Promise<Envelope<Array<SessionInfo>>>;
-	createSession(body: CreateSessionBody): Promise<Envelope<SessionInfo>>;
-	deleteSession(id: string): Promise<void>;
+	getSession(id: string): Promise<Envelope<SessionInfo>>;
+	addSession(body: CreateSessionBody): Promise<Envelope<SessionInfo>>;
+	stopSession(id: string): Promise<Envelope<SessionInfo>>;
+	removeSession(id: string): Promise<void>;
 	submitMessage(
 		id: string,
 		body: {
@@ -105,11 +197,25 @@ export type HostClient = {
 			model: CreateSessionBody["model"];
 		},
 	): Promise<Envelope<{ sessionId: string; messageId: string }>>;
-	stopSession(id: string): Promise<Envelope<SessionInfo>>;
 	streamEvents(
 		id: string,
 		onEvent: (event: string, data: string) => void,
 	): Promise<void>;
+	getHistory(
+		id: string,
+		options?: { limit?: number; offset?: number },
+	): Promise<Envelope<HistoryValue>>;
+	getTurns(
+		id: string,
+		options?: { after?: number },
+	): Promise<Envelope<Array<Turn>>>;
+	exportSession(id: string): Promise<ReadableStream<Uint8Array>>;
+
+	// Search
+	search(
+		query: string,
+		options?: { session?: string },
+	): Promise<Envelope<SearchValue>>;
 };
 
 export function createHostClient(options: HostClientOptions): HostClient {
@@ -155,11 +261,37 @@ export function createHostClient(options: HostClientOptions): HostClient {
 		return { status: response.status, json };
 	}
 
+	async function requestDelete(path: string): Promise<void> {
+		const response = await fetch(`${baseUrl}${path}`, { method: "DELETE" });
+		if (response.status === 204) return;
+		const text = await response.text();
+		if (text.length === 0) {
+			throw new HostClientError(
+				response.status,
+				"request_failed",
+				`HTTP ${String(response.status)}`,
+			);
+		}
+		const json = JSON.parse(text) as Envelope<{
+			error: string;
+			message: string;
+		}>;
+		const errValue = json.value;
+		throw new HostClientError(
+			response.status,
+			errValue.error,
+			errValue.message,
+		);
+	}
+
 	return {
+		// Root
 		async getRoot() {
 			const { json } = await requestJson<HostRootValue>("GET", "/", null);
 			return json;
 		},
+
+		// Prototypes
 		async listPrototypes() {
 			const { json } = await requestJson<Array<PrototypeListItem>>(
 				"GET",
@@ -168,7 +300,15 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			);
 			return json;
 		},
-		async createPrototype(name, body) {
+		async getPrototype(name) {
+			const { json } = await requestJson<PrototypeDetail>(
+				"GET",
+				`/prototypes/${encodeURIComponent(name)}`,
+				null,
+			);
+			return json;
+		},
+		async addPrototype(name, body) {
 			const { json } = await requestJson<PrototypeDetail>(
 				"POST",
 				`/prototypes/${encodeURIComponent(name)}`,
@@ -176,31 +316,19 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			);
 			return json;
 		},
-		async deletePrototype(name) {
-			const response = await fetch(
-				`${baseUrl}/prototypes/${encodeURIComponent(name)}`,
-				{ method: "DELETE" },
+		async updatePrototype(name, body) {
+			const { json } = await requestJson<PrototypeDetail>(
+				"PUT",
+				`/prototypes/${encodeURIComponent(name)}`,
+				body,
 			);
-			if (response.status === 204) return;
-			const text = await response.text();
-			if (text.length === 0) {
-				throw new HostClientError(
-					response.status,
-					"request_failed",
-					`HTTP ${String(response.status)}`,
-				);
-			}
-			const json = JSON.parse(text) as Envelope<{
-				error: string;
-				message: string;
-			}>;
-			const errValue = json.value;
-			throw new HostClientError(
-				response.status,
-				errValue.error,
-				errValue.message,
-			);
+			return json;
 		},
+		async removePrototype(name) {
+			await requestDelete(`/prototypes/${encodeURIComponent(name)}`);
+		},
+
+		// Providers
 		async listProviders() {
 			const { json } = await requestJson<Array<Provider>>(
 				"GET",
@@ -209,7 +337,15 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			);
 			return json;
 		},
-		async createProvider(name, body) {
+		async getProvider(name) {
+			const { json } = await requestJson<Provider>(
+				"GET",
+				`/providers/${encodeURIComponent(name)}`,
+				null,
+			);
+			return json;
+		},
+		async addProvider(name, body) {
 			const { json } = await requestJson<Provider>(
 				"POST",
 				`/providers/${encodeURIComponent(name)}`,
@@ -217,36 +353,32 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			);
 			return json;
 		},
-		async deleteProvider(name) {
-			const response = await fetch(
-				`${baseUrl}/providers/${encodeURIComponent(name)}`,
-				{ method: "DELETE" },
+		async updateProvider(name, body) {
+			const { json } = await requestJson<Provider>(
+				"PUT",
+				`/providers/${encodeURIComponent(name)}`,
+				body,
 			);
-			if (response.status === 204) return;
-			const text = await response.text();
-			if (text.length === 0) {
-				throw new HostClientError(
-					response.status,
-					"request_failed",
-					`HTTP ${String(response.status)}`,
-				);
-			}
-			const json = JSON.parse(text) as Envelope<{
-				error: string;
-				message: string;
-			}>;
-			const errValue = json.value;
-			throw new HostClientError(
-				response.status,
-				errValue.error,
-				errValue.message,
-			);
+			return json;
 		},
+		async removeProvider(name) {
+			await requestDelete(`/providers/${encodeURIComponent(name)}`);
+		},
+
+		// Models
 		async listModels() {
 			const { json } = await requestJson<Array<Model>>("GET", "/models", null);
 			return json;
 		},
-		async createModel(id, body) {
+		async getModel(id) {
+			const { json } = await requestJson<Model>(
+				"GET",
+				`/models/${encodeURIComponent(id)}`,
+				null,
+			);
+			return json;
+		},
+		async addModel(id, body) {
 			const { json } = await requestJson<Model>(
 				"POST",
 				`/models/${encodeURIComponent(id)}`,
@@ -254,36 +386,32 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			);
 			return json;
 		},
-		async deleteModel(id) {
-			const response = await fetch(
-				`${baseUrl}/models/${encodeURIComponent(id)}`,
-				{ method: "DELETE" },
+		async updateModel(id, body) {
+			const { json } = await requestJson<Model>(
+				"PUT",
+				`/models/${encodeURIComponent(id)}`,
+				body,
 			);
-			if (response.status === 204) return;
-			const text = await response.text();
-			if (text.length === 0) {
-				throw new HostClientError(
-					response.status,
-					"request_failed",
-					`HTTP ${String(response.status)}`,
-				);
-			}
-			const json = JSON.parse(text) as Envelope<{
-				error: string;
-				message: string;
-			}>;
-			const errValue = json.value;
-			throw new HostClientError(
-				response.status,
-				errValue.error,
-				errValue.message,
-			);
+			return json;
 		},
+		async removeModel(id) {
+			await requestDelete(`/models/${encodeURIComponent(id)}`);
+		},
+
+		// Images
 		async listImages() {
 			const { json } = await requestJson<Array<Image>>("GET", "/images", null);
 			return json;
 		},
-		async createImage(name, body) {
+		async getImage(name) {
+			const { json } = await requestJson<Image>(
+				"GET",
+				`/images/${encodeURIComponent(name)}`,
+				null,
+			);
+			return json;
+		},
+		async addImage(name, body) {
 			const { json } = await requestJson<Image>(
 				"POST",
 				`/images/${encodeURIComponent(name)}`,
@@ -291,31 +419,69 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			);
 			return json;
 		},
-		async deleteImage(name) {
-			const response = await fetch(
-				`${baseUrl}/images/${encodeURIComponent(name)}`,
-				{ method: "DELETE" },
-			);
-			if (response.status === 204) return;
-			const text = await response.text();
-			if (text.length === 0) {
-				throw new HostClientError(
-					response.status,
-					"request_failed",
-					`HTTP ${String(response.status)}`,
-				);
-			}
-			const json = JSON.parse(text) as Envelope<{
-				error: string;
-				message: string;
-			}>;
-			const errValue = json.value;
-			throw new HostClientError(
-				response.status,
-				errValue.error,
-				errValue.message,
-			);
+		async removeImage(name) {
+			await requestDelete(`/images/${encodeURIComponent(name)}`);
 		},
+
+		// Personas
+		async listPersonas() {
+			const { json } = await requestJson<Array<Persona>>(
+				"GET",
+				"/personas",
+				null,
+			);
+			return json;
+		},
+		async getPersona(name) {
+			const { json } = await requestJson<Persona>(
+				"GET",
+				`/personas/${encodeURIComponent(name)}`,
+				null,
+			);
+			return json;
+		},
+		async addPersona(name, body) {
+			const { json } = await requestJson<Persona>(
+				"POST",
+				`/personas/${encodeURIComponent(name)}`,
+				body,
+			);
+			return json;
+		},
+		async updatePersona(name, body) {
+			const { json } = await requestJson<Persona>(
+				"PUT",
+				`/personas/${encodeURIComponent(name)}`,
+				body,
+			);
+			return json;
+		},
+		async removePersona(name) {
+			await requestDelete(`/personas/${encodeURIComponent(name)}`);
+		},
+
+		// Skills
+		async getSkill(name) {
+			const { json } = await requestJson<{ name: string; content: string }>(
+				"GET",
+				`/skills/${encodeURIComponent(name)}`,
+				null,
+			);
+			return json;
+		},
+		async putSkill(name, content) {
+			const { json } = await requestJson<{ name: string; content: string }>(
+				"PUT",
+				`/skills/${encodeURIComponent(name)}`,
+				{ content },
+			);
+			return json;
+		},
+		async removeSkill(name) {
+			await requestDelete(`/skills/${encodeURIComponent(name)}`);
+		},
+
+		// Sessions
 		async listSessions() {
 			const { json } = await requestJson<Array<SessionInfo>>(
 				"GET",
@@ -324,46 +490,20 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			);
 			return json;
 		},
-		async createSession(body) {
+		async getSession(id) {
+			const { json } = await requestJson<SessionInfo>(
+				"GET",
+				`/sessions/${encodeURIComponent(id)}`,
+				null,
+			);
+			return json;
+		},
+		async addSession(body) {
 			const { json } = await requestJson<SessionInfo>(
 				"POST",
 				"/sessions",
 				body,
 			);
-			return json;
-		},
-		async deleteSession(id) {
-			const response = await fetch(
-				`${baseUrl}/sessions/${encodeURIComponent(id)}`,
-				{
-					method: "DELETE",
-				},
-			);
-			if (response.status === 204) return;
-			const text = await response.text();
-			if (text.length === 0) {
-				throw new HostClientError(
-					response.status,
-					"request_failed",
-					`HTTP ${String(response.status)}`,
-				);
-			}
-			const json = JSON.parse(text) as Envelope<{
-				error: string;
-				message: string;
-			}>;
-			const errValue = json.value;
-			throw new HostClientError(
-				response.status,
-				errValue.error,
-				errValue.message,
-			);
-		},
-		async submitMessage(id, body) {
-			const { json } = await requestJson<{
-				sessionId: string;
-				messageId: string;
-			}>("POST", `/sessions/${encodeURIComponent(id)}/messages`, body);
 			return json;
 		},
 		async stopSession(id) {
@@ -372,6 +512,16 @@ export function createHostClient(options: HostClientOptions): HostClient {
 				`/sessions/${encodeURIComponent(id)}/stop`,
 				null,
 			);
+			return json;
+		},
+		async removeSession(id) {
+			await requestDelete(`/sessions/${encodeURIComponent(id)}`);
+		},
+		async submitMessage(id, body) {
+			const { json } = await requestJson<{
+				sessionId: string;
+				messageId: string;
+			}>("POST", `/sessions/${encodeURIComponent(id)}/messages`, body);
 			return json;
 		},
 		async streamEvents(id, onEvent) {
@@ -411,6 +561,78 @@ export function createHostClient(options: HostClientOptions): HostClient {
 				buffer += decoder.decode(value, { stream: true });
 				buffer = consumeSseBuffer(buffer, onEvent);
 			}
+		},
+		async getHistory(id, historyOptions) {
+			const params = new URLSearchParams();
+			if (historyOptions?.limit !== undefined) {
+				params.set("limit", String(historyOptions.limit));
+			}
+			if (historyOptions?.offset !== undefined) {
+				params.set("offset", String(historyOptions.offset));
+			}
+			const qs = params.toString();
+			const path = `/sessions/${encodeURIComponent(id)}/history${qs ? `?${qs}` : ""}`;
+			const { json } = await requestJson<HistoryValue>("GET", path, null);
+			return json;
+		},
+		async getTurns(id, turnsOptions) {
+			const params = new URLSearchParams();
+			if (turnsOptions?.after !== undefined) {
+				params.set("after", String(turnsOptions.after));
+			}
+			const qs = params.toString();
+			const path = `/sessions/${encodeURIComponent(id)}/turns${qs ? `?${qs}` : ""}`;
+			const { json } = await requestJson<Array<Turn>>("GET", path, null);
+			return json;
+		},
+		async exportSession(id) {
+			const response = await fetch(
+				`${baseUrl}/sessions/${encodeURIComponent(id)}/export`,
+				{ method: "POST" },
+			);
+			if (!response.ok) {
+				const text = await response.text();
+				if (text.length > 0) {
+					const json = JSON.parse(text) as Envelope<{
+						error: string;
+						message: string;
+					}>;
+					throw new HostClientError(
+						response.status,
+						json.value.error,
+						json.value.message,
+					);
+				}
+				throw new HostClientError(
+					response.status,
+					"request_failed",
+					`HTTP ${String(response.status)}`,
+				);
+			}
+			if (response.body === null) {
+				throw new HostClientError(
+					500,
+					"no_body",
+					"Export response has no body",
+				);
+			}
+			return response.body;
+		},
+
+		// Search
+		async search(query, searchOptions) {
+			const params = new URLSearchParams();
+			params.set("q", query);
+			if (searchOptions?.session !== undefined) {
+				params.set("session", searchOptions.session);
+			}
+			const qs = params.toString();
+			const { json } = await requestJson<SearchValue>(
+				"GET",
+				`/search?${qs}`,
+				null,
+			);
+			return json;
 		},
 	};
 }

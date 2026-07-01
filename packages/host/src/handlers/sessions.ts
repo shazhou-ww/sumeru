@@ -34,7 +34,7 @@ export function createSessionsHandler(manager: SessionManager) {
 			writeJson(res, 200, sessionListEnvelope(manager.listSessions()));
 		},
 
-		detail(
+		get(
 			_req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
@@ -52,7 +52,7 @@ export function createSessionsHandler(manager: SessionManager) {
 			writeJson(res, 200, sessionEnvelope(toSessionInfo(record)));
 		},
 
-		async create(req: IncomingMessage, res: ServerResponse): Promise<void> {
+		async add(req: IncomingMessage, res: ServerResponse): Promise<void> {
 			let body: unknown;
 			try {
 				body = await readJsonBody(req);

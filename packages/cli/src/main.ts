@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
+import type { CliContext, CommandAction, ParsedFlags } from "@ocas/cli-kit";
+import { createCLI } from "@ocas/cli-kit";
+import { z } from "zod";
 import {
 	formatDockerImagesOutput,
 	formatHostStatus,
 	formatImageTable,
 	formatModelTable,
+	formatPersonaTable,
 	formatPrototypeTable,
 	formatProviderTable,
 	formatSessionTable,
@@ -24,750 +28,1063 @@ import {
 } from "./pid-file.js";
 import { runSetup } from "./setup.js";
 
-const HELP_TEXT = `Usage: sumeru <command> [options]
+// ─── Shared schemas ─────────────────────────────────────────────────────
 
-Commands:
-  setup --provider <name> --api-key <key> --model <model-name>
-        [--api-type <type>] [--base-url <url>] [--root-dir <path>]
-  server start [--config <path>] [--host <host>] [--port <port>]
-  server stop
-  server status
-  prototypes
-  prototype list
-  prototype add <name> --model <model-id> --image <image-name> [--persona <name>]
-  prototype remove <name>
-  provider list
-  provider add <name> --api-type <type> --base-url <url> [--api-key <key>]
-  provider remove <name>
-  model list
-  model add <id> --provider <name> --model <model> [--context-window N] [--no-tool-use] [--no-streaming]
-  model remove <id>
-  image build <name> --agent <type> [--adapter <pkg-or-path>]
-  image list
-  sessions
-  create <prototype> --project <path> --task <description>
-  delete <session_id>
-  send <session_id> <message>
-  logs <session_id> [--follow]
-  stop <session_id>
-  images
+const messageSchema = z.object({ message: z.string() });
+const nameSchema = z.object({ name: z.string() });
+const idSchema = z.object({ id: z.string() });
+const listSchema = z.object({ items: z.array(z.string()) });
+const statusSchema = z.object({
+	name: z.string(),
+	version: z.string(),
+	running: z.number(),
+	queued: z.number(),
+	idle: z.number(),
+	uptime: z.number(),
+});
 
-Setup:
-  Initialize ~/.sumeru with config, prototype, and SQLite data.
-  Known providers (auto-detect apiType + baseUrl): anthropic, openai, openrouter, siliconflow, deepseek.
-  Custom providers require --api-type and --base-url.
+// ─── Helpers ─────────────────────────────────────────────────────────────
 
-Environment:
-  SUMERU_HOST       Host bind address for API client (default: 127.0.0.1)
-  SUMERU_PORT       Host port for API client (default: 7900)
-  SUMERU_PID_FILE   PID file path for server start/stop
-`;
-
-type ParsedArgs = {
-	command: Array<string>;
-	positionals: Array<string>;
-	flags: Map<string, string | boolean>;
-};
-
-function parseArgs(argv: Array<string>): ParsedArgs {
-	const command: Array<string> = [];
-	const positionals: Array<string> = [];
-	const flags = new Map<string, string | boolean>();
-	let i = 0;
-	while (i < argv.length) {
-		const token = argv[i];
-		if (token === undefined) break;
-		if (token.startsWith("--")) {
-			const key = token.slice(2);
-			const next = argv[i + 1];
-			if (next !== undefined && !next.startsWith("-")) {
-				flags.set(key, next);
-				i += 2;
-				continue;
-			}
-			flags.set(key, true);
-			i += 1;
-			continue;
-		}
-		if (token.startsWith("-") && token.length > 1) {
-			const key = token.slice(1);
-			const next = argv[i + 1];
-			if (next !== undefined && !next.startsWith("-")) {
-				flags.set(key, next);
-				i += 2;
-				continue;
-			}
-			flags.set(key, true);
-			i += 1;
-			continue;
-		}
-		if (command.length < 2) {
-			command.push(token);
-		} else {
-			positionals.push(token);
-		}
-		i += 1;
-	}
-	return { command, positionals, flags };
-}
-
-function flagString(
-	flags: Map<string, string | boolean>,
-	...names: Array<string>
-): string | null {
-	for (const name of names) {
-		const value = flags.get(name);
-		if (typeof value === "string" && value.length > 0) return value;
-	}
-	return null;
-}
-
-function flagBoolean(
-	flags: Map<string, string | boolean>,
-	name: string,
-): boolean {
-	const value = flags.get(name);
-	return value === true || value === "true";
-}
-
-function resolveBaseUrl(flags: Map<string, string | boolean>): string {
+function resolveBaseUrl(flags: ParsedFlags): string {
 	const host =
-		flagString(flags, "host") ?? process.env.SUMERU_HOST ?? "127.0.0.1";
+		(flags.host as string | undefined) ??
+		process.env.SUMERU_HOST ??
+		"127.0.0.1";
 	const portRaw =
-		flagString(flags, "port") ?? process.env.SUMERU_PORT ?? "7900";
+		(flags.port as string | undefined) ?? process.env.SUMERU_PORT ?? "7900";
 	const port = Number.parseInt(portRaw, 10);
 	if (!Number.isFinite(port) || port < 0) {
-		fail("Invalid port");
+		throw new Error("Invalid port");
 	}
 	return `http://${host}:${String(port)}`;
 }
 
-function fail(message: string): never {
-	process.stderr.write(`${message}\n`);
-	process.exit(1);
-}
-
-function printHelp(): void {
-	process.stdout.write(HELP_TEXT);
-}
-
-async function runServerStart(
-	flags: Map<string, string | boolean>,
-): Promise<void> {
-	const configPath = flagString(flags, "config", "c");
-	const host =
-		flagString(flags, "host") ?? process.env.SUMERU_HOST ?? "127.0.0.1";
-	const portRaw =
-		flagString(flags, "port") ?? process.env.SUMERU_PORT ?? "7900";
-	const rootDir =
-		configPath !== null ? resolve(dirname(configPath)) : process.cwd();
-	const pidFilePath = resolvePidFilePath();
-	const existingPid = readPidFile(pidFilePath);
-	if (existingPid !== null && isProcessAlive(existingPid)) {
-		fail(
-			`Host already running (pid ${String(existingPid)}). Stop it first with \`sumeru server stop\`.`,
-		);
-	}
-	if (existingPid !== null) {
-		removePidFile(pidFilePath);
-	}
-
-	const hostBin = process.env.SUMERU_HOST_BIN ?? "sumeru-host";
-	const child = spawn(hostBin, [rootDir], {
-		stdio: "inherit",
-		env: {
-			...process.env,
-			SUMERU_HOST: host,
-			SUMERU_PORT: portRaw,
-		},
-		detached: true,
-	});
-
-	if (child.pid === undefined) {
-		process.stdout.write(
-			`Could not spawn ${hostBin}. Start the host manually:\n\n` +
-				`  SUMERU_HOST=${host} SUMERU_PORT=${portRaw} ${hostBin} ${rootDir}\n`,
-		);
-		process.exit(1);
-	}
-
-	writePidFile(pidFilePath, child.pid);
-	child.unref();
-	process.stdout.write(
-		`Started host pid ${String(child.pid)} (${hostBin} ${rootDir})\n` +
-			`PID file: ${pidFilePath}\n`,
-	);
-}
-
-function runServerStop(): void {
-	const pidFilePath = resolvePidFilePath();
-	const pid = readPidFile(pidFilePath);
-	if (pid === null) {
-		process.stdout.write(
-			`No PID file at ${pidFilePath}.\n` +
-				`If the host is running, stop it with: kill $(cat ${pidFilePath})\n`,
-		);
-		return;
-	}
-	if (!isProcessAlive(pid)) {
-		removePidFile(pidFilePath);
-		process.stdout.write(
-			`Removed stale PID file (pid ${String(pid)} not running).\n`,
-		);
-		return;
-	}
-	try {
-		process.kill(pid, "SIGTERM");
-		process.stdout.write(`Sent SIGTERM to host pid ${String(pid)}.\n`);
-	} catch (err) {
-		const msg = err instanceof Error ? err.message : String(err);
-		fail(`Failed to stop pid ${String(pid)}: ${msg}`);
-	}
-}
-
-async function runServerStatus(
-	flags: Map<string, string | boolean>,
-): Promise<void> {
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		const envelope = await client.getRoot();
-		process.stdout.write(`${formatHostStatus(envelope.value)}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runPrototypes(
-	flags: Map<string, string | boolean>,
-): Promise<void> {
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		const envelope = await client.listPrototypes();
-		process.stdout.write(`${formatPrototypeTable(envelope.value)}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runPrototypeAdd(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const name = positionals[0];
-	const model = flagString(flags, "model");
-	const image = flagString(flags, "image");
-	const persona = flagString(flags, "persona") ?? "default";
-	if (
-		name === undefined ||
-		name.length === 0 ||
-		model === null ||
-		image === null
-	) {
-		fail(
-			"Usage: sumeru prototype add <name> --model <model-id> --image <image-name> [--persona <name>]",
-		);
-	}
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		const envelope = await client.createPrototype(name, {
-			persona,
-			model,
-			image,
-		});
-		process.stdout.write(`${envelope.value.name}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runPrototypeRemove(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const name = positionals[0];
-	if (name === undefined || name.length === 0) {
-		fail("Usage: sumeru prototype remove <name>");
-	}
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		await client.deletePrototype(name);
-		process.stdout.write(`removed prototype ${name}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runProviderList(
-	flags: Map<string, string | boolean>,
-): Promise<void> {
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		const envelope = await client.listProviders();
-		process.stdout.write(`${formatProviderTable(envelope.value)}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runProviderAdd(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const name = positionals[0];
-	const apiType = flagString(flags, "api-type");
-	const baseUrl = flagString(flags, "base-url");
-	const apiKey = flagString(flags, "api-key");
-	if (
-		name === undefined ||
-		name.length === 0 ||
-		apiType === null ||
-		baseUrl === null
-	) {
-		fail(
-			"Usage: sumeru provider add <name> --api-type <type> --base-url <url> [--api-key <key>]",
-		);
-	}
-	if (apiType !== "anthropic" && apiType !== "openai") {
-		fail('Flag --api-type must be "anthropic" or "openai"');
-	}
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		const envelope = await client.createProvider(name, {
-			apiType,
-			baseUrl,
-			apiKey,
-		});
-		process.stdout.write(`${envelope.value.name}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runProviderRemove(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const name = positionals[0];
-	if (name === undefined || name.length === 0) {
-		fail("Usage: sumeru provider remove <name>");
-	}
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		await client.deleteProvider(name);
-		process.stdout.write(`removed provider ${name}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runModelList(
-	flags: Map<string, string | boolean>,
-): Promise<void> {
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		const envelope = await client.listModels();
-		process.stdout.write(`${formatModelTable(envelope.value)}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runModelAdd(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const id = positionals[0];
-	const provider = flagString(flags, "provider");
-	const model = flagString(flags, "model");
-	const contextWindowRaw = flagString(flags, "context-window");
-	if (
-		id === undefined ||
-		id.length === 0 ||
-		provider === null ||
-		model === null
-	) {
-		fail(
-			"Usage: sumeru model add <id> --provider <name> --model <model> [--context-window N] [--no-tool-use] [--no-streaming]",
-		);
-	}
-	let contextWindow: number | null = null;
-	if (contextWindowRaw !== null) {
-		const parsed = Number.parseInt(contextWindowRaw, 10);
-		if (!Number.isFinite(parsed)) {
-			fail("Flag --context-window must be a finite number");
-		}
-		contextWindow = parsed;
-	}
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		const envelope = await client.createModel(id, {
-			provider,
-			model,
-			contextWindow,
-			toolUse: !flagBoolean(flags, "no-tool-use"),
-			streaming: !flagBoolean(flags, "no-streaming"),
-			metadata: null,
-		});
-		process.stdout.write(`${envelope.value.id}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runModelRemove(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const id = positionals[0];
-	if (id === undefined || id.length === 0) {
-		fail("Usage: sumeru model remove <id>");
-	}
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		await client.deleteModel(id);
-		process.stdout.write(`removed model ${id}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runSessions(
-	flags: Map<string, string | boolean>,
-): Promise<void> {
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		const envelope = await client.listSessions();
-		process.stdout.write(`${formatSessionTable(envelope.value)}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runCreate(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const prototype = positionals[0];
-	const project = flagString(flags, "project");
-	const task = flagString(flags, "task");
-	if (
-		prototype === undefined ||
-		prototype.length === 0 ||
-		project === null ||
-		task === null
-	) {
-		fail(
-			"Usage: sumeru create <prototype> --project <path> --task <description>",
-		);
-	}
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		const envelope = await client.createSession({
-			prototype,
-			project,
-			task,
-			model: null,
-			env: null,
-		});
-		process.stdout.write(`${envelope.value.id}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runDelete(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const sessionId = positionals[0];
-	if (sessionId === undefined || sessionId.length === 0) {
-		fail("Usage: sumeru delete <session_id>");
-	}
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		await client.deleteSession(sessionId);
-		process.stdout.write(`deleted ${sessionId}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runSend(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const sessionId = positionals[0];
-	const message = positionals.slice(1).join(" ");
-	if (
-		sessionId === undefined ||
-		sessionId.length === 0 ||
-		message.length === 0
-	) {
-		fail("Usage: sumeru send <session_id> <message>");
-	}
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		const envelope = await client.submitMessage(sessionId, {
-			content: message,
-			env: null,
-			model: null,
-		});
-		process.stdout.write(
-			`accepted message ${envelope.value.messageId} for ${envelope.value.sessionId}\n`,
-		);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runLogs(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const sessionId = positionals[0];
-	if (sessionId === undefined || sessionId.length === 0) {
-		fail("Usage: sumeru logs <session_id> [--follow]");
-	}
-	const follow = flagBoolean(flags, "follow");
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-
-	const printEvent = (event: string, data: string): void => {
-		if (event === "heartbeat") return;
-		process.stdout.write(`event: ${event}\n`);
-		process.stdout.write(`data: ${data}\n\n`);
-	};
-
-	try {
-		do {
-			await client.streamEvents(sessionId, printEvent);
-			if (!follow) break;
-		} while (follow);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runStop(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const sessionId = positionals[0];
-	if (sessionId === undefined || sessionId.length === 0) {
-		fail("Usage: sumeru stop <session_id>");
-	}
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		await client.stopSession(sessionId);
-		process.stdout.write(`stopped ${sessionId}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runImageList(
-	flags: Map<string, string | boolean>,
-): Promise<void> {
-	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-	try {
-		const envelope = await client.listImages();
-		process.stdout.write(`${formatImageTable(envelope.value)}\n`);
-	} catch (err) {
-		writeClientError(err);
-	}
-}
-
-async function runImageBuild(
-	flags: Map<string, string | boolean>,
-	positionals: Array<string>,
-): Promise<void> {
-	const name = positionals[0];
-	const agent = flagString(flags, "agent");
-	const adapter = flagString(flags, "adapter");
-	if (name === undefined || name.length === 0 || agent === null) {
-		fail(
-			"Usage: sumeru image build <name> --agent <type> [--adapter <pkg-or-path>]",
-		);
-	}
-	const repoRoot = await findRepoRoot(process.cwd());
-	try {
-		const result = await executeImageBuild({
-			name,
-			agent,
-			adapter,
-			baseUrl: resolveBaseUrl(flags),
-			repoRoot,
-		});
-		process.stdout.write(`built ${result.tag} (${result.digest})\n`);
-		process.stdout.write(`registered image ${name}\n`);
-	} catch (err) {
-		const msg = err instanceof Error ? err.message : String(err);
-		fail(msg);
-	}
-}
-
-function runImages(): void {
-	const result = spawnSync("docker", ["images", "sumeru/*"], {
-		encoding: "utf-8",
-	});
-	if (result.error !== undefined) {
-		fail(`docker images failed: ${result.error.message}`);
-	}
-	if (result.status !== 0) {
-		const stderr = result.stderr.trim();
-		fail(
-			stderr.length > 0
-				? stderr
-				: `docker images exited ${String(result.status)}`,
-		);
-	}
-	process.stdout.write(`${formatDockerImagesOutput(result.stdout)}\n`);
-}
-
-function writeClientError(err: unknown): never {
+function handleClientError(err: unknown, ctx: CliContext): never {
 	if (err instanceof HostClientError) {
-		fail(`${err.code}: ${err.message}`);
+		ctx.error(`${err.code}: ${err.message}`);
 	}
 	const msg = err instanceof Error ? err.message : String(err);
-	fail(msg);
+	ctx.error(msg);
 }
 
-async function main(): Promise<void> {
-	const argv = process.argv.slice(2);
-	if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
-		printHelp();
-		return;
-	}
+// ─── CLI definition ──────────────────────────────────────────────────────
 
-	const parsed = parseArgs(argv);
-	const [cmd, sub] = parsed.command;
+const cli = createCLI({ name: "sumeru", version: "0.3.0" });
 
-	if (cmd === "setup") {
-		const provider = flagString(parsed.flags, "provider");
-		const apiKey = flagString(parsed.flags, "api-key");
-		const model = flagString(parsed.flags, "model");
-		if (provider === null || apiKey === null || model === null) {
-			fail(
+// ─── setup ───────────────────────────────────────────────────────────────
+
+cli
+	.command("setup")
+	.describe("Initialize ~/.sumeru with config, prototype, and SQLite data")
+	.flag("provider", { type: "string" })
+	.flag("api-key", { type: "string" })
+	.flag("model", { type: "string" })
+	.flag("api-type", { type: "string" })
+	.flag("base-url", { type: "string" })
+	.flag("root-dir", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (_args, flags, ctx) => {
+		const provider = flags.provider as string | undefined;
+		const apiKey = flags["api-key"] as string | undefined;
+		const model = flags.model as string | undefined;
+		if (!provider || !apiKey || !model) {
+			ctx.error(
 				"Usage: sumeru setup --provider <name> --api-key <key> --model <model-name>",
 			);
 		}
+		await runSetup({
+			provider: provider!,
+			apiKey: apiKey!,
+			model: model!,
+			apiType: (flags["api-type"] as string) ?? null,
+			baseUrl: (flags["base-url"] as string) ?? null,
+			rootDir: (flags["root-dir"] as string) ?? null,
+		});
+		return { message: "Setup complete" };
+	});
+
+// ─── server ──────────────────────────────────────────────────────────────
+
+cli
+	.command("server")
+	.command("start")
+	.describe("Start the host process in the background")
+	.flag("config", { type: "string", alias: "c" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (_args, flags, ctx) => {
+		const configPath = (flags.config ?? flags.c) as string | undefined;
+		const host =
+			(flags.host as string | undefined) ??
+			process.env.SUMERU_HOST ??
+			"127.0.0.1";
+		const portRaw =
+			(flags.port as string | undefined) ?? process.env.SUMERU_PORT ?? "7900";
+		const rootDir =
+			configPath !== undefined ? resolve(dirname(configPath)) : process.cwd();
+		const pidFilePath = resolvePidFilePath();
+		const existingPid = readPidFile(pidFilePath);
+		if (existingPid !== null && isProcessAlive(existingPid)) {
+			ctx.error(
+				`Host already running (pid ${String(existingPid)}). Stop it first with \`sumeru server stop\`.`,
+			);
+		}
+		if (existingPid !== null) {
+			removePidFile(pidFilePath);
+		}
+
+		const hostBin = process.env.SUMERU_HOST_BIN ?? "sumeru-host";
+		const child = spawn(hostBin, [rootDir], {
+			stdio: "inherit",
+			env: {
+				...process.env,
+				SUMERU_HOST: host,
+				SUMERU_PORT: portRaw,
+			},
+			detached: true,
+		});
+
+		if (child.pid === undefined) {
+			ctx.error(
+				`Could not spawn ${hostBin}. Start the host manually:\n\n` +
+					`  SUMERU_HOST=${host} SUMERU_PORT=${portRaw} ${hostBin} ${rootDir}`,
+			);
+		}
+
+		writePidFile(pidFilePath, child.pid!);
+		child.unref();
+		return {
+			message:
+				`Started host pid ${String(child.pid)} (${hostBin} ${rootDir})\n` +
+				`PID file: ${pidFilePath}`,
+		};
+	});
+
+cli
+	.command("server")
+	.command("stop")
+	.describe("Stop the running host")
+	.returns(messageSchema, "{{message}}")
+	.action(async (_args, _flags, ctx) => {
+		const pidFilePath = resolvePidFilePath();
+		const pid = readPidFile(pidFilePath);
+		if (pid === null) {
+			return {
+				message:
+					`No PID file at ${pidFilePath}.\n` +
+					`If the host is running, stop it with: kill $(cat ${pidFilePath})`,
+			};
+		}
+		if (!isProcessAlive(pid)) {
+			removePidFile(pidFilePath);
+			return {
+				message: `Removed stale PID file (pid ${String(pid)} not running).`,
+			};
+		}
 		try {
-			await runSetup({
-				provider,
-				apiKey,
-				model,
-				apiType: flagString(parsed.flags, "api-type"),
-				baseUrl: flagString(parsed.flags, "base-url"),
-				rootDir: flagString(parsed.flags, "root-dir"),
-			});
+			process.kill(pid, "SIGTERM");
+			return { message: `Sent SIGTERM to host pid ${String(pid)}.` };
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			fail(msg);
+			ctx.error(`Failed to stop pid ${String(pid)}: ${msg}`);
 		}
-		return;
-	}
+	});
 
-	if (cmd === "server") {
-		if (sub === "start") {
-			await runServerStart(parsed.flags);
-			return;
+cli
+	.command("server")
+	.command("status")
+	.describe("Show host status")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(
+		statusSchema,
+		"{{name}} {{version}} running={{running}} queued={{queued}} idle={{idle}}",
+	)
+	.action(async (_args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.getRoot();
+			const v = envelope.value;
+			return {
+				name: v.name,
+				version: v.version,
+				running: v.status.running,
+				queued: v.status.queued,
+				idle: v.status.idle,
+				uptime: v.uptime,
+			};
+		} catch (err) {
+			handleClientError(err, ctx);
 		}
-		if (sub === "stop") {
-			runServerStop();
-			return;
-		}
-		if (sub === "status") {
-			await runServerStatus(parsed.flags);
-			return;
-		}
-		fail(`Unknown server subcommand: ${sub ?? "(none)"}`);
-	}
+	});
 
-	if (cmd === "prototypes" || (cmd === "prototype" && sub === "list")) {
-		await runPrototypes(parsed.flags);
-		return;
-	}
-	if (cmd === "prototype") {
-		if (sub === "add") {
-			await runPrototypeAdd(parsed.flags, parsed.positionals);
-			return;
-		}
-		if (sub === "remove") {
-			await runPrototypeRemove(parsed.flags, parsed.positionals);
-			return;
-		}
-		fail(`Unknown prototype subcommand: ${sub ?? "(none)"}`);
-	}
-	if (cmd === "provider") {
-		if (sub === "list") {
-			await runProviderList(parsed.flags);
-			return;
-		}
-		if (sub === "add") {
-			await runProviderAdd(parsed.flags, parsed.positionals);
-			return;
-		}
-		if (sub === "remove") {
-			await runProviderRemove(parsed.flags, parsed.positionals);
-			return;
-		}
-		fail(`Unknown provider subcommand: ${sub ?? "(none)"}`);
-	}
-	if (cmd === "model") {
-		if (sub === "list") {
-			await runModelList(parsed.flags);
-			return;
-		}
-		if (sub === "add") {
-			await runModelAdd(parsed.flags, parsed.positionals);
-			return;
-		}
-		if (sub === "remove") {
-			await runModelRemove(parsed.flags, parsed.positionals);
-			return;
-		}
-		fail(`Unknown model subcommand: ${sub ?? "(none)"}`);
-	}
-	if (cmd === "image") {
-		if (sub === "list") {
-			await runImageList(parsed.flags);
-			return;
-		}
-		if (sub === "build") {
-			await runImageBuild(parsed.flags, parsed.positionals);
-			return;
-		}
-		fail(`Unknown image subcommand: ${sub ?? "(none)"}`);
-	}
-	if (cmd === "sessions") {
-		await runSessions(parsed.flags);
-		return;
-	}
-	if (cmd === "create") {
-		await runCreate(parsed.flags, parsed.positionals);
-		return;
-	}
-	if (cmd === "delete") {
-		await runDelete(parsed.flags, parsed.positionals);
-		return;
-	}
-	if (cmd === "send") {
-		await runSend(parsed.flags, parsed.positionals);
-		return;
-	}
-	if (cmd === "logs") {
-		await runLogs(parsed.flags, parsed.positionals);
-		return;
-	}
-	if (cmd === "stop") {
-		await runStop(parsed.flags, parsed.positionals);
-		return;
-	}
-	if (cmd === "images") {
-		runImages();
-		return;
-	}
+// ─── provider ────────────────────────────────────────────────────────────
 
-	fail(`Unknown command: ${cmd ?? "(none)"}. Run \`sumeru --help\`.`);
-}
+cli
+	.command("provider")
+	.command("list")
+	.describe("List registered providers")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.action(async (_args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.listProviders();
+			ctx.stdout(formatProviderTable(envelope.value) + "\n");
+			return undefined;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
 
-await main();
+cli
+	.command("provider")
+	.command("get")
+	.describe("Get a provider by name")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(
+		z.object({
+			name: z.string(),
+			apiType: z.string(),
+			baseUrl: z.string().nullable(),
+		}),
+		"{{name}} ({{apiType}}) {{baseUrl}}",
+	)
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.getProvider(args.name);
+			const v = envelope.value;
+			return { name: v.name, apiType: v.apiType, baseUrl: v.baseUrl };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("provider")
+	.command("add")
+	.describe("Register a new provider")
+	.arg("name")
+	.flag("api-type", { type: "string" })
+	.flag("base-url", { type: "string" })
+	.flag("api-key", { type: "string" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(nameSchema, "{{name}}")
+	.action(async (args, flags, ctx) => {
+		const apiType = flags["api-type"] as string | undefined;
+		const baseUrl = (flags["base-url"] as string) ?? null;
+		const apiKey = (flags["api-key"] as string) ?? null;
+		if (!apiType || !baseUrl) {
+			ctx.error(
+				"Usage: sumeru provider add <name> --api-type <type> --base-url <url> [--api-key <key>]",
+			);
+		}
+		if (apiType !== "anthropic" && apiType !== "openai") {
+			ctx.error('Flag --api-type must be "anthropic" or "openai"');
+		}
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.addProvider(args.name, {
+				apiType: apiType as "anthropic" | "openai",
+				baseUrl: baseUrl!,
+				apiKey,
+			});
+			return { name: envelope.value.name };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("provider")
+	.command("update")
+	.describe("Update a provider")
+	.arg("name")
+	.flag("api-type", { type: "string" })
+	.flag("base-url", { type: "string" })
+	.flag("api-key", { type: "string" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(nameSchema, "{{name}}")
+	.action(async (args, flags, ctx) => {
+		const body: Record<string, unknown> = {};
+		if (flags["api-type"] !== undefined) body.apiType = flags["api-type"];
+		if (flags["base-url"] !== undefined) body.baseUrl = flags["base-url"];
+		if (flags["api-key"] !== undefined) body.apiKey = flags["api-key"];
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.updateProvider(
+				args.name,
+				body as Parameters<typeof client.updateProvider>[1],
+			);
+			return { name: envelope.value.name };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("provider")
+	.command("remove")
+	.describe("Remove a provider")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			await client.removeProvider(args.name);
+			return { message: `removed provider ${args.name}` };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+// ─── model ───────────────────────────────────────────────────────────────
+
+cli
+	.command("model")
+	.command("list")
+	.describe("List registered models")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.action(async (_args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.listModels();
+			ctx.stdout(formatModelTable(envelope.value) + "\n");
+			return undefined;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("model")
+	.command("get")
+	.describe("Get a model by id")
+	.arg("id")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(
+		z.object({ id: z.string(), provider: z.string(), model: z.string() }),
+		"{{id}} {{provider}}/{{model}}",
+	)
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.getModel(args.id);
+			const v = envelope.value;
+			return { id: v.id, provider: v.provider, model: v.model };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("model")
+	.command("add")
+	.describe("Register a new model")
+	.arg("id")
+	.flag("provider", { type: "string" })
+	.flag("model", { type: "string" })
+	.flag("context-window", { type: "number" })
+	.flag("no-tool-use", { type: "boolean" })
+	.flag("no-streaming", { type: "boolean" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(idSchema, "{{id}}")
+	.action(async (args, flags, ctx) => {
+		const provider = flags.provider as string | undefined;
+		const model = flags.model as string | undefined;
+		if (!provider || !model) {
+			ctx.error(
+				"Usage: sumeru model add <id> --provider <name> --model <model> [--context-window N] [--no-tool-use] [--no-streaming]",
+			);
+		}
+		const contextWindow =
+			flags["context-window"] !== undefined
+				? Number(flags["context-window"])
+				: null;
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.addModel(args.id, {
+				provider: provider!,
+				model: model!,
+				contextWindow,
+				toolUse: !flags["no-tool-use"],
+				streaming: !flags["no-streaming"],
+				metadata: null,
+			});
+			return { id: envelope.value.id };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("model")
+	.command("update")
+	.describe("Update a model")
+	.arg("id")
+	.flag("provider", { type: "string" })
+	.flag("model", { type: "string" })
+	.flag("context-window", { type: "number" })
+	.flag("no-tool-use", { type: "boolean" })
+	.flag("no-streaming", { type: "boolean" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(idSchema, "{{id}}")
+	.action(async (args, flags, ctx) => {
+		const body: Record<string, unknown> = {};
+		if (flags.provider !== undefined) body.provider = flags.provider;
+		if (flags.model !== undefined) body.model = flags.model;
+		if (flags["context-window"] !== undefined)
+			body.contextWindow = Number(flags["context-window"]);
+		if (flags["no-tool-use"] !== undefined)
+			body.toolUse = !flags["no-tool-use"];
+		if (flags["no-streaming"] !== undefined)
+			body.streaming = !flags["no-streaming"];
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.updateModel(
+				args.id,
+				body as Parameters<typeof client.updateModel>[1],
+			);
+			return { id: envelope.value.id };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("model")
+	.command("remove")
+	.describe("Remove a model")
+	.arg("id")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			await client.removeModel(args.id);
+			return { message: `removed model ${args.id}` };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+// ─── prototype ───────────────────────────────────────────────────────────
+
+cli
+	.command("prototype")
+	.command("list")
+	.describe("List prototypes")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.action(async (_args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.listPrototypes();
+			ctx.stdout(formatPrototypeTable(envelope.value) + "\n");
+			return undefined;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("prototype")
+	.command("get")
+	.describe("Get a prototype by name")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(
+		z.object({
+			name: z.string(),
+			persona: z.string(),
+			model: z.string(),
+			image: z.string(),
+		}),
+		"{{name}} persona={{persona}} model={{model}} image={{image}}",
+	)
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.getPrototype(args.name);
+			const p = envelope.value.prototype;
+			return {
+				name: p.name,
+				persona: p.persona,
+				model: p.model,
+				image: p.image,
+			};
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("prototype")
+	.command("add")
+	.describe("Register a new prototype")
+	.arg("name")
+	.flag("model", { type: "string" })
+	.flag("image", { type: "string" })
+	.flag("persona", { type: "string", default: "default" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(nameSchema, "{{name}}")
+	.action(async (args, flags, ctx) => {
+		const model = flags.model as string | undefined;
+		const image = flags.image as string | undefined;
+		const persona = (flags.persona as string) ?? "default";
+		if (!model || !image) {
+			ctx.error(
+				"Usage: sumeru prototype add <name> --model <model-id> --image <image-name> [--persona <name>]",
+			);
+		}
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.addPrototype(args.name, {
+				persona,
+				model: model!,
+				image: image!,
+			});
+			return { name: envelope.value.name };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("prototype")
+	.command("update")
+	.describe("Update a prototype")
+	.arg("name")
+	.flag("model", { type: "string" })
+	.flag("image", { type: "string" })
+	.flag("persona", { type: "string" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(nameSchema, "{{name}}")
+	.action(async (args, flags, ctx) => {
+		const body: Record<string, unknown> = {};
+		if (flags.model !== undefined) body.model = flags.model;
+		if (flags.image !== undefined) body.image = flags.image;
+		if (flags.persona !== undefined) body.persona = flags.persona;
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.updatePrototype(
+				args.name,
+				body as Parameters<typeof client.updatePrototype>[1],
+			);
+			return { name: envelope.value.name };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("prototype")
+	.command("remove")
+	.describe("Remove a prototype")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			await client.removePrototype(args.name);
+			return { message: `removed prototype ${args.name}` };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+// ─── persona ─────────────────────────────────────────────────────────────
+
+cli
+	.command("persona")
+	.command("list")
+	.describe("List personas")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.action(async (_args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.listPersonas();
+			ctx.stdout(formatPersonaTable(envelope.value) + "\n");
+			return undefined;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("persona")
+	.command("get")
+	.describe("Get a persona by name")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(
+		z.object({ name: z.string(), skills: z.array(z.string()) }),
+		"{{name}} skills=[{{skills}}]",
+	)
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.getPersona(args.name);
+			const v = envelope.value;
+			return { name: v.name, skills: v.skills };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("persona")
+	.command("add")
+	.describe("Register a new persona")
+	.arg("name")
+	.flag("instructions", { type: "string" })
+	.flag("skills", { type: "string" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(nameSchema, "{{name}}")
+	.action(async (args, flags, ctx) => {
+		const instructions = (flags.instructions as string) ?? "";
+		const skillsRaw = (flags.skills as string) ?? "";
+		const skills = skillsRaw.length > 0 ? skillsRaw.split(",") : [];
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.addPersona(args.name, {
+				instructions,
+				skills,
+			});
+			return { name: envelope.value.name };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("persona")
+	.command("update")
+	.describe("Update a persona")
+	.arg("name")
+	.flag("instructions", { type: "string" })
+	.flag("skills", { type: "string" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(nameSchema, "{{name}}")
+	.action(async (args, flags, ctx) => {
+		const body: Record<string, unknown> = {};
+		if (flags.instructions !== undefined)
+			body.instructions = flags.instructions;
+		if (flags.skills !== undefined)
+			body.skills = (flags.skills as string).split(",");
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.updatePersona(
+				args.name,
+				body as Parameters<typeof client.updatePersona>[1],
+			);
+			return { name: envelope.value.name };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("persona")
+	.command("remove")
+	.describe("Remove a persona")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			await client.removePersona(args.name);
+			return { message: `removed persona ${args.name}` };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+// ─── skill ───────────────────────────────────────────────────────────────
+
+cli
+	.command("skill")
+	.command("get")
+	.describe("Get a skill by name")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(
+		z.object({ name: z.string(), content: z.string() }),
+		"{{name}}\n{{content}}",
+		{ defaultFormat: "text" },
+	)
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.getSkill(args.name);
+			return envelope.value;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("skill")
+	.command("put")
+	.describe("Create or update a skill")
+	.arg("name")
+	.flag("content", { type: "string" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(nameSchema, "{{name}}")
+	.action(async (args, flags, ctx) => {
+		const content = flags.content as string | undefined;
+		if (!content) {
+			ctx.error("Usage: sumeru skill put <name> --content <text>");
+		}
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.putSkill(args.name, content!);
+			return { name: envelope.value.name };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("skill")
+	.command("remove")
+	.describe("Remove a skill")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			await client.removeSkill(args.name);
+			return { message: `removed skill ${args.name}` };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+// ─── image ───────────────────────────────────────────────────────────────
+
+cli
+	.command("image")
+	.command("list")
+	.describe("List registered images")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.action(async (_args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.listImages();
+			ctx.stdout(formatImageTable(envelope.value) + "\n");
+			return undefined;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("image")
+	.command("get")
+	.describe("Get an image by name")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(
+		z.object({ name: z.string(), description: z.string(), digest: z.string() }),
+		"{{name}} {{description}} ({{digest}})",
+	)
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.getImage(args.name);
+			const v = envelope.value;
+			return { name: v.name, description: v.description, digest: v.digest };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("image")
+	.command("build")
+	.describe("Build a Docker image and register it")
+	.arg("name")
+	.flag("agent", { type: "string" })
+	.flag("adapter", { type: "string" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const agent = flags.agent as string | undefined;
+		if (!agent) {
+			ctx.error(
+				"Usage: sumeru image build <name> --agent <type> [--adapter <pkg-or-path>]",
+			);
+		}
+		const repoRoot = await findRepoRoot(process.cwd());
+		try {
+			const result = await executeImageBuild({
+				name: args.name,
+				agent: agent!,
+				adapter: (flags.adapter as string) ?? null,
+				baseUrl: resolveBaseUrl(flags),
+				repoRoot,
+			});
+			return {
+				message: `built ${result.tag} (${result.digest})\nregistered image ${args.name}`,
+			};
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			ctx.error(msg);
+		}
+	});
+
+cli
+	.command("image")
+	.command("remove")
+	.describe("Remove a registered image")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			await client.removeImage(args.name);
+			return { message: `removed image ${args.name}` };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+// ─── session ─────────────────────────────────────────────────────────────
+
+cli
+	.command("session")
+	.command("list")
+	.describe("List sessions")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.action(async (_args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.listSessions();
+			ctx.stdout(formatSessionTable(envelope.value) + "\n");
+			return undefined;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("session")
+	.command("get")
+	.describe("Get session details")
+	.arg("id")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(
+		z.object({ id: z.string(), prototype: z.string(), status: z.string() }),
+		"{{id}} {{prototype}} [{{status}}]",
+	)
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.getSession(args.id);
+			const v = envelope.value;
+			return { id: v.id, prototype: v.prototype, status: v.status };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("session")
+	.command("add")
+	.describe("Create a new session")
+	.arg("prototype")
+	.flag("project", { type: "string" })
+	.flag("task", { type: "string" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(idSchema, "{{id}}")
+	.action(async (args, flags, ctx) => {
+		const project = flags.project as string | undefined;
+		const task = flags.task as string | undefined;
+		if (!project || !task) {
+			ctx.error(
+				"Usage: sumeru session add <prototype> --project <path> --task <description>",
+			);
+		}
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.addSession({
+				prototype: args.prototype,
+				project: project!,
+				task: task!,
+				model: null,
+				env: null,
+			});
+			return { id: envelope.value.id };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("session")
+	.command("stop")
+	.describe("Stop a running session")
+	.arg("id")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			await client.stopSession(args.id);
+			return { message: `stopped ${args.id}` };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("session")
+	.command("remove")
+	.describe("Delete a session")
+	.arg("id")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			await client.removeSession(args.id);
+			return { message: `deleted ${args.id}` };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("session")
+	.command("send")
+	.describe("Send a message to a session")
+	.arg("id")
+	.arg("message")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.submitMessage(args.id, {
+				content: args.message,
+				env: null,
+				model: null,
+			});
+			return {
+				message: `accepted message ${envelope.value.messageId} for ${envelope.value.sessionId}`,
+			};
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("session")
+	.command("logs")
+	.describe("Stream session events")
+	.arg("id")
+	.flag("follow", { type: "boolean", alias: "f" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const follow = Boolean(flags.follow);
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+
+		const printEvent = (event: string, data: string): void => {
+			if (event === "heartbeat") return;
+			ctx.stdout(`event: ${event}\n`);
+			ctx.stdout(`data: ${data}\n\n`);
+		};
+
+		try {
+			do {
+				await client.streamEvents(args.id, printEvent);
+				if (!follow) break;
+			} while (follow);
+			return undefined;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+// ─── search ──────────────────────────────────────────────────────────────
+
+cli
+	.command("search")
+	.describe("Full-text search across sessions")
+	.arg("query")
+	.flag("session", { type: "string" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(
+		z.object({ query: z.string(), hits: z.number() }),
+		"{{query}} — {{hits}} hits",
+	)
+	.action(async (args, flags, ctx) => {
+		const sessionFilter = (flags.session as string | undefined) ?? undefined;
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.search(args.query, {
+				session: sessionFilter,
+			});
+			const v = envelope.value;
+			for (const hit of v.hits) {
+				ctx.stdout(`[${hit.sessionId}] ${hit.content.slice(0, 120)}\n`);
+			}
+			return { query: v.query, hits: v.hits.length };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+// ─── Run ─────────────────────────────────────────────────────────────────
+
+const exitCode = await cli.run();
+process.exit(exitCode);

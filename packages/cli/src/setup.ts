@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { homedir } from "node:os";
-import { join, resolve, dirname, isAbsolute } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { access, cp, mkdir, rm } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { openDatabase } from "@sumeru/host/sqlite";
 
 // ── Provider presets ────────────────────────────────────────────────
@@ -299,7 +299,12 @@ async function runImageBuildLocal(
 			: join(options.repoRoot, `packages/adapter-${agent}`);
 
 	const dockerTag = `sumeru/${options.name}:dev`;
-	const dockerfileSource = join(options.repoRoot, "docker", agent, "Dockerfile");
+	const dockerfileSource = join(
+		options.repoRoot,
+		"docker",
+		agent,
+		"Dockerfile",
+	);
 	const buildDir = join(options.repoRoot, ".build");
 	const packagesDir = join(buildDir, "packages");
 
@@ -307,7 +312,10 @@ async function runImageBuildLocal(
 	await mkdir(packagesDir, { recursive: true });
 
 	// Copy core + adapter-core + agent adapter
-	await copyPkg(join(options.repoRoot, "packages/core"), join(packagesDir, "core"));
+	await copyPkg(
+		join(options.repoRoot, "packages/core"),
+		join(packagesDir, "core"),
+	);
 	await copyPkg(
 		join(options.repoRoot, "packages/adapter-core"),
 		join(packagesDir, "adapter-core"),
@@ -332,7 +340,9 @@ async function runImageBuildLocal(
 		throw new Error(`docker build failed: ${buildResult.error.message}`);
 	}
 	if (buildResult.status !== 0) {
-		throw new Error(`docker build exited with code ${String(buildResult.status)}`);
+		throw new Error(
+			`docker build exited with code ${String(buildResult.status)}`,
+		);
 	}
 
 	// Get digest
@@ -362,10 +372,7 @@ async function runImageBuildLocal(
 
 	if (imagesContent.includes(`  ${options.name}:`)) {
 		// Replace existing entry (simple regex for our known format)
-		const re = new RegExp(
-			`  ${options.name}:\\n(    [^\\n]+\\n)*`,
-			"m",
-		);
+		const re = new RegExp(`  ${options.name}:\\n(    [^\\n]+\\n)*`, "m");
 		imagesContent = imagesContent.replace(re, imageEntry + "\n");
 	} else {
 		if (!imagesContent.startsWith("images:")) {
@@ -471,7 +478,16 @@ async function runHealthCheck(options: HealthCheckOptions): Promise<void> {
 	// Cleanup
 	spawnSync(
 		"docker",
-		["compose", "-f", options.composePath, "-p", projectName, "down", "-t", "2"],
+		[
+			"compose",
+			"-f",
+			options.composePath,
+			"-p",
+			projectName,
+			"down",
+			"-t",
+			"2",
+		],
 		{ encoding: "utf-8", env, timeout: 15_000 },
 	);
 }
@@ -485,13 +501,20 @@ function buildLlmProbeArgs(options: HealthCheckOptions): Array<string> {
 			messages: [{ role: "user", content: "hi" }],
 		});
 		return [
-			"-s", "--max-time", "15",
-			"-X", "POST",
+			"-s",
+			"--max-time",
+			"15",
+			"-X",
+			"POST",
 			`${url}/v1/messages`,
-			"-H", "Content-Type: application/json",
-			"-H", `x-api-key: ${options.apiKey}`,
-			"-H", "anthropic-version: 2023-06-01",
-			"-d", body,
+			"-H",
+			"Content-Type: application/json",
+			"-H",
+			`x-api-key: ${options.apiKey}`,
+			"-H",
+			"anthropic-version: 2023-06-01",
+			"-d",
+			body,
 		];
 	}
 	// OpenAI-compatible
@@ -502,11 +525,17 @@ function buildLlmProbeArgs(options: HealthCheckOptions): Array<string> {
 		messages: [{ role: "user", content: "hi" }],
 	});
 	return [
-		"-s", "--max-time", "15",
-		"-X", "POST",
+		"-s",
+		"--max-time",
+		"15",
+		"-X",
+		"POST",
 		`${url}/chat/completions`,
-		"-H", "Content-Type: application/json",
-		"-H", `Authorization: Bearer ${options.apiKey}`,
-		"-d", body,
+		"-H",
+		"Content-Type: application/json",
+		"-H",
+		`Authorization: Bearer ${options.apiKey}`,
+		"-d",
+		body,
 	];
 }

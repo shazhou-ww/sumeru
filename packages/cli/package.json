@@ -19,8 +19,10 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@ocas/cli-kit": "^0.3.0",
     "@sumeru/core": "workspace:*",
-    "@sumeru/host": "workspace:*"
+    "@sumeru/host": "workspace:*",
+    "zod": "^4.4.3"
   },
   "scripts": {
     "test:ci": "npx vitest run"

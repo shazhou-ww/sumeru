@@ -25,7 +25,7 @@ export function createPrototypesHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, prototypeListEnvelope(prototypes));
 		},
 
-		detail(
+		get(
 			_req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
@@ -45,7 +45,7 @@ export function createPrototypesHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, prototypeEnvelope(prototype));
 		},
 
-		async create(
+		async add(
 			req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
@@ -59,7 +59,7 @@ export function createPrototypesHandler(hostConfig: LoadedHostConfig) {
 				);
 				return;
 			}
-			await upsertPrototype(req, res, hostConfig, name, "create");
+			await upsertPrototype(req, res, hostConfig, name, "add");
 		},
 
 		async update(
@@ -110,7 +110,7 @@ async function upsertPrototype(
 	res: ServerResponse,
 	hostConfig: LoadedHostConfig,
 	name: string,
-	mode: "create" | "update",
+	mode: "add" | "update",
 ): Promise<void> {
 	let prototype: Prototype;
 	try {
@@ -152,7 +152,7 @@ async function upsertPrototype(
 	try {
 		await writePrototypeFile(hostConfig.prototypesDir, prototype);
 		const info = await reloadPrototypeInConfig(hostConfig, name);
-		writeJson(res, mode === "create" ? 201 : 200, prototypeEnvelope(info));
+		writeJson(res, mode === "add" ? 201 : 200, prototypeEnvelope(info));
 	} catch (err) {
 		writePrototypeError(res, err);
 	}

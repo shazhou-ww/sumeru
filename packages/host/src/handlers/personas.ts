@@ -17,7 +17,7 @@ export function createPersonasHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, personaListEnvelope(personas));
 		},
 
-		detail(
+		get(
 			_req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
@@ -35,7 +35,7 @@ export function createPersonasHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, personaEnvelope(persona));
 		},
 
-		async create(
+		async add(
 			req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,

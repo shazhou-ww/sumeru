@@ -18,7 +18,7 @@ export function createProvidersHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, providerListEnvelope(providers));
 		},
 
-		detail(
+		get(
 			_req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
@@ -36,7 +36,7 @@ export function createProvidersHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, providerEnvelope(provider));
 		},
 
-		async create(
+		async add(
 			req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
