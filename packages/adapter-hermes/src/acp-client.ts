@@ -296,7 +296,8 @@ function parseSessionUpdate(
 			sessionUpdate: "tool_result",
 			toolCallId,
 			result,
-			durationMs: typeof update.durationMs === "number" ? update.durationMs : null,
+			durationMs:
+				typeof update.durationMs === "number" ? update.durationMs : null,
 		};
 	}
 	if (kind === "usage_update") {

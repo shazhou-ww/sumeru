@@ -94,7 +94,7 @@ describe("skills and prototypes CRUD routes", () => {
 		return server;
 	}
 
-	it("PUT/GET/DELETE skills and validates prototype skill references", async () => {
+	it("PUT/GET/DELETE skills and validates prototype persona references", async () => {
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-crud-"));
 		writeV3HostFixture(rootDir);
 		const server = await startTestServer(rootDir);
@@ -114,39 +114,76 @@ describe("skills and prototypes CRUD routes", () => {
 		const getSkill = await request(server, "GET", "/skills/demo");
 		expect(getSkill.status).toBe(200);
 
+		const createProvider = await request(
+			server,
+			"POST",
+			"/providers/test-prov",
+			JSON.stringify({ apiType: "anthropic", baseUrl: null, apiKey: "sk-x" }),
+		);
+		expect(createProvider.status).toBe(201);
+
+		const createModel = await request(
+			server,
+			"POST",
+			"/models/test-model",
+			JSON.stringify({
+				provider: "test-prov",
+				model: "claude-sonnet-4",
+				contextWindow: null,
+				toolUse: true,
+				streaming: true,
+				metadata: null,
+			}),
+		);
+		expect(createModel.status).toBe(201);
+
+		const createPersona = await request(
+			server,
+			"POST",
+			"/personas/worker-persona",
+			JSON.stringify({
+				instructions: "Worker agent",
+				skills: ["demo"],
+			}),
+		);
+		expect(createPersona.status).toBe(201);
+
 		const createPrototype = await request(
 			server,
 			"POST",
 			"/prototypes/worker",
 			JSON.stringify({
 				name: "worker",
-				instructions: "Worker agent",
-				skills: ["demo"],
+				persona: "worker-persona",
+				model: "test-model",
+				image: "sumeru/worker:dev",
 				defaults: null,
 			}),
 		);
 		expect(createPrototype.status).toBe(201);
 
-		const missingSkill = await request(
+		const missingPersona = await request(
 			server,
 			"POST",
 			"/prototypes/bad",
 			JSON.stringify({
 				name: "bad",
-				instructions: "Bad",
-				skills: ["missing"],
+				persona: "missing",
+				model: "test-model",
+				image: "sumeru/bad:dev",
 				defaults: null,
 			}),
 		);
-		expect(missingSkill.status).toBe(400);
+		expect(missingPersona.status).toBe(400);
 		expect(
-			(missingSkill.body as { value: { error: string } }).value.error,
-		).toBe("skills_not_found");
+			(missingPersona.body as { value: { error: string } }).value.error,
+		).toBe("persona_not_found");
 
 		const deleteBlocked = await request(server, "DELETE", "/skills/demo");
 		expect(deleteBlocked.status).toBe(409);
 
 		await request(server, "DELETE", "/prototypes/worker");
+		await request(server, "DELETE", "/personas/worker-persona");
 		const deleteSkill = await request(server, "DELETE", "/skills/demo");
 		expect(deleteSkill.status).toBe(204);
 	});

@@ -44,11 +44,21 @@ export type ModelConfig = {
 	apiKey: string | null;
 };
 
-// === Prototype ===
-export type Prototype = {
+// === Persona (SQLite-backed, issue #189) ===
+export type Persona = {
 	name: string;
 	instructions: string;
 	skills: Array<string>;
+	createdAt: string;
+	updatedAt: string;
+};
+
+// === Prototype ===
+export type Prototype = {
+	name: string;
+	persona: string;
+	model: string;
+	image: string;
 	defaults: {
 		maxTurns: number;
 		timeout: number;

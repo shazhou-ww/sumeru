@@ -692,12 +692,18 @@ export function createSessionManager(input: {
 		if (prototype === undefined) {
 			throw new Error("prototype_not_found");
 		}
+		const persona = input.hostConfig.sqliteStore.getPersona(
+			prototype.prototype.persona,
+		);
+		if (persona === null) {
+			throw new Error(`persona_not_found:${prototype.prototype.persona}`);
+		}
 		const skills = await loadPrototypeInitSkills(
 			input.hostConfig.skillsDir,
-			prototype.prototype,
+			persona,
 		);
 		return {
-			instructions: prototype.prototype.instructions,
+			instructions: persona.instructions,
 			skills,
 			model,
 		};

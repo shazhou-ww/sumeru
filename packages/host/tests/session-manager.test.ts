@@ -33,9 +33,12 @@ function writeHostFixture(rootDir: string, maxRunning = 2): void {
 	mkdirSync(join(dataDir, "prototypes"), { recursive: true });
 	writeFileSync(
 		join(dataDir, "prototypes", "claude-code.yaml"),
-		["name: claude-code", "instructions: You are a worker.", "skills: []"].join(
-			"\n",
-		),
+		[
+			"name: claude-code",
+			"persona: default-persona",
+			"model: default-model",
+			"image: sumeru/claude-code:dev",
+		].join("\n"),
 	);
 	const prototypeDir = join(rootDir, "prototypes", "claude-code");
 	mkdirSync(prototypeDir, { recursive: true });
@@ -179,6 +182,35 @@ describe("session-manager", () => {
 		return rootDir;
 	}
 
+	function seedDb(hostConfig: {
+		sqliteStore: {
+			createPersona: Function;
+			createProvider: Function;
+			createModel: Function;
+		};
+	}): void {
+		hostConfig.sqliteStore.createProvider({
+			name: "test-provider",
+			apiType: "anthropic",
+			baseUrl: null,
+			apiKey: "sk-test",
+		});
+		hostConfig.sqliteStore.createModel({
+			id: "default-model",
+			provider: "test-provider",
+			model: "claude-sonnet-4",
+			contextWindow: null,
+			toolUse: true,
+			streaming: true,
+			metadata: null,
+		});
+		hostConfig.sqliteStore.createPersona({
+			name: "default-persona",
+			instructions: "You are a worker.",
+			skills: [],
+		});
+	}
+
 	it("starts with no sessions", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
@@ -190,6 +222,7 @@ describe("session-manager", () => {
 	it("passes resolved projectPath into transport.up", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const { transport, upProjectPaths } = createInteractiveTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 
@@ -200,6 +233,7 @@ describe("session-manager", () => {
 	it("creates and deletes docker-backed sessions", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const { transport, calls } = createInteractiveTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 
@@ -225,6 +259,7 @@ describe("session-manager", () => {
 	it("queues session creation in FIFO order when maxRunning is reached", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const transport = createBlockingTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 		await manager.createSession(createSessionBody({ task: "first" }));
@@ -255,6 +290,7 @@ describe("session-manager", () => {
 		tempDirs.push(rootDir);
 		writeHostFixture(rootDir, 10);
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const { transport } = createInteractiveTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 
@@ -292,6 +328,7 @@ describe("session-manager", () => {
 	it("records turn and exit events in the events buffer during create+start", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const { transport, calls } = createInteractiveTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 		const created = await manager.createSession(createSessionBody());
@@ -309,6 +346,7 @@ describe("session-manager", () => {
 	it("emits turn events with wall-clock durationMs >= 1 and null tokenUsage (bug #178)", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const { transport } = createInteractiveTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 		const created = await manager.createSession(createSessionBody());
@@ -332,6 +370,7 @@ describe("session-manager", () => {
 	it("stopSession transitions running to idle with stopped exit", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const transport = createBlockingTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 		const created = await manager.createSession(
@@ -349,6 +388,7 @@ describe("session-manager", () => {
 	it("uses updated compose.yaml image for newly created sessions", async () => {
 		const rootDir = setup();
 		let hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const firstTransport = createInteractiveTransport();
 		const firstManager = createSessionManager({
 			hostConfig,
@@ -389,6 +429,7 @@ describe("session-manager", () => {
 	it("marks session idle on adapter suspend and resumes on next message", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const stdinWrites: Array<string> = [];
 		let execCount = 0;
 		const transport: Transport = {
@@ -493,6 +534,7 @@ describe("session-manager", () => {
 	it("clears history on delete", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const { transport } = createInteractiveTransport();
 		const recorder = createOcasRecorder(hostConfig.dataDir);
 		const manager = createSessionManager({ hostConfig, transport, recorder });
@@ -505,6 +547,7 @@ describe("session-manager", () => {
 	it("returns v3 turns from persisted session activity", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const { transport } = createInteractiveTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 		const created = await manager.createSession(createSessionBody());
@@ -522,6 +565,7 @@ describe("session-manager", () => {
 	it("reports host root status counts and uptime", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const transport = createBlockingTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 		const created = await manager.createSession(createSessionBody());

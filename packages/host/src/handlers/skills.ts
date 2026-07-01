@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
 	deleteSkill,
-	findPrototypeReferencesToSkill,
 	readSkill,
 	skillExists,
 	writeSkill,
@@ -77,17 +76,15 @@ export function createSkillsHandler(hostConfig: LoadedHostConfig) {
 				return;
 			}
 			try {
-				const references = await findPrototypeReferencesToSkill(
-					hostConfig.prototypesDir,
-					name,
-				);
+				const references =
+					hostConfig.sqliteStore.findPersonasReferencingSkill(name);
 				if (references.length > 0) {
 					writeJson(
 						res,
 						409,
 						errorEnvelope(
 							"skill_referenced",
-							`Skill ${name} is referenced by prototypes: ${references.join(", ")}`,
+							`Skill ${name} is referenced by personas: ${references.join(", ")}`,
 						),
 					);
 					return;

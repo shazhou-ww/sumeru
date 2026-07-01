@@ -5,7 +5,6 @@ import {
 	removePrototypeFromConfig,
 } from "../config.js";
 import {
-	assertSkillsExist,
 	deletePrototypeFile,
 	prototypeFileExists,
 	validatePrototype,
@@ -121,18 +120,24 @@ async function upsertPrototype(
 		writeJson(res, 400, errorEnvelope("invalid_body", message));
 		return;
 	}
-	const missing = await assertSkillsExist(
-		hostConfig.skillsDir,
-		prototype.skills,
-	);
-	if (missing.length > 0) {
+	const persona = hostConfig.sqliteStore.getPersona(prototype.persona);
+	if (persona === null) {
 		writeJson(
 			res,
 			400,
 			errorEnvelope(
-				"skills_not_found",
-				`Missing skills: ${missing.join(", ")}`,
+				"persona_not_found",
+				`Persona ${prototype.persona} not found`,
 			),
+		);
+		return;
+	}
+	const model = hostConfig.sqliteStore.getModel(prototype.model);
+	if (model === null) {
+		writeJson(
+			res,
+			400,
+			errorEnvelope("model_not_found", `Model ${prototype.model} not found`),
 		);
 		return;
 	}

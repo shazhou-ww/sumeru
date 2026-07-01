@@ -4,6 +4,7 @@ export { createHistoryHandler, historyEnvelope } from "./history.js";
 export { createImagesHandler } from "./images.js";
 export { createMessagesHandler } from "./messages.js";
 export { createModelsHandler } from "./models.js";
+export { createPersonasHandler } from "./personas.js";
 export { createPrototypesHandler } from "./prototypes.js";
 export { createProvidersHandler } from "./providers.js";
 export {
