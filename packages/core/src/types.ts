@@ -102,6 +102,7 @@ export type SessionInfo = {
 	task: string;
 	status: SessionStatus;
 	exit: ExitSignal | null;
+	tokenUsage: TokenUsage | null;
 	createdAt: string;
 };
 

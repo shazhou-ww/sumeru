@@ -19,6 +19,7 @@ function toSessionInfo(record: ManagedSession) {
 		task: record.task,
 		status: record.status,
 		exit: record.exit,
+		tokenUsage: record.tokenUsage,
 		createdAt: record.createdAt,
 	};
 }

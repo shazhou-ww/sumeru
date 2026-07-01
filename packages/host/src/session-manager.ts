@@ -95,7 +95,11 @@ export function createSessionManager(input: {
 		input.recorder ?? createOcasRecorder(input.hostConfig.dataDir);
 
 	function listSessions(): Array<SessionInfo> {
-		return [...sessions.values()].map(toSessionInfo);
+		return [...sessions.values()].map((record) => {
+			const runtime = adapters.get(record.id);
+			const usage = runtime?.tokenUsage ?? record.tokenUsage;
+			return toSessionInfo(record, usage);
+		});
 	}
 
 	function getSession(id: string): ManagedSession | null {
@@ -173,6 +177,7 @@ export function createSessionManager(input: {
 				task: body.task,
 				status: "running",
 				exit: null,
+				tokenUsage: null,
 				createdAt: new Date().toISOString(),
 				containerId: up.containerId,
 				projectName,
@@ -225,6 +230,7 @@ export function createSessionManager(input: {
 			...record,
 			status: "idle",
 			exit,
+			tokenUsage: exit.tokenUsage,
 		};
 		sessions.set(id, updated);
 		releaseRunningSlot();
@@ -608,6 +614,7 @@ export function createSessionManager(input: {
 			...record,
 			status: "idle",
 			exit,
+			tokenUsage: exit.tokenUsage,
 		};
 		sessions.set(id, updated);
 		releaseRunningSlot();
@@ -867,7 +874,7 @@ function trackTurn(runtime: AdapterRuntime, turn: TurnValue): void {
 	}
 }
 
-function toSessionInfo(record: ManagedSession): SessionInfo {
+function toSessionInfo(record: ManagedSession, tokenUsage: TokenUsage | null): SessionInfo {
 	return {
 		id: record.id,
 		prototype: record.prototype,
@@ -877,6 +884,7 @@ function toSessionInfo(record: ManagedSession): SessionInfo {
 		task: record.task,
 		status: record.status,
 		exit: record.exit,
+		tokenUsage,
 		createdAt: record.createdAt,
 	};
 }
