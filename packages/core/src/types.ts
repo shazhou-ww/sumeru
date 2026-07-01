@@ -9,6 +9,28 @@ export type TokenUsage = {
 	cached: number;
 };
 
+// === Provider registry (SQLite-backed, issue #187) ===
+export type ProviderApiType = "anthropic" | "openai";
+export type Provider = {
+	name: string;
+	apiType: ProviderApiType;
+	baseUrl: string | null;
+	apiKey: string | null;
+	createdAt: string;
+	updatedAt: string;
+};
+export type Model = {
+	id: string;
+	provider: string;
+	model: string;
+	contextWindow: number | null;
+	toolUse: boolean;
+	streaming: boolean;
+	metadata: Record<string, unknown> | null;
+	createdAt: string;
+	updatedAt: string;
+};
+
 // === Model ===
 export type KnownProvider = "anthropic" | "openai" | "openrouter";
 export type CustomProvider = {

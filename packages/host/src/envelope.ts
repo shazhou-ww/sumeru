@@ -1,4 +1,11 @@
-import type { Image, Prototype, SessionInfo, Turn } from "@sumeru/core";
+import type {
+	Image,
+	Model,
+	Prototype,
+	Provider,
+	SessionInfo,
+	Turn,
+} from "@sumeru/core";
 import type {
 	Envelope,
 	ErrorValue,
@@ -27,6 +34,26 @@ export function prototypeListEnvelope(
 
 export function prototypeEnvelope(info: PrototypeInfo): Envelope<Prototype> {
 	return envelope("@sumeru/prototype", info.prototype);
+}
+
+export function providerListEnvelope(
+	providers: Array<Provider>,
+): Envelope<Array<Provider>> {
+	return envelope("@sumeru/provider-list", providers);
+}
+
+export function providerEnvelope(provider: Provider): Envelope<Provider> {
+	return envelope("@sumeru/provider", provider);
+}
+
+export function modelListEnvelope(
+	models: Array<Model>,
+): Envelope<Array<Model>> {
+	return envelope("@sumeru/model-list", models);
+}
+
+export function modelEnvelope(model: Model): Envelope<Model> {
+	return envelope("@sumeru/model", model);
 }
 
 export function skillEnvelope(value: SkillValue): Envelope<SkillValue> {

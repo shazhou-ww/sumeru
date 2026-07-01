@@ -1,4 +1,4 @@
-import type { SessionInfo } from "@sumeru/core";
+import type { Model, Provider, SessionInfo } from "@sumeru/core";
 
 export type HostClientOptions = {
 	baseUrl: string;
@@ -35,6 +35,29 @@ export type CreateSessionBody = {
 export type HostClient = {
 	getRoot(): Promise<Envelope<HostRootValue>>;
 	listPrototypes(): Promise<Envelope<Array<PrototypeListItem>>>;
+	listProviders(): Promise<Envelope<Array<Provider>>>;
+	createProvider(
+		name: string,
+		body: {
+			apiType: Provider["apiType"];
+			baseUrl: string | null;
+			apiKey: string | null;
+		},
+	): Promise<Envelope<Provider>>;
+	deleteProvider(name: string): Promise<void>;
+	listModels(): Promise<Envelope<Array<Model>>>;
+	createModel(
+		id: string,
+		body: {
+			provider: string;
+			model: string;
+			contextWindow: number | null;
+			toolUse: boolean;
+			streaming: boolean;
+			metadata: Record<string, unknown> | null;
+		},
+	): Promise<Envelope<Model>>;
+	deleteModel(id: string): Promise<void>;
 	listSessions(): Promise<Envelope<Array<SessionInfo>>>;
 	createSession(body: CreateSessionBody): Promise<Envelope<SessionInfo>>;
 	deleteSession(id: string): Promise<void>;
@@ -108,6 +131,84 @@ export function createHostClient(options: HostClientOptions): HostClient {
 				null,
 			);
 			return json;
+		},
+		async listProviders() {
+			const { json } = await requestJson<Array<Provider>>(
+				"GET",
+				"/providers",
+				null,
+			);
+			return json;
+		},
+		async createProvider(name, body) {
+			const { json } = await requestJson<Provider>(
+				"POST",
+				`/providers/${encodeURIComponent(name)}`,
+				body,
+			);
+			return json;
+		},
+		async deleteProvider(name) {
+			const response = await fetch(
+				`${baseUrl}/providers/${encodeURIComponent(name)}`,
+				{ method: "DELETE" },
+			);
+			if (response.status === 204) return;
+			const text = await response.text();
+			if (text.length === 0) {
+				throw new HostClientError(
+					response.status,
+					"request_failed",
+					`HTTP ${String(response.status)}`,
+				);
+			}
+			const json = JSON.parse(text) as Envelope<{
+				error: string;
+				message: string;
+			}>;
+			const errValue = json.value;
+			throw new HostClientError(
+				response.status,
+				errValue.error,
+				errValue.message,
+			);
+		},
+		async listModels() {
+			const { json } = await requestJson<Array<Model>>("GET", "/models", null);
+			return json;
+		},
+		async createModel(id, body) {
+			const { json } = await requestJson<Model>(
+				"POST",
+				`/models/${encodeURIComponent(id)}`,
+				body,
+			);
+			return json;
+		},
+		async deleteModel(id) {
+			const response = await fetch(
+				`${baseUrl}/models/${encodeURIComponent(id)}`,
+				{ method: "DELETE" },
+			);
+			if (response.status === 204) return;
+			const text = await response.text();
+			if (text.length === 0) {
+				throw new HostClientError(
+					response.status,
+					"request_failed",
+					`HTTP ${String(response.status)}`,
+				);
+			}
+			const json = JSON.parse(text) as Envelope<{
+				error: string;
+				message: string;
+			}>;
+			const errValue = json.value;
+			throw new HostClientError(
+				response.status,
+				errValue.error,
+				errValue.message,
+			);
 		},
 		async listSessions() {
 			const { json } = await requestJson<Array<SessionInfo>>(
