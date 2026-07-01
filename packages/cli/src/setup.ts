@@ -261,6 +261,17 @@ export async function runSetup(input: SetupInput): Promise<void> {
 		writeFileSync(protoYamlPath, updatedProto);
 		process.stdout.write(`  ✓ Prototype "sarsapa" ready (image: sarsapa)\n`);
 	}
+
+	// ── Health check (doctor) ────────────────────────────────────────
+	if (imageRegistered) {
+		await runHealthCheck({
+			composePath,
+			rootDir,
+			envKey,
+			apiKey: input.apiKey,
+			baseUrl,
+		});
+	}
 }
 
 // ── Local image build (no host API needed) ────────────────────────────
@@ -386,5 +397,83 @@ async function findRepoRoot(startDir: string): Promise<string> {
 			}
 			current = parent;
 		}
+	}
+}
+
+// ── Health check (doctor integrated into setup) ───────────────────────
+
+type HealthCheckOptions = {
+	composePath: string;
+	rootDir: string;
+	envKey: string;
+	apiKey: string;
+	baseUrl: string | null;
+};
+
+async function runHealthCheck(options: HealthCheckOptions): Promise<void> {
+	process.stdout.write(`\nHealth check:\n`);
+	const projectName = "sumeru-healthcheck";
+
+	// Step 1: Can we start the container?
+	const env = {
+		...process.env,
+		SUMERU_PROJECT_PATH: "/tmp",
+		[options.envKey]: options.apiKey,
+	};
+	const upResult = spawnSync(
+		"docker",
+		["compose", "-f", options.composePath, "-p", projectName, "up", "-d"],
+		{ encoding: "utf-8", env, timeout: 30_000 },
+	);
+	if (upResult.status !== 0) {
+		process.stdout.write(
+			`  ✗ Container failed to start\n    ${(upResult.stderr ?? upResult.stdout ?? "").trim()}\n`,
+		);
+		return;
+	}
+	process.stdout.write(`  ✓ Container starts successfully\n`);
+
+	// Step 2: Can the container reach the provider endpoint?
+	let networkOk = false;
+	if (options.baseUrl !== null) {
+		// Use docker exec to curl from inside the container
+		const containerName = `${projectName}-agent-1`;
+		// Give container a moment to fully start
+		spawnSync("sleep", ["1"]);
+		const curlResult = spawnSync(
+			"docker",
+			[
+				"exec", containerName,
+				"curl", "-s", "--max-time", "5", "-o", "/dev/null",
+				"-w", "%{http_code}",
+				`${options.baseUrl}/models`,
+			],
+			{ encoding: "utf-8", timeout: 15_000 },
+		);
+		const httpCode = parseInt(curlResult.stdout?.trim() ?? "0", 10);
+		if (httpCode > 0) {
+			process.stdout.write(`  ✓ Provider reachable from container (${options.baseUrl}) [HTTP ${String(httpCode)}]\n`);
+			networkOk = true;
+		} else {
+			const hint = curlResult.stdout?.trim() ?? curlResult.stderr?.trim() ?? "";
+			process.stdout.write(
+				`  ✗ Provider unreachable from container (${options.baseUrl})\n    ${hint}\n    Hint: check network_mode / proxy settings in compose.yaml\n`,
+			);
+		}
+	} else {
+		// No base URL (e.g. direct Anthropic/OpenAI) — skip network check
+		process.stdout.write(`  – Network check skipped (no base URL configured)\n`);
+		networkOk = true;
+	}
+
+	// Cleanup
+	spawnSync(
+		"docker",
+		["compose", "-f", options.composePath, "-p", projectName, "down", "-t", "2"],
+		{ encoding: "utf-8", env, timeout: 15_000 },
+	);
+
+	if (networkOk) {
+		process.stdout.write(`\n  All checks passed ✓\n`);
 	}
 }
