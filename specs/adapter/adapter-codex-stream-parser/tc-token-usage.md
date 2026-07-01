@@ -51,3 +51,4 @@ curl -s http://127.0.0.1:7901/sessions/$SID/turns | \
 
 - tokenUsage = null → stream-parser 未从 JSONL turn.completed 提取 usage
 - tokenUsage 全为 0 → turn.completed 有 usage 但 parseCodexJson 映射有误
+- cached 为 0 但预期非零 → Codex CLI 返回 `cached_input_tokens`（非 `cache_read_input_tokens`），检查 `doneValueFromResultLine` 是否兼容两种字段名

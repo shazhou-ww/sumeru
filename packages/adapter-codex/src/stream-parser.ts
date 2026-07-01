@@ -254,7 +254,9 @@ export function doneValueFromResultLine(
 	const usage = isRecord(resultLine.usage) ? resultLine.usage : resultLine;
 	const input = safeNumber(usage.input_tokens);
 	const output = safeNumber(usage.output_tokens);
-	const cached = safeNumber(usage.cache_read_input_tokens);
+	const cached = safeNumber(
+		usage.cached_input_tokens ?? usage.cache_read_input_tokens,
+	);
 	const tokenUsage =
 		input === 0 && output === 0 && cached === 0
 			? null
