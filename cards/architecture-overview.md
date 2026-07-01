@@ -4,49 +4,66 @@ title: "Architecture Overview"
 sources:
   - packages/core/src/types.ts
   - packages/host/src/server.ts
+  - packages/host/src/config.ts
+  - packages/host/src/sqlite-store.ts
 tags: [sumeru, architecture]
 created: 2026-06-28
-updated: 2026-06-28
+updated: 2026-07-01
 ---
 
 # Architecture Overview
 
-> Sumeru v2 runs a Host-managed multi-agent runtime where instances execute adapter processes through a unified message contract.
+> Sumeru V3 runs a Host-managed multi-agent runtime where sessions execute adapter processes inside Docker containers through a unified NDJSON contract.
 
 ## Overview
 
-Sumeru models runtime concerns in three layers: **Image**, **Prototype**, and **Instance**. An image is the runtime environment (container image or local runtime command). A prototype is declarative configuration plus adapter-facing instructions/skills. An instance is the live, addressable runtime object that receives inbox messages and emits outbox events.
+Sumeru models runtime concerns in three layers: **Image**, **Prototype**, and **Session**. An image is the runtime environment (Docker container). A prototype is declarative configuration binding a persona, model, and image. A session is the live, addressable runtime object that receives messages and emits turn/exit events.
 
-`@sumeru/core` is the type backbone: manifests, model config, instance status, inbox payloads, and outbox frame unions (`turn`, `done`, `suspend`, `error`). `@sumeru/host` exposes an HTTP control plane, boots `inst_0` as the reserved master, and routes all traffic into transport + adapter execution.
-
-The host runtime path is: HTTP request enters the route handler, instance manager ensures transport/runtime readiness, host writes NDJSON frames to adapter stdin, adapter streams NDJSON back, host maps frames into SSE events, and optional OCAS JSONL recording persists history.
+V3 uses a **hybrid data model**: Provider, Model, Persona, and Skill entities live in SQLite (`data/sumeru.db`), while Prototypes remain as YAML files (`data/prototypes/<name>.yaml`) and images are tracked in `images.yaml`. The `@sumeru/host/sqlite` subpath export allows the CLI to share database access with the host.
 
 ## Layer Model
 
 ```mermaid
 flowchart TB
-  A[Image\nDocker image or local runtime] --> B[Prototype\nmanifest.yaml + compose.yaml + skills]
-  B --> C[Instance\ninst_* runtime record]
-  C --> D[Inbox\nPOST /instances/:id/inbox]
+  A[Image\nDocker image per agent type] --> B[Prototype\nYAML: persona + model + image ref]
+  B --> C[Session\nses_* runtime record]
+  C --> D[Messages\nPOST /sessions/:id/messages]
   D --> E[Adapter process\nstdin/stdout NDJSON]
-  E --> F[Outbox SSE\nGET /instances/:id/outbox]
+  E --> F[Events SSE\nGET /sessions/:id/events]
 ```
+
+## Data Model (SQLite + YAML Hybrid)
+
+```mermaid
+flowchart LR
+  subgraph SQLite
+    P[Provider] --> M[Model]
+    PS[Persona] --> SK[Skill]
+  end
+  subgraph YAML
+    PR[Prototype\ndata/prototypes/*.yaml]
+    IM[Images\nimages.yaml]
+  end
+  PR -->|references| M
+  PR -->|references| PS
+  PR -->|references| IM
+```
+
+- **Provider**: name, apiType (anthropic|openai), baseUrl, apiKey
+- **Model**: id, provider FK, model name, contextWindow, toolUse, streaming
+- **Persona**: name, instructions, skills[] references
+- **Skill**: name, content (text blob)
+- **Prototype**: name, persona ref, model ref, image ref, optional defaults
+- **Image**: name, description, dockerfile path, builtAt, digest
 
 ## Runtime Responsibilities
 
 - Host HTTP service registers all control/data routes and serializes envelope responses.
-- Instance manager owns lifecycle, adapter process sessions, status updates, and suspend/resume state.
-- Transport abstraction isolates execution backend: local for master, Docker for workers.
-- Adapter core enforces a single unified stdin/stdout contract across providers.
-- SSE buffering adds reconnect/replay behavior for outbox consumers.
-
-## Master vs Worker Instances
-
-- `inst_0` is created implicitly at manager boot and has `prototype: null`.
-- Master uses routing transport to run locally (`LOCAL_MASTER_HANDLE`) instead of Docker.
-- Worker instances are created from prototype names via API and are subject to resource limits.
-- Worker adapter command defaults to the Claude adapter entrypoint in container runtime.
-- Master adapter command is resolved from `host.yaml` master config or fallback Hermes adapter.
+- Session manager owns lifecycle, adapter process sessions, concurrency slots, and exit signals.
+- Transport abstraction isolates Docker Compose execution backend (`up/down/rm/exec`).
+- Adapter core enforces a single unified stdin/stdout NDJSON contract across all agent types.
+- SSE buffering adds reconnect/replay behavior for event consumers.
+- Session model override allows any session to use a different model than its prototype default.
 
 ## Message Pipeline
 
@@ -54,19 +71,19 @@ flowchart TB
 sequenceDiagram
   participant Client as HTTP Client
   participant Host as Host Router/Handlers
-  participant IM as Instance Manager
-  participant T as Transport
+  participant SM as Session Manager
+  participant T as Docker Transport
   participant A as Adapter CLI
-  participant SSE as SSE Outbox
+  participant SSE as SSE Events
 
-  Client->>Host: POST /instances/:id/inbox
-  Host->>IM: submitInbox()
-  IM->>T: exec(...)
-  T->>A: spawn/exec adapter
-  IM->>A: {type:"init"} then {type:"message"}
-  A-->>IM: turn/done/suspend/error frames
-  IM-->>SSE: append + broadcast events
-  Client->>Host: GET /instances/:id/outbox
+  Client->>Host: POST /sessions/:id/messages
+  Host->>SM: submitMessage()
+  SM->>T: exec(containerId, command)
+  T->>A: docker exec → adapter NDJSON
+  SM->>A: {type:"init"} then {type:"message"}
+  A-->>SM: turn/done/suspend/error frames
+  SM-->>SSE: append + broadcast events
+  Client->>Host: GET /sessions/:id/events
   Host-->>Client: replay + live SSE stream
 ```
 
@@ -74,13 +91,15 @@ sequenceDiagram
 
 | Package | File | What it does |
 |---------|------|--------------|
-| `@sumeru/core` | `packages/core/src/types.ts` | Defines canonical manifest, model, instance, inbox/outbox, suspend, and token usage types. |
-| `@sumeru/host` | `packages/host/src/server.ts` | Builds HTTP host handler, wires routes, transport stack, and manager boot flow. |
-| `@sumeru/host` | `packages/host/src/instance-manager.ts` | Owns instance lifecycle, adapter readiness, frame ingestion, and SSE broadcast. |
-| `@sumeru/host` | `packages/host/src/local-transport.ts` | Chooses local runtime for master and docker runtime for workers via routing transport. |
+| `@sumeru/core` | `packages/core/src/types.ts` | Defines canonical Provider, Model, Persona, Prototype, Session, Turn, Image types. |
+| `@sumeru/host` | `packages/host/src/server.ts` | Builds HTTP handler, wires all routes via segment-based router. |
+| `@sumeru/host` | `packages/host/src/config.ts` | Loads host.yaml + images.yaml + prototypes, opens SQLite store. |
+| `@sumeru/host` | `packages/host/src/sqlite-store.ts` | SQLite CRUD for Provider, Model, Persona, Skill entities. |
+| `@sumeru/host` | `packages/host/src/session-manager.ts` | Owns session lifecycle, adapter readiness, frame ingestion, and SSE broadcast. |
 
 ## See Also
 
 - [Host HTTP Service](./host-service.md) — route surface and envelope contract.
 - [Adapter Unified I/O Contract](./adapter-contract.md) — NDJSON frame protocol.
-- [Instance Lifecycle](./instance-lifecycle.md) — creation/reset/deletion/state behavior.
+- [Session Lifecycle](./instance-lifecycle.md) — creation/stop/deletion/state behavior.
+- [Data Model](./manifest-schema.md) — SQLite + YAML schema details.

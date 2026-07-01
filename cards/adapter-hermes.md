@@ -6,7 +6,7 @@ sources:
   - packages/adapter-hermes/src/acp-client.ts
 tags: [sumeru, hermes]
 created: 2026-06-28
-updated: 2026-06-28
+updated: 2026-07-01
 ---
 
 # Hermes Adapter (ACP)

@@ -1,87 +1,91 @@
 ---
 id: instance-lifecycle
-title: "Instance Lifecycle"
+title: "Session Lifecycle"
 sources:
-  - packages/host/src/instance-manager.ts
+  - packages/host/src/session-manager.ts
   - packages/host/src/types.ts
   - packages/host/src/id.ts
+  - packages/host/src/config.ts
 tags: [sumeru, lifecycle]
 created: 2026-06-28
-updated: 2026-06-28
+updated: 2026-07-01
 ---
 
-# Instance Lifecycle
+# Session Lifecycle
 
-> Instance lifecycle is owned by `createInstanceManager()`, which manages creation, runtime state, reset/deletion, and adapter session attachment.
+> Session lifecycle is owned by `createSessionManager()`, which manages creation, runtime state, stop/deletion, adapter session attachment, and model override.
 
 ## Overview
 
-An instance record is a persisted in-memory object with API-facing fields (`id`, `prototype`, `status`, `projects`) plus runtime internals (`containerId`, `projectName`, `composePath`, `initVersion`).
+A session record (`ManagedSession`) is an in-memory object with API-facing fields (`id`, `prototype`, `model`, `status`, `exit`) plus runtime internals (`containerId`, `projectName`, `composePath`, `initVersion`, `sessionEnv`).
 
-The manager pre-seeds a reserved master (`inst_0`) and exposes CRUD-like methods used by HTTP handlers. Runtime transitions occur both from direct lifecycle operations and from adapter outbox frames (notably suspend).
+The manager exposes CRUD-like methods used by HTTP handlers. Runtime transitions occur from direct lifecycle operations and from adapter outbox frames (done/suspend/error signals).
 
 ## States
 
-Core status union comes from `@sumeru/core`:
+Core status union from `@sumeru/core`:
 
-- `running`
-- `stopped`
-- `idle`
-- `suspended`
-
-In current host flow, `running`, `stopped`, and `suspended` are actively assigned. `idle` remains a valid type for forward-compatible state modeling.
+- `running` — adapter is actively processing
+- `idle` — adapter completed, container still alive
 
 ## Lifecycle Flow
 
 ```mermaid
 stateDiagram-v2
-  [*] --> running: bootMaster()/createInstance()
-  running --> suspended: adapter emits suspend frame
-  suspended --> running: submitInbox() auto-resume path
-  running --> stopped: resetInstance() result state
-  running --> [*]: deleteInstance()
-  stopped --> running: status/next runtime activation
+  [*] --> running: createSession()
+  running --> idle: adapter emits done/suspend/error
+  idle --> running: submitMessage() resumes
+  running --> [*]: deleteSession()
+  idle --> [*]: deleteSession()
+  running --> idle: stopSession()
 ```
 
-## Create / Delete / Reset
+## Create
 
-- Create:
-  - checks `resources.maxInstances` against running non-master instances.
-  - validates prototype existence.
-  - allocates `inst_<ULID>` and project name.
-  - calls transport `up` and stores returned runtime handle.
-- Delete:
-  - forbids `inst_0` (`cannot_delete_master`).
-  - stops adapter session, then transport `down` and `rm`.
-  - removes instance record.
-- Reset:
-  - forbids master (`cannot_reset_master`).
-  - stops adapter and tears runtime down.
-  - clears OCAS history for that instance.
-  - recreates runtime and sets status to `stopped` with `initVersion = null`.
+1. Validates prototype existence and compose path.
+2. Resolves project path within `workspaceRoot` (path traversal guard).
+3. Resolves model: prototype default or session-level override (via SQLite lookup).
+4. Waits for a running slot (`maxRunning` concurrency gate).
+5. Calls transport `up` (Docker Compose) and stores container handle.
+6. Initializes adapter session (init frame → ready).
+7. Delivers initial task as first message.
 
-## Master Special Handling
+## Stop / Delete
 
-- `inst_0` is created before any API request handling.
-- `bootMaster()` performs transport `up` for master project.
-- master record has `prototype: null` and is omitted from regular prototype creation flow.
-- delete/reset guards explicitly block destructive operations on master.
+- **Stop**: sets status to `idle`, emits stopped exit signal. Container stays alive.
+- **Delete**: stops adapter, calls transport `down` + `rm`, removes record and OCAS history.
 
-## Resource Guard
+## Session Model Override
 
-`createInstance()` computes running worker count and enforces `hostConfig.config.resources.maxInstances`. Exceeding the limit raises `resource_exhausted`, surfaced as `503` by HTTP handlers.
+Sessions support model override at two points:
+
+1. **Creation time**: `POST /sessions` body includes optional `model` field.
+2. **Message time**: `POST /sessions/:id/messages` body includes optional `model` field.
+
+When model changes mid-session, the adapter session is invalidated and re-initialized with new model config. This enables hot-switching models between messages without creating a new session.
+
+## Concurrency Control
+
+`maxRunning` from `host.yaml` gates how many sessions can be in `running` state simultaneously. When the limit is reached, new `createSession()` or `submitMessage()` calls wait for a slot to open (queue-style).
+
+## Exit Signals
+
+When the adapter finishes, an `ExitSignal` is produced with:
+- `type`: complete | failed | needsInput | timeout | stopped | exhausted
+- `elapsedMs`, `turnCount`, `tokenUsage`
+- Optional `message` for complete/failed/needsInput types
 
 ## Code Pointers
 
 | Package | File | What it does |
 |---------|------|--------------|
-| `@sumeru/host` | `packages/host/src/instance-manager.ts` | Full lifecycle implementation and state transitions. |
-| `@sumeru/host` | `packages/host/src/types.ts` | Defines `ManagedInstance` shape and status-bearing response types. |
-| `@sumeru/host` | `packages/host/src/id.ts` | Generates `inst_*` IDs and project names from instance IDs. |
-| `@sumeru/host` | `packages/host/src/handlers/instances.ts` | Maps lifecycle errors to HTTP status codes and envelopes. |
+| `@sumeru/host` | `packages/host/src/session-manager.ts` | Full lifecycle: create, stop, delete, message, events, model override. |
+| `@sumeru/host` | `packages/host/src/types.ts` | Defines `ManagedSession`, `CreateSessionRequest`, `SessionModelOverride`. |
+| `@sumeru/host` | `packages/host/src/id.ts` | Generates `ses_*` ULID session IDs and `msg_*` message IDs. |
+| `@sumeru/host` | `packages/host/src/config.ts` | `resolveSessionModel()` — model resolution with override support. |
 
 ## See Also
 
-- [Suspend & Resume](./suspend-resume.md) — suspend-triggered runtime transitions.
-- [Prototype Versioning & Lazy Re-init](./prototype-versioning.md) — initVersion semantics.
-- [Master Agent](./master-agent.md) — `inst_0` runtime model.
+- [Suspend & Resume](./suspend-resume.md) — suspend-triggered state transitions.
+- [Prototype Versioning](./prototype-versioning.md) — `initVersion` semantics.
+- [Host HTTP Service](./host-service.md) — API endpoints driving lifecycle.

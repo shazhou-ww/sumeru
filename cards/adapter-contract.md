@@ -6,7 +6,7 @@ sources:
   - packages/adapter-core/src/entrypoint.ts
 tags: [sumeru, adapter]
 created: 2026-06-28
-updated: 2026-06-28
+updated: 2026-07-01
 ---
 
 # Adapter Unified I/O Contract
@@ -17,7 +17,7 @@ updated: 2026-06-28
 
 Adapter authors implement `AdapterImpl` with `init()`, streaming `handle()`, and optional `getNativeId()`. The core entrypoint (`runAdapterEntry`) parses inbound frames, validates protocol order, streams turns, handles terminal frames, and emits structured errors.
 
-This contract is the key interoperability layer between host and concrete adapter CLIs (Claude Code, Hermes ACP, Codex).
+This contract is the key interoperability layer between host and concrete adapter CLIs (Sarsapa, Hermes ACP, Claude Code, Codex).
 
 ## Frame Protocol
 
@@ -30,7 +30,7 @@ sequenceDiagram
   Host->>AdapterCore: {type:"init", value: AdapterInitConfig}
   AdapterCore->>Impl: init(config)
   AdapterCore-->>Host: {type:"ready", value:{}}
-  Host->>AdapterCore: {type:"message", value: AdapterInboxMessage}
+  Host->>AdapterCore: {type:"message", value: InboxMessage}
   AdapterCore->>Impl: handle(message)
   loop generator yields
     AdapterCore-->>Host: {type:"turn", value: TurnValue}
@@ -53,7 +53,7 @@ Protocol checks include:
 ## Outbound Frames
 
 - `ready`: emitted once after successful init.
-- `turn`: emitted for each assistant/user/system turn from adapter generator.
+- `turn`: emitted for each assistant/tool turn from adapter generator.
 - `done`: emitted when generator completes with `DoneValue`.
 - `suspend`: emitted for timeout or impl-driven suspend yields; includes `nativeId`.
 - `error`: emitted for init failures, handler failures, or fatal wrapper failures.
@@ -63,7 +63,7 @@ Protocol checks include:
 - Timeout uses `sendTimeoutMs` (default 7,200,000 ms).
 - On timeout, core emits `suspend{reason:"timeout"}` and aborts the generator.
 - If impl yields `{ type:"suspend" }`, core emits suspend and exits loop.
-- `nativeId` comes from `impl.getNativeId()` when available, else stored resume id.
+- `nativeId` comes from `impl.getNativeId()` when available.
 
 ## Entrypoint Wrapper
 

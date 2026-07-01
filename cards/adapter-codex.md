@@ -7,7 +7,7 @@ sources:
   - packages/adapter-codex/src/spawn.ts
 tags: [sumeru, codex]
 created: 2026-06-28
-updated: 2026-06-28
+updated: 2026-07-01
 ---
 
 # Codex Adapter

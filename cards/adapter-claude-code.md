@@ -7,7 +7,7 @@ sources:
   - packages/adapter-claude-code/src/spawn.ts
 tags: [sumeru, claude]
 created: 2026-06-28
-updated: 2026-06-28
+updated: 2026-07-01
 ---
 
 # Claude Code Adapter

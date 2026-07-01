@@ -4,89 +4,116 @@ title: "Host HTTP Service"
 sources:
   - packages/host/src/server.ts
   - packages/host/src/router.ts
-  - packages/host/src/handlers/root.ts
+  - packages/host/src/handlers/index.ts
+  - packages/host/src/handlers/sessions.ts
+  - packages/host/src/handlers/images.ts
   - packages/host/src/handlers/prototypes.ts
-  - packages/host/src/handlers/instances.ts
-  - packages/host/src/handlers/inbox.ts
-  - packages/host/src/handlers/outbox.ts
-  - packages/host/src/handlers/history.ts
-  - packages/host/src/handlers/search.ts
-  - packages/host/src/handlers/export.ts
+  - packages/host/src/handlers/providers.ts
+  - packages/host/src/handlers/models.ts
+  - packages/host/src/handlers/personas.ts
+  - packages/host/src/handlers/skills.ts
   - packages/host/src/envelope.ts
 tags: [sumeru, host]
 created: 2026-06-28
-updated: 2026-06-28
+updated: 2026-07-01
 ---
 
 # Host HTTP Service
 
-> The host provides a minimal HTTP API for discovery, lifecycle control, message ingress, and event/history egress.
+> The host provides a comprehensive HTTP API for discovery, entity CRUD (providers, models, personas, skills, images, prototypes), session lifecycle, message ingress, and event/history egress.
 
 ## Overview
 
-`createHostHandler()` composes a route table over a lightweight segment-based router. Routes are method-scoped, support `:param` placeholders, normalize trailing slashes, and return either match, method-not-allowed (with `Allow` header), or route-not-found.
-
-All JSON responses use typed envelopes (`{ type, value }`), with typed channel names under the `@sumeru/*` namespace. Error responses are also enveloped (`@sumeru/error`) and include both machine code (`error`) and human message.
+`createHostHandler()` composes a route table over a segment-based router. Routes are method-scoped, support `:param` placeholders, and return typed envelope responses (`{ type, value }`). Error responses use `@sumeru/error` envelopes with machine code and human message.
 
 ## Route Surface
 
 ```mermaid
 flowchart TB
-  A[GET /] --> H[@sumeru/host]
-  B[GET /prototypes] --> P1[@sumeru/prototype-list]
-  C[GET /prototypes/:name] --> P2[@sumeru/prototype]
-  D[GET /instances] --> I1[@sumeru/instance-list]
-  E[POST /instances] --> I2[@sumeru/instance]
-  F[DELETE /instances/:id] --> N1[204]
-  G[GET /instances/:id/status] --> I3[@sumeru/instance-status]
-  J[POST /instances/:id/reset] --> N2[204]
-  K[POST /instances/:id/inbox] --> M1[@sumeru/inbox-accepted]
-  L[GET /instances/:id/outbox] --> S1[SSE stream]
-  M[GET /instances/:id/history] --> H1[@sumeru/history]
-  N[POST /instances/:id/export] --> X1[gzip JSONL]
-  O[GET /search?q=...] --> S2[@sumeru/search]
+  subgraph Discovery
+    R1[GET /]
+  end
+  subgraph "Entity CRUD"
+    R2[GET/POST/PUT/DELETE /images/:name]
+    R3[GET/POST/PUT/DELETE /prototypes/:name]
+    R4[GET/POST/PUT/DELETE /providers/:name]
+    R5[GET/POST/PUT/DELETE /models/:id]
+    R6[GET/POST/PUT/DELETE /personas/:name]
+    R7[GET/PUT/DELETE /skills/:name]
+  end
+  subgraph Sessions
+    R8[GET /sessions — POST /sessions]
+    R9[GET /sessions/:id]
+    R10[POST /sessions/:id/stop]
+    R11[DELETE /sessions/:id]
+    R12[POST /sessions/:id/messages]
+    R13[GET /sessions/:id/events — SSE]
+    R14[GET /sessions/:id/history]
+    R15[GET /sessions/:id/turns]
+    R16[POST /sessions/:id/export]
+  end
+  subgraph Search
+    R17[GET /search?q=...]
+  end
 ```
 
-## Envelope Types
+## Full Route Table
 
-- `@sumeru/host`: host identity, version, master id, prototype ids, instance ids.
-- `@sumeru/prototype-list`: `{ name, adapter }[]` summary list.
-- `@sumeru/prototype`: single prototype with manifest payload.
-- `@sumeru/instance-list` and `@sumeru/instance`: instance metadata.
-- `@sumeru/instance-status`: runtime status + current container handle.
-- `@sumeru/inbox-accepted`: accepted inbox ack with generated `messageId`.
-- `@sumeru/history`: paginated turn history for one instance.
-- `@sumeru/search`: query and matching hits.
-- `@sumeru/error`: normalized error envelope.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Host info: name, version, status counts, uptime |
+| GET/POST/DELETE | `/images[/:name]` | Image registry CRUD |
+| GET/POST/PUT/DELETE | `/prototypes[/:name]` | Prototype CRUD (backed by YAML files) |
+| GET/POST/PUT/DELETE | `/providers[/:name]` | Provider CRUD (SQLite) |
+| GET/POST/PUT/DELETE | `/models[/:id]` | Model CRUD (SQLite) |
+| GET/POST/PUT/DELETE | `/personas[/:name]` | Persona CRUD (SQLite) |
+| GET/PUT/DELETE | `/skills/:name` | Skill CRUD (SQLite) |
+| GET/POST | `/sessions` | List sessions / Create session |
+| GET | `/sessions/:id` | Session detail |
+| POST | `/sessions/:id/stop` | Stop running session |
+| DELETE | `/sessions/:id` | Delete session (tears down container) |
+| POST | `/sessions/:id/messages` | Send message to session |
+| GET | `/sessions/:id/events` | SSE event stream (turns + exit) |
+| GET | `/sessions/:id/history` | Paginated OCAS history |
+| GET | `/sessions/:id/turns` | V3 turn list (after cursor) |
+| POST | `/sessions/:id/export` | Gzip JSONL export |
+| GET | `/search` | Full-text search across history |
 
-## Request/Response Patterns
+## Session Creation
 
-- JSON body parsing is centralized (`readJsonBody`) and rejects invalid JSON with `400`.
-- `POST /instances` requires non-empty `prototype`; optional `projects[]`.
-- `POST /instances/:id/inbox` requires non-empty `content`; optional `project`.
-- `GET /instances/:id/history` accepts `limit` and `offset` (non-negative ints; limit max 1000).
-- `GET /search` requires `q`; optional `instance` filter must be non-empty if provided.
-- `POST /instances/:id/export` streams `application/gzip` with attachment filename `<id>.jsonl.gz`.
+`POST /sessions` body:
+```json
+{ "prototype": "sarsapa", "project": "myapp", "task": "fix bug",
+  "model": "claude-sonnet-4-20250514",  // optional model override
+  "env": { "EXTRA_VAR": "value" }   // optional env injection
+}
+```
+
+The `model` field supports three forms:
+- `null` — use prototype default model
+- `"model-id"` — string reference to SQLite model entity
+- `{ provider: {...}, name: "..." }` — inline model config override
 
 ## Router Behavior
 
 - `HEAD` automatically matches `GET` routes.
 - Method mismatch returns `405` with computed `Allow` header.
 - Unknown path returns `404 route_not_found`.
-- Query parsing is delegated to handlers using raw query string from router.
+- All JSON responses use typed envelopes.
 
 ## Code Pointers
 
 | Package | File | What it does |
 |---------|------|--------------|
-| `@sumeru/host` | `packages/host/src/server.ts` | Registers all public host routes and creates the HTTP server. |
-| `@sumeru/host` | `packages/host/src/router.ts` | Segment matcher with param extraction and method discrimination. |
-| `@sumeru/host` | `packages/host/src/handlers/inbox.ts` | Validates inbox body, generates message id, dispatches to manager. |
-| `@sumeru/host` | `packages/host/src/handlers/outbox.ts` | SSE replay/live stream handler with reconnect semantics. |
-| `@sumeru/host` | `packages/host/src/envelope.ts` | Defines all response envelope constructors (`@sumeru/*`). |
+| `@sumeru/host` | `packages/host/src/server.ts` | Registers all routes and creates HTTP server. |
+| `@sumeru/host` | `packages/host/src/router.ts` | Segment matcher with param extraction. |
+| `@sumeru/host` | `packages/host/src/handlers/sessions.ts` | Session CRUD handlers. |
+| `@sumeru/host` | `packages/host/src/handlers/images.ts` | Image registry CRUD. |
+| `@sumeru/host` | `packages/host/src/handlers/prototypes.ts` | Prototype CRUD (YAML-backed). |
+| `@sumeru/host` | `packages/host/src/envelope.ts` | Envelope constructors for all response types. |
 
 ## See Also
 
-- [SSE Reliability](./sse-reliability.md) — replay buffer, heartbeat, and reconnect guarantees.
-- [Instance Lifecycle](./instance-lifecycle.md) — semantics behind create/delete/reset/status.
-- [OCAS Recording & History](./ocas-recording.md) — history/search/export storage path.
+- [SSE Reliability](./sse-reliability.md) — replay buffer, heartbeat, and reconnect.
+- [Session Lifecycle](./instance-lifecycle.md) — semantics behind create/stop/delete.
+- [OCAS Recording & History](./ocas-recording.md) — history/search/export storage.

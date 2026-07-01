@@ -2,90 +2,84 @@
 id: deploy-systemd
 title: "Deployment"
 sources:
-  - deploy/sumeru-v2.service
+  - deploy/sumeru.service
   - deploy/README.md
   - packages/host/src/main.ts
 tags: [sumeru, deploy]
 created: 2026-06-28
-updated: 2026-06-28
+updated: 2026-07-01
 ---
 
 # Deployment
 
-> Sumeru v2 host is deployed as a systemd user service that launches the built host entrypoint with a repository root argument.
+> Sumeru host is deployed as a systemd user service that launches the host entrypoint with a repository root argument.
 
 ## Overview
 
-Deployment guidance ships with a user unit file and operational README. The unit runs `node packages/host/dist/main.js <rootDir>`, restarts automatically, and loads optional environment overrides from `~/.config/sumeru/env`.
+Deployment ships with a user unit file (`deploy/sumeru.service`) and operational README. The unit runs `node packages/host/dist/main.js <rootDir>`, restarts automatically, and loads optional environment overrides from `~/.config/sumeru/env`.
 
-By default it sets `SUMERU_PORT=7900` and expects repository layout under `%h/repos/sumeru`.
+By default it sets port `7900` and expects the repository layout under `%h/repos/sumeru`.
 
 ## systemd User Unit
 
 ```mermaid
 flowchart TB
-  A[systemctl --user enable --now sumeru-v2] --> B[sumeru-v2.service]
-  B --> C[ExecStart node packages/host/dist/main.js %h/repos/sumeru]
-  C --> D[Host loads host.yaml + prototypes/]
+  A[systemctl --user enable --now sumeru] --> B[sumeru.service]
+  B --> C[ExecStart node packages/host/dist/main.js]
+  C --> D[Host loads host.yaml + prototypes/ + SQLite]
   D --> E[HTTP service on SUMERU_HOST:SUMERU_PORT]
 ```
 
-`deploy/sumeru-v2.service` includes:
+`deploy/sumeru.service` includes:
 
 - `Type=simple`
 - `WorkingDirectory=%h/repos/sumeru`
-- `Environment=SUMERU_PORT=7900`
-- `EnvironmentFile=-%h/.config/sumeru/env`
+- `Environment=PATH=...` (includes npm global bin and ~/.local/bin for adapter CLIs)
+- `EnvironmentFile=-%h/.config/sumeru/env` (optional, for API keys)
 - `Restart=always` + `RestartSec=5`
 
 ## Host Entry Expectations
 
-`packages/host/src/main.ts` reads runtime root directory from CLI argv and environment host/port values, then starts the host server.
+`packages/host/src/main.ts` reads runtime root directory from CLI argv and environment host/port values, then starts the host server. The root directory must contain `host.yaml`.
 
-Deployment docs require host build artifacts (`pnpm run build`) before starting systemd unit.
-
-## Configuration/Layout Notes
+## Configuration Layout
 
 From deployment docs + host loader behavior:
 
 - Root directory must contain `host.yaml`.
-- Prototypes are scanned from `<root>/prototypes/`.
-- Each prototype directory should contain `manifest.yaml` and `compose.yaml`.
-- Optional data dir defaults to `<root>/data` when `host.yaml dataDir` is unset.
+- Prototypes defined in `data/prototypes/*.yaml`.
+- Compose files at `prototypes/<name>/compose.yaml`.
+- SQLite database at `data/sumeru.db`.
+- Images tracked in `images.yaml`.
+- Data directory defaults to `<root>/data`.
 
 ## Operations
 
 Typical lifecycle commands:
 
 - `systemctl --user daemon-reload`
-- `systemctl --user enable --now sumeru-v2`
-- `systemctl --user status sumeru-v2`
-- `journalctl --user -u sumeru-v2 -f`
-- `systemctl --user restart sumeru-v2`
+- `systemctl --user enable --now sumeru`
+- `systemctl --user status sumeru`
+- `journalctl --user -u sumeru -f`
+- `systemctl --user restart sumeru`
 
-## Environment and Port Binding
+## Environment and Credentials
 
-- `SUMERU_HOST` is read by host main and defaults to `127.0.0.1` when unset.
-- `SUMERU_PORT` is read by host main and defaults to `7900` when unset.
-- Unit file sets `SUMERU_PORT=7900` explicitly, and optional env file can override credentials or adapter env vars.
-- Service-level environment affects adapter subprocesses spawned by host.
-
-## Root Directory Contract
-
-- `ExecStart` passes one positional root directory argument to host main.
-- Host config loader expects this root to contain `host.yaml` and `prototypes/`.
-- Wrong root argument results in startup failure while loading config files.
+- `SUMERU_HOST` defaults to `127.0.0.1` when unset.
+- `SUMERU_PORT` defaults to `7900` when unset.
+- API keys and adapter credentials go in the env file (`~/.config/sumeru/env`) — not in the unit file or git.
+- Service-level PATH must include npm global bin for CLI-based adapters (claude-code, codex).
 
 ## Code Pointers
 
 | Package | File | What it does |
 |---------|------|--------------|
-| `deploy` | `deploy/sumeru-v2.service` | systemd user unit definition for v2 host process. |
-| `deploy` | `deploy/README.md` | Installation and operations guide for service deployment. |
-| `@sumeru/host` | `packages/host/src/main.ts` | Host process entrypoint used by service `ExecStart`. |
-| `@sumeru/host` | `packages/host/src/config.ts` | Loads `host.yaml`, scans prototypes dir, and resolves runtime config. |
+| `deploy` | `deploy/sumeru.service` | systemd user unit definition for host process. |
+| `deploy` | `deploy/README.md` | Installation and operations guide. |
+| `@sumeru/host` | `packages/host/src/main.ts` | Host process entrypoint used by service ExecStart. |
+| `@sumeru/host` | `packages/host/src/config.ts` | Loads host.yaml, SQLite store, prototypes, and images. |
 
 ## See Also
 
 - [Host HTTP Service](./host-service.md) — server started by service unit.
-- [Master Agent](./master-agent.md) — master runtime behavior under deployed host.
+- [CLI Tool](./cli.md) — `server start/stop/status` as alternative to systemd.

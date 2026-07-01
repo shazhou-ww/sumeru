@@ -2,94 +2,74 @@
 id: prototype-versioning
 title: "Prototype Versioning & Lazy Re-init"
 sources:
-  - packages/host/src/config.ts
-  - packages/host/src/instance-manager.ts
+  - packages/host/src/data-store.ts
+  - packages/host/src/session-manager.ts
+  - packages/host/src/types.ts
 tags: [sumeru, prototype]
 created: 2026-06-28
-updated: 2026-06-28
+updated: 2026-07-01
 ---
 
 # Prototype Versioning & Lazy Re-init
 
-> Host tracks prototype/master config hashes and lazily reinitializes adapters when version drift is detected.
+> Host tracks prototype config hashes and lazily reinitializes adapter sessions when version drift is detected.
 
 ## Overview
 
-Initialization state is versioned per instance using `initVersion`. Version values are content hashes, not counters. On each inbox, host compares current hash vs stored `initVersion` and re-initializes adapter session when stale.
+Initialization state is versioned per session using `initVersion`. Version values are content hashes (SHA-256), not counters. On each message submission, the session manager compares the current prototype hash vs stored `initVersion` and re-initializes the adapter session when stale.
 
-This avoids eagerly restarting all running instances when files change, while still ensuring next interaction uses current instructions/skills/model config.
+This avoids eagerly restarting all running sessions when prototype files change, while still ensuring the next interaction uses current persona/skills/model config.
 
-## Hash Inputs
+## Hash Computation
 
 ```mermaid
 flowchart TB
-  A[manifest.yaml raw bytes] --> H[SHA-256 prototypeHash]
-  B[skills/** files sorted] --> H
-  C[host.yaml master section YAML] --> M[SHA-256 masterHash]
+  A[data/prototypes/name.yaml raw bytes] --> H[SHA-256 prototypeHash]
 ```
 
-- `computePrototypeHash(manifestPath, skillsDir)` hashes:
-  - literal manifest bytes prefixed with `manifest\0`
-  - all files under each skill directory, path-tagged and sorted
-- `computeMasterHash(configPath)` hashes serialized `master` mapping from host config.
+`computePrototypeHash(yamlPath)` in `data-store.ts` hashes the raw YAML file content prefixed with `prototype\0`. The hash changes whenever the prototype YAML is modified (persona, model, image, or defaults change).
 
-## Instance Tracking
+## Session Tracking
 
-`ManagedInstance.initVersion` stores last applied hash.
+`ManagedSession.initVersion` stores the last applied hash.
 
-- New/reset instances start with `initVersion: null`.
-- After successful `init -> ready`, host sets `initVersion` to current hash.
-- On stale comparison, host invalidates session and rebuilds init config.
+- New sessions start with `initVersion: null`.
+- After successful adapter `init → ready`, session manager sets `initVersion` to current hash.
+- On stale comparison, manager invalidates session and rebuilds init config.
 
 ## Lazy Re-init Behavior
 
-On `submitInbox()` path:
+On `submitMessage()` and `ensureAdapterReady()` path:
 
-- resolve current target hash (`prototypeHash` or `masterHash`).
-- if runtime is initialized and hash changed (and not suspended), close stdin and clear session.
-- rebuild init payload from current manifest/skills or master config.
-- restart adapter exec session, send fresh init frame, await ready.
-- continue with message send.
+1. Resolve current prototype hash from `hostConfig.prototypes`.
+2. Compare with `record.initVersion`.
+3. If hash changed and adapter session is initialized and running:
+   - Close existing adapter stdin (invalidate session).
+   - Rebuild init config with updated persona/skills/model from SQLite + prototype.
+   - Restart adapter exec, send fresh init frame, await ready.
+4. Continue with message delivery.
 
-## Master-specific Drift Handling
+## Model Override Interaction
 
-Master uses the same lazy pattern but with:
-
-- hash source: `hostConfig.masterHash`
-- init builder: `buildMasterInitConfig()`
-- command resolver: `resolveMasterAdapterCommand()`
-
-So host config changes are applied on next master inbox rather than immediate restart.
-
-## Skill Hash Determinism
-
-Prototype hash stability depends on deterministic traversal:
-
-- skill directories are lexicographically sorted.
-- files within each skill subtree are recursively collected then sorted.
-- hash input includes relative file path (`skill:<relpath>\\0`) and raw file bytes.
-
-This ensures identical content trees produce identical hashes regardless of filesystem entry order.
+When a session uses model override (via create or message `model` field), the override takes precedence over prototype model. However, prototype hash drift still triggers re-init to pick up persona/skill changes — the overridden model is preserved through the re-init.
 
 ## Re-init Guard Conditions
 
 Host only invalidates an existing initialized session when all are true:
 
-- detected version drift (`initVersion !== currentHash`)
-- active session exists and is initialized
-- instance status is not currently `suspended`
-
-If suspended, host keeps resume-related state and refreshes init when next active session starts.
+- Detected version drift (`initVersion !== currentHash`)
+- Active session exists and is initialized
+- Session is currently in `running` state
 
 ## Code Pointers
 
 | Package | File | What it does |
 |---------|------|--------------|
-| `@sumeru/host` | `packages/host/src/config.ts` | Computes prototype and master hashes; loads manifest/skills/master config. |
-| `@sumeru/host` | `packages/host/src/instance-manager.ts` | Compares hash vs `initVersion` and performs lazy adapter re-init. |
-| `@sumeru/host` | `packages/host/src/types.ts` | Defines `ManagedInstance.initVersion` persisted in manager state. |
+| `@sumeru/host` | `packages/host/src/data-store.ts` | Computes prototype hash from YAML content. |
+| `@sumeru/host` | `packages/host/src/session-manager.ts` | Compares hash vs `initVersion` and performs lazy re-init. |
+| `@sumeru/host` | `packages/host/src/types.ts` | Defines `ManagedSession.initVersion` and `PrototypeInfo.prototypeHash`. |
 
 ## See Also
 
-- [Instance Lifecycle](./instance-lifecycle.md) — where `initVersion` lives in runtime records.
-- [manifest.yaml Schema](./manifest-schema.md) — fields that feed init payload and hashes.
+- [Session Lifecycle](./instance-lifecycle.md) — where `initVersion` lives in runtime records.
+- [V3 Data Model](./manifest-schema.md) — prototype YAML structure and entity relationships.

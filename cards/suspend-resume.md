@@ -3,78 +3,68 @@ id: suspend-resume
 title: "Suspend & Resume"
 sources:
   - packages/adapter-core/src/entrypoint.ts
-  - packages/host/src/instance-manager.ts
-  - packages/core/src/types.ts
+  - packages/host/src/session-manager.ts
+  - packages/adapter-core/src/types.ts
 tags: [sumeru, suspend]
 created: 2026-06-28
-updated: 2026-06-28
+updated: 2026-07-01
 ---
 
 # Suspend & Resume
 
-> Suspend/resume bridges adapter-native session continuity with host-level instance state transitions.
+> Suspend/resume bridges adapter-native session continuity with host-level session state transitions.
 
 ## Overview
 
-Suspend is emitted as an outbox frame and persisted through host runtime state. When a suspend frame arrives, the instance status flips to `suspended`, the adapter session is detached, and a `nativeId` resume token is cached.
+Suspend is emitted as an outbox frame when the adapter times out or yields a suspend checkpoint. When a suspend frame arrives, the session status flips to `idle`, an exit signal is recorded, and a `nativeId` resume token is available for future continuation.
 
-On the next inbox for the same instance, host injects cached `resumeNativeId` into the message frame so adapter implementations can continue the same underlying agent session.
+On the next message for the same session, host injects the resume context so adapter implementations can continue the same underlying agent session.
 
 ## Suspend Reasons
 
-`SuspendValue.reason` supports three values in shared types:
+Adapter-core supports suspend via:
 
-- `timeout`
-- `permissionRequest`
-- `inputRequired`
-
-`adapter-core` actively emits `timeout` from wrapper timeout behavior; the other two reasons are available for adapter-initiated suspend yields.
+- **timeout**: wrapper fires when `sendTimeoutMs` (default 7,200,000 ms) is exceeded.
+- **impl-initiated**: adapter yields `{ type: "suspend" }` from its handle generator.
 
 ## Flow
 
 ```mermaid
 sequenceDiagram
   participant Adapter
-  participant Host as Instance Manager
+  participant Host as Session Manager
   participant Client
 
   Adapter-->>Host: {type:"suspend", value:{reason, elapsedMs, nativeId}}
-  Host->>Host: status = suspended
-  Host->>Host: resumeNativeId = nativeId
-  Client->>Host: POST /instances/:id/inbox
+  Host->>Host: status = idle, exit = {type:"timeout"}
+  Client->>Host: POST /sessions/:id/messages
   Host->>Adapter: {type:"message", value:{..., resumeNativeId}}
-  Host->>Host: status suspended -> running
+  Host->>Host: status idle -> running
 ```
 
 ## Host Runtime Handling
 
-- `readAdapterOutput()` detects suspend frames and updates managed instance status.
-- `extractSuspendNativeId()` parses `value.nativeId` when non-empty.
-- runtime session is nulled and marked uninitialized after suspend.
-- `submitInbox()` injects cached `resumeNativeId` and flips status back to `running`.
+- Session manager detects suspend/done frames and sets session to `idle` with exit signal.
+- Adapter session remains attached — container stays alive.
+- `submitMessage()` resumes the session by flipping status to `running` and delivering new message.
+- `resumeNativeId` is injected from adapter's `getNativeId()` so native session can be continued.
 
 ## Adapter Runtime Handling
 
 - `runAdapterEntry()` stores incoming `message.resumeNativeId`.
 - `resolveNativeId()` prefers `impl.getNativeId()` over stored value.
-- timeout path emits suspend + native id and exits loop.
-- impl-generated suspend yields are passed through with resolved native id.
-
-## Operational Notes
-
-- Resume is lazy: no explicit resume endpoint; next inbox triggers continuation.
-- Suspend does not delete history; frames continue to be recorded in OCAS log.
-- If adapter native session is invalid, adapter exits with error and host surfaces outbox error frame.
+- Timeout path emits suspend + native id and exits loop.
+- Impl-generated suspend yields are passed through with resolved native id.
 
 ## Code Pointers
 
 | Package | File | What it does |
 |---------|------|--------------|
 | `@sumeru/adapter-core` | `packages/adapter-core/src/entrypoint.ts` | Emits suspend frames for timeout and impl suspend yields. |
-| `@sumeru/host` | `packages/host/src/instance-manager.ts` | Stores `resumeNativeId`, updates status, and injects resume token on inbox. |
-| `@sumeru/core` | `packages/core/src/types.ts` | Defines suspend reason union and payload structure. |
+| `@sumeru/host` | `packages/host/src/session-manager.ts` | Handles suspend → idle transition, resume on next message. |
+| `@sumeru/adapter-core` | `packages/adapter-core/src/types.ts` | Defines SuspendValue and adapter frame unions. |
 
 ## See Also
 
-- [Instance Lifecycle](./instance-lifecycle.md) — state transitions involving `suspended`.
+- [Session Lifecycle](./instance-lifecycle.md) — state transitions involving idle after suspend.
 - [Adapter Unified I/O Contract](./adapter-contract.md) — frame-level suspend semantics.

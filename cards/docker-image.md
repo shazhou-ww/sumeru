@@ -2,85 +2,88 @@
 id: docker-image
 title: "Docker Image Build"
 sources:
+  - docker/sarsapa/Dockerfile
+  - docker/hermes/Dockerfile
   - docker/claude-code/Dockerfile
-  - scripts/build-image.sh
+  - docker/codex/Dockerfile
+  - packages/cli/src/image-build.ts
 tags: [sumeru, docker]
 created: 2026-06-28
-updated: 2026-06-28
+updated: 2026-07-01
 ---
 
 # Docker Image Build
 
-> The Claude runtime image packages Node, Python, Claude CLI, and built adapter artifacts for host-driven `docker exec` invocation.
+> Each supported agent type has its own Dockerfile under `docker/<agent>/`. The `sumeru image build` CLI assembles dist artifacts and builds tagged images for host-driven `docker exec` invocation.
 
 ## Overview
 
-The image is defined in `docker/claude-code/Dockerfile` and built by `scripts/build-image.sh`. Build script compiles the monorepo first (`pnpm run build`), then performs a local Docker build tagged `sumeru/claude-code:dev`.
+V3 supports multiple agent runtimes: **sarsapa** (native), **hermes** (ACP), **claude-code**, and **codex**. Each has a dedicated Dockerfile in `docker/<agent>/Dockerfile`. The build process is handled by `sumeru image build <name> --agent <type>`, which stages monorepo artifacts into a `.build/` directory and runs `docker build`.
 
-Runtime behavior is intentionally passive (`sleep infinity`) because host controls execution by entering the container with `docker exec` and running adapter entry commands.
-
-## Build Composition
+## Build Pipeline
 
 ```mermaid
 flowchart TB
-  A[pnpm run build] --> B[copy dist artifacts]
-  B --> C[docker build -f docker/claude-code/Dockerfile]
-  C --> D[sumeru/claude-code:dev]
-  D --> E[host docker exec node /opt/sumeru/.../main.js]
+  A[sumeru image build sarsapa --agent sarsapa] --> B[stage .build/]
+  B --> C[copy core + adapter-core + agent adapter dist/]
+  C --> D[docker build -t sumeru/sarsapa:dev]
+  D --> E[register in images.yaml via host API]
 ```
 
-## Dockerfile Layers
+Artifacts staged into `.build/packages/`:
+- `core/` — `@sumeru/core` dist + package.json
+- `adapter-core/` — `@sumeru/adapter-core` dist + package.json
+- `<agent>/` — agent-specific adapter dist + package.json
 
-- Base image: `node:22-slim`.
-- Apt packages: `git`, `curl`, `ca-certificates`, `build-essential`.
-- Python: installs `uv`, then Python `3.12` symlinked to `python`/`python3`.
-- Claude CLI: `npm install -g @anthropic-ai/claude-code`.
-- Copies built workspace package artifacts into `/opt/sumeru`:
-  - `core/dist`
-  - `adapter-core/dist`
-  - `adapter-claude-code/dist`
-- Creates symlinked `node_modules/@sumeru/*` workspace links for runtime resolution.
+## Image Variants
 
-## Runtime Security/Execution
+| Agent | Dockerfile | Base Image | Key Extras |
+|-------|-----------|------------|------------|
+| sarsapa | `docker/sarsapa/Dockerfile` | `node:24-slim` | ripgrep, git, build-essential |
+| hermes | `docker/hermes/Dockerfile` | `node:22-slim` | hermes CLI (ACP), git, curl |
+| claude-code | `docker/claude-code/Dockerfile` | `node:22-slim` | Python (uv), Claude CLI, git |
+| codex | `docker/codex/Dockerfile` | `node:22-slim` | Codex CLI, git |
 
-- Creates non-root user `sumeru` with uid `10001`.
-- Changes ownership on `/opt/sumeru` and uv python dir.
-- switches to `USER sumeru` and `WORKDIR /home/sumeru`.
-- default command: `CMD ["sleep", "infinity"]`.
+## Runtime Model
 
-## Build Script
-
-`build-image.sh`:
-
-- changes to repo root.
-- runs monorepo build.
-- temporarily copies `docker/.dockerignore` into repo root `.dockerignore`.
-- builds image with Dockerfile path.
-- removes temporary `.dockerignore`.
-
-## Why `sleep infinity`
+All images use `CMD ["sleep", "infinity"]` — the container stays warm and the host enters it on demand via `docker exec` to run the adapter entrypoint.
 
 - Container lifecycle is decoupled from adapter lifecycle.
-- Host keeps container warm and enters it on demand via `docker exec`.
+- Host keeps container alive across messages (no cold start between turns).
 - Adapter process exits at turn boundaries without killing container.
-- This reduces cold start cost between instance messages.
 
-## Artifact Contract
+## Sarsapa Dockerfile (reference)
 
-- Dockerfile expects prebuilt `dist/` outputs for copied packages.
-- Runtime Node resolution depends on symlinked `node_modules/@sumeru/*` links.
-- If package names or dist layout changes, both copy paths and symlinks must be updated together.
-- Build script’s pre-build step is required to keep image contents in sync with source.
+- Base: `node:24-slim` with git, curl, ripgrep, build-essential.
+- Copies `core`, `adapter-core`, `sarsapa` dists into `/opt/sumeru/`.
+- Creates `node_modules/@sumeru/*` symlinks for runtime resolution.
+- Runs as `node` user in `/workspace`.
+- Entrypoint: `node /opt/sumeru/adapter-sarsapa/dist/main.js`
+
+## Image Registry
+
+Built images are registered in `images.yaml` (or via `POST /images/:name` on the host API). Each entry records:
+
+```yaml
+sarsapa:
+  description: "Sumeru sarsapa image (sumeru/sarsapa:dev)"
+  dockerfile: "docker/sarsapa/Dockerfile"
+  builtAt: "2026-07-01T..."
+  digest: "sha256:..."
+```
 
 ## Code Pointers
 
 | Package | File | What it does |
 |---------|------|--------------|
-| `docker` | `docker/claude-code/Dockerfile` | Defines runtime image composition and non-root execution model. |
-| `scripts` | `scripts/build-image.sh` | Reproducible local build script for `sumeru/claude-code:dev`. |
-| `@sumeru/host` | `packages/host/src/transport.ts` | Executes adapter command inside running container via `docker exec`. |
+| `docker` | `docker/sarsapa/Dockerfile` | Native sarsapa agent runtime image. |
+| `docker` | `docker/hermes/Dockerfile` | Hermes ACP agent runtime image. |
+| `docker` | `docker/claude-code/Dockerfile` | Claude Code CLI runtime image. |
+| `docker` | `docker/codex/Dockerfile` | Codex CLI runtime image. |
+| `@sumeru/cli` | `packages/cli/src/image-build.ts` | Build pipeline: staging, docker build, API registration. |
 
 ## See Also
 
-- [Transport Layer](./transport-layer.md) — how host interacts with running container.
-- [Claude Code Adapter](./adapter-claude-code.md) — adapter binary executed inside container.
+- [CLI Tool](./cli.md) — `image build` and `image list` commands.
+- [Transport Layer](./transport-layer.md) — how host interacts with running containers.
+- [Architecture Overview](./architecture-overview.md) — image layer in the runtime model.
