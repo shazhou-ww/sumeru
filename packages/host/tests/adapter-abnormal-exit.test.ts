@@ -30,9 +30,12 @@ function writeHostFixture(rootDir: string, maxRunning = 4): void {
 	mkdirSync(join(dataDir, "prototypes"), { recursive: true });
 	writeFileSync(
 		join(dataDir, "prototypes", "claude-code.yaml"),
-		["name: claude-code", "instructions: You are a worker.", "skills: []"].join(
-			"\n",
-		),
+		[
+			"name: claude-code",
+			"persona: default-persona",
+			"model: default-model",
+			"image: sumeru/claude-code:dev",
+		].join("\n"),
 	);
 	const prototypeDir = join(rootDir, "prototypes", "claude-code");
 	mkdirSync(prototypeDir, { recursive: true });
@@ -123,9 +126,39 @@ describe("adapter abnormal exit resilience (#177)", () => {
 		return rootDir;
 	}
 
+	function seedDb(hostConfig: {
+		sqliteStore: {
+			createPersona: Function;
+			createProvider: Function;
+			createModel: Function;
+		};
+	}): void {
+		hostConfig.sqliteStore.createProvider({
+			name: "test-provider",
+			apiType: "anthropic",
+			baseUrl: null,
+			apiKey: "sk-test",
+		});
+		hostConfig.sqliteStore.createModel({
+			id: "default-model",
+			provider: "test-provider",
+			model: "claude-sonnet-4",
+			contextWindow: null,
+			toolUse: true,
+			streaming: true,
+			metadata: null,
+		});
+		hostConfig.sqliteStore.createPersona({
+			name: "default-persona",
+			instructions: "You are a worker.",
+			skills: [],
+		});
+	}
+
 	it("does not throw when the adapter stdout closes after the session is deleted", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const { transport, crash } = createCrashableTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 
@@ -149,6 +182,7 @@ describe("adapter abnormal exit resilience (#177)", () => {
 	it("releases the running slot when an adapter abnormally exits while still tracked", async () => {
 		const rootDir = setup(1);
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const { transport, crash } = createCrashableTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 
@@ -169,6 +203,7 @@ describe("adapter abnormal exit resilience (#177)", () => {
 	it("keeps serving other sessions after one adapter crashes", async () => {
 		const rootDir = setup(4);
 		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
 		const { transport, crash } = createCrashableTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 

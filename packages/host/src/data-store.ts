@@ -90,15 +90,15 @@ function skillPath(skillsDir: string, name: string): string {
 	return join(skillsDir, `${name}.md`);
 }
 
-export async function findPrototypeReferencesToSkill(
+export async function findPrototypeReferencesToPersona(
 	prototypesDir: string,
-	skillName: string,
+	personaName: string,
 ): Promise<Array<string>> {
 	const names = await listPrototypeFileNames(prototypesDir);
 	const references: Array<string> = [];
 	for (const name of names) {
 		const prototype = await readPrototypeFile(prototypesDir, name);
-		if (prototype.skills.includes(skillName)) {
+		if (prototype.persona === personaName) {
 			references.push(name);
 		}
 	}
@@ -219,24 +219,13 @@ async function resolveLegacyComposePath(
 
 export async function computePrototypeHash(
 	yamlPath: string,
-	skillsDir: string,
-	prototype: Prototype,
+	_skillsDir: string,
+	_prototype: Prototype,
 ): Promise<string> {
 	const hash = createHash("sha256");
 	const yamlRaw = await readFile(yamlPath, "utf-8");
 	hash.update("prototype\0");
 	hash.update(yamlRaw);
-	const skillNames = [...prototype.skills].sort();
-	for (const skillName of skillNames) {
-		const skillFile = skillPath(skillsDir, skillName);
-		try {
-			const content = await readFile(skillFile);
-			hash.update(`skill:${skillName}\0`);
-			hash.update(content);
-		} catch {
-			hash.update(`skill:${skillName}\0`);
-		}
-	}
 	return hash.digest("hex");
 }
 
@@ -266,27 +255,26 @@ export function validatePrototype(
 			`Prototype ${path} field "name" (${JSON.stringify(name)}) must match file name ${JSON.stringify(expectedName)}`,
 		);
 	}
-	const instructions = obj.instructions;
-	if (typeof instructions !== "string") {
-		throw new Error(`Prototype ${path} field "instructions" must be a string`);
+	const persona = obj.persona;
+	if (typeof persona !== "string" || persona.length === 0) {
+		throw new Error(
+			`Prototype ${path} field "persona" must be a non-empty string`,
+		);
 	}
-	const skillsRaw = obj.skills;
-	const skills: Array<string> = [];
-	if (skillsRaw !== undefined && skillsRaw !== null) {
-		if (!Array.isArray(skillsRaw)) {
-			throw new Error(`Prototype ${path} field "skills" must be an array`);
-		}
-		for (const item of skillsRaw) {
-			if (typeof item !== "string") {
-				throw new Error(
-					`Prototype ${path} field "skills" must contain only strings`,
-				);
-			}
-			skills.push(item);
-		}
+	const model = obj.model;
+	if (typeof model !== "string" || model.length === 0) {
+		throw new Error(
+			`Prototype ${path} field "model" must be a non-empty string`,
+		);
+	}
+	const image = obj.image;
+	if (typeof image !== "string" || image.length === 0) {
+		throw new Error(
+			`Prototype ${path} field "image" must be a non-empty string`,
+		);
 	}
 	const defaults = parsePrototypeDefaults(obj.defaults, path);
-	return { name, instructions, skills, defaults };
+	return { name, persona, model, image, defaults };
 }
 
 function parsePrototypeDefaults(

@@ -8,6 +8,7 @@ import {
 	createImagesHandler,
 	createMessagesHandler,
 	createModelsHandler,
+	createPersonasHandler,
 	createPrototypesHandler,
 	createProvidersHandler,
 	createRootHandler,
@@ -50,6 +51,7 @@ export function createHostHandler(input: {
 	const prototypes = createPrototypesHandler(input.hostConfig);
 	const providers = createProvidersHandler(input.hostConfig);
 	const models = createModelsHandler(input.hostConfig);
+	const personas = createPersonasHandler(input.hostConfig);
 	const skills = createSkillsHandler(input.hostConfig);
 	const images = createImagesHandler(input.hostConfig);
 	const sessions = createSessionsHandler(input.manager);
@@ -75,6 +77,11 @@ export function createHostHandler(input: {
 		.route("POST", "/models/:id", models.create)
 		.route("PUT", "/models/:id", models.update)
 		.route("DELETE", "/models/:id", models.remove)
+		.route("GET", "/personas", personas.list)
+		.route("GET", "/personas/:name", personas.detail)
+		.route("POST", "/personas/:name", personas.create)
+		.route("PUT", "/personas/:name", personas.update)
+		.route("DELETE", "/personas/:name", personas.remove)
 		.route("GET", "/skills/:name", skills.get)
 		.route("PUT", "/skills/:name", skills.put)
 		.route("DELETE", "/skills/:name", skills.remove)

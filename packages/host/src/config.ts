@@ -8,7 +8,7 @@ import type {
 	Image,
 	KnownProvider,
 	ModelConfig,
-	Prototype,
+	Persona,
 } from "@sumeru/core";
 import { parse as parseYaml } from "yaml";
 import {
@@ -182,10 +182,10 @@ function validateImageEntry(
 
 export async function loadPrototypeInitSkills(
 	skillsDir: string,
-	prototype: Prototype,
+	persona: Persona,
 ): Promise<Array<SkillContent>> {
 	const skills: Array<SkillContent> = [];
-	for (const skillName of prototype.skills) {
+	for (const skillName of persona.skills) {
 		const skillPath = join(skillsDir, `${skillName}.md`);
 		let content = "";
 		try {

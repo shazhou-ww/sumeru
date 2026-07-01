@@ -22,8 +22,7 @@ describe("parseCodexJson — command_execution", () => {
 	});
 
 	it("populates WireToolCall with id, tool, input, output, exitCode", () => {
-		const tc = parsed?.turns.find((t) => t.toolCalls !== null)
-			?.toolCalls?.[0];
+		const tc = parsed?.turns.find((t) => t.toolCalls !== null)?.toolCalls?.[0];
 		expect(tc?.id).toBe("exec_1");
 		expect(tc?.tool).toBe("command_execution");
 		expect(tc?.input).toEqual({ command: "echo hello" });
@@ -50,8 +49,7 @@ describe("parseCodexJson — command_execution", () => {
 			'{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens":2}}',
 		].join("\n");
 		const result = parseCodexJson(jsonl);
-		const tc = result?.turns.find((t) => t.toolCalls !== null)
-			?.toolCalls?.[0];
+		const tc = result?.turns.find((t) => t.toolCalls !== null)?.toolCalls?.[0];
 		expect(tc?.id).toBeDefined();
 		expect(typeof tc?.id).toBe("string");
 		expect(tc?.id?.length).toBeGreaterThan(0);

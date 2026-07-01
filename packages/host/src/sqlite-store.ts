@@ -1,7 +1,7 @@
-import type { Model, Provider, ProviderApiType } from "@sumeru/core";
+import type { Model, Persona, Provider, ProviderApiType } from "@sumeru/core";
 import Database from "better-sqlite3";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS providers (
@@ -27,6 +27,16 @@ CREATE TABLE IF NOT EXISTS models (
 );
 `;
 
+const MIGRATION_V2 = `
+CREATE TABLE IF NOT EXISTS personas (
+  name TEXT PRIMARY KEY NOT NULL,
+  instructions TEXT NOT NULL,
+  skills TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
 export class ProviderInUseError extends Error {
 	readonly providerName: string;
 	readonly modelCount: number;
@@ -38,6 +48,20 @@ export class ProviderInUseError extends Error {
 		this.name = "ProviderInUseError";
 		this.providerName = providerName;
 		this.modelCount = modelCount;
+	}
+}
+
+export class PersonaInUseError extends Error {
+	readonly personaName: string;
+	readonly prototypeNames: Array<string>;
+
+	constructor(personaName: string, prototypeNames: Array<string>) {
+		super(
+			`Persona ${personaName} is referenced by prototypes: ${prototypeNames.join(", ")}`,
+		);
+		this.name = "PersonaInUseError";
+		this.personaName = personaName;
+		this.prototypeNames = prototypeNames;
 	}
 }
 
@@ -73,6 +97,17 @@ export type UpdateModelInput = {
 	metadata: Record<string, unknown> | null;
 };
 
+export type CreatePersonaInput = {
+	name: string;
+	instructions: string;
+	skills: Array<string>;
+};
+
+export type UpdatePersonaInput = {
+	instructions: string;
+	skills: Array<string>;
+};
+
 export type SqliteStore = {
 	close(): void;
 	createProvider(input: CreateProviderInput): Provider;
@@ -85,6 +120,12 @@ export type SqliteStore = {
 	listModels(): Array<Model>;
 	updateModel(id: string, input: UpdateModelInput): Model | null;
 	deleteModel(id: string): boolean;
+	createPersona(input: CreatePersonaInput): Persona;
+	getPersona(name: string): Persona | null;
+	listPersonas(): Array<Persona>;
+	updatePersona(name: string, input: UpdatePersonaInput): Persona | null;
+	deletePersona(name: string): boolean;
+	findPersonasReferencingSkill(skillName: string): Array<string>;
 };
 
 type ProviderRow = {
@@ -104,6 +145,14 @@ type ModelRow = {
 	tool_use: number;
 	streaming: number;
 	metadata: string;
+	created_at: string;
+	updated_at: string;
+};
+
+type PersonaRow = {
+	name: string;
+	instructions: string;
+	skills: string;
 	created_at: string;
 	updated_at: string;
 };
@@ -137,6 +186,9 @@ CREATE TABLE IF NOT EXISTS schema_version (
 	try {
 		if (current < 1) {
 			db.exec(MIGRATION_V1);
+		}
+		if (current < 2) {
+			db.exec(MIGRATION_V2);
 		}
 		if (row === undefined) {
 			db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
@@ -305,6 +357,77 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 			const result = db.prepare("DELETE FROM models WHERE id = ?").run(id);
 			return result.changes > 0;
 		},
+
+		createPersona(input) {
+			const now = new Date().toISOString();
+			const skillsJson = JSON.stringify(input.skills);
+			db.prepare(
+				`INSERT INTO personas (name, instructions, skills, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+			).run(input.name, input.instructions, skillsJson, now, now);
+			return rowToPersona({
+				name: input.name,
+				instructions: input.instructions,
+				skills: skillsJson,
+				created_at: now,
+				updated_at: now,
+			});
+		},
+
+		getPersona(name) {
+			const row = db
+				.prepare("SELECT * FROM personas WHERE name = ?")
+				.get(name) as PersonaRow | undefined;
+			return row === undefined ? null : rowToPersona(row);
+		},
+
+		listPersonas() {
+			const rows = db
+				.prepare("SELECT * FROM personas ORDER BY name")
+				.all() as Array<PersonaRow>;
+			return rows.map(rowToPersona);
+		},
+
+		updatePersona(name, input) {
+			const existing = db
+				.prepare("SELECT * FROM personas WHERE name = ?")
+				.get(name) as PersonaRow | undefined;
+			if (existing === undefined) return null;
+			const now = new Date().toISOString();
+			const skillsJson = JSON.stringify(input.skills);
+			db.prepare(
+				`UPDATE personas
+         SET instructions = ?, skills = ?, updated_at = ?
+         WHERE name = ?`,
+			).run(input.instructions, skillsJson, now, name);
+			return rowToPersona({
+				...existing,
+				instructions: input.instructions,
+				skills: skillsJson,
+				updated_at: now,
+			});
+		},
+
+		deletePersona(name) {
+			const result = db
+				.prepare("DELETE FROM personas WHERE name = ?")
+				.run(name);
+			return result.changes > 0;
+		},
+
+		findPersonasReferencingSkill(skillName) {
+			const rows = db
+				.prepare("SELECT name, skills FROM personas")
+				.all() as Array<{ name: string; skills: string }>;
+			const result: Array<string> = [];
+			for (const row of rows) {
+				const skills = parseSkillsJson(row.skills);
+				if (skills.includes(skillName)) {
+					result.push(row.name);
+				}
+			}
+			return result;
+		},
 	};
 }
 
@@ -352,5 +475,26 @@ function parseMetadata(raw: string): Record<string, unknown> | null {
 		return parsed as Record<string, unknown>;
 	} catch {
 		return null;
+	}
+}
+
+function rowToPersona(row: PersonaRow): Persona {
+	return {
+		name: row.name,
+		instructions: row.instructions,
+		skills: parseSkillsJson(row.skills),
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+	};
+}
+
+function parseSkillsJson(raw: string): Array<string> {
+	if (raw.length === 0 || raw === "[]") return [];
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (!Array.isArray(parsed)) return [];
+		return parsed.filter((item): item is string => typeof item === "string");
+	} catch {
+		return [];
 	}
 }

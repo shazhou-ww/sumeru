@@ -40,9 +40,9 @@ describe("loadHostConfig — v3 HostConfig", () => {
 			join(dataDir, "prototypes", "worker.yaml"),
 			[
 				"name: worker",
-				"instructions: You are a worker.",
-				"skills:",
-				"  - demo",
+				"persona: worker-persona",
+				"model: worker-model",
+				"image: sumeru/worker:latest",
 			].join("\n"),
 		);
 
@@ -54,8 +54,9 @@ describe("loadHostConfig — v3 HostConfig", () => {
 		expect(loaded.prototypesDir).toBe(join(dataDir, "prototypes"));
 
 		const prototype = loaded.prototypes.get("worker");
-		expect(prototype?.prototype.instructions).toBe("You are a worker.");
-		expect(prototype?.prototype.skills).toEqual(["demo"]);
+		expect(prototype?.prototype.persona).toBe("worker-persona");
+		expect(prototype?.prototype.model).toBe("worker-model");
+		expect(prototype?.prototype.image).toBe("sumeru/worker:latest");
 		expect(prototype?.prototypeHash).toMatch(/^[a-f0-9]{64}$/);
 		expect(loaded.images.size).toBe(0);
 	});

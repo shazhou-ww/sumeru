@@ -30,8 +30,9 @@ function writeV3HostFixture(rootDir: string): void {
 function writePrototypeFixture(
 	rootDir: string,
 	options: {
-		instructions?: string;
-		skillContent?: string;
+		persona?: string;
+		model?: string;
+		image?: string;
 	} = {},
 ): { yamlPath: string; skillsDir: string; composePath: string } {
 	const dataDir = join(rootDir, "data");
@@ -39,18 +40,15 @@ function writePrototypeFixture(
 	const prototypesDir = join(dataDir, "prototypes");
 	mkdirSync(skillsDir, { recursive: true });
 	mkdirSync(prototypesDir, { recursive: true });
-	writeFileSync(
-		join(skillsDir, "demo.md"),
-		options.skillContent ?? "demo skill",
-	);
+	writeFileSync(join(skillsDir, "demo.md"), "demo skill");
 	const yamlPath = join(prototypesDir, "claude-code.yaml");
 	writeFileSync(
 		yamlPath,
 		[
 			"name: claude-code",
-			`instructions: ${options.instructions ?? "You are a worker."}`,
-			"skills:",
-			"  - demo",
+			`persona: ${options.persona ?? "default-persona"}`,
+			`model: ${options.model ?? "default-model"}`,
+			`image: ${options.image ?? "sumeru/claude-code:dev"}`,
 		].join("\n"),
 	);
 	const legacyPrototypeDir = join(rootDir, "prototypes", "claude-code");
@@ -128,7 +126,7 @@ describe("computePrototypeHash", () => {
 		tempDirs.push(rootDir);
 		writeV3HostFixture(rootDir);
 		const { yamlPath, skillsDir } = writePrototypeFixture(rootDir, {
-			instructions: "Version one.",
+			persona: "persona-v1",
 		});
 		const hostConfig = await loadHostConfig(rootDir);
 		const prototype = hostConfig.prototypes.get("claude-code");
@@ -142,12 +140,12 @@ describe("computePrototypeHash", () => {
 			yamlPath,
 			[
 				"name: claude-code",
-				"instructions: Version two.",
-				"skills:",
-				"  - demo",
+				"persona: persona-v2",
+				"model: default-model",
+				"image: sumeru/claude-code:dev",
 			].join("\n"),
 		);
-		prototype.prototype.instructions = "Version two.";
+		prototype.prototype.persona = "persona-v2";
 		const second = await computePrototypeHash(
 			yamlPath,
 			skillsDir,
@@ -157,12 +155,12 @@ describe("computePrototypeHash", () => {
 		expect(first).toMatch(/^[a-f0-9]{64}$/);
 	});
 
-	it("changes when skill file content changes", async () => {
+	it("changes when model reference changes in yaml", async () => {
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-proto-hash-"));
 		tempDirs.push(rootDir);
 		writeV3HostFixture(rootDir);
 		const { yamlPath, skillsDir } = writePrototypeFixture(rootDir, {
-			skillContent: "skill v1",
+			model: "model-v1",
 		});
 		const hostConfig = await loadHostConfig(rootDir);
 		const prototype = hostConfig.prototypes.get("claude-code");
@@ -172,7 +170,16 @@ describe("computePrototypeHash", () => {
 			skillsDir,
 			prototype.prototype,
 		);
-		writeFileSync(join(skillsDir, "demo.md"), "skill v2");
+		writeFileSync(
+			yamlPath,
+			[
+				"name: claude-code",
+				"persona: default-persona",
+				"model: model-v2",
+				"image: sumeru/claude-code:dev",
+			].join("\n"),
+		);
+		prototype.prototype.model = "model-v2";
 		const second = await computePrototypeHash(
 			yamlPath,
 			skillsDir,
@@ -205,9 +212,29 @@ describe("prototype lazy re-init", () => {
 		tempDirs.push(rootDir);
 		writeV3HostFixture(rootDir);
 		const { yamlPath, skillsDir } = writePrototypeFixture(rootDir, {
-			instructions: "Version one.",
+			persona: "persona-v1",
 		});
 		const hostConfig = await loadHostConfig(rootDir);
+		hostConfig.sqliteStore.createProvider({
+			name: "test-provider",
+			apiType: "anthropic",
+			baseUrl: null,
+			apiKey: "sk-test",
+		});
+		hostConfig.sqliteStore.createModel({
+			id: "default-model",
+			provider: "test-provider",
+			model: "claude-sonnet-4",
+			contextWindow: null,
+			toolUse: true,
+			streaming: true,
+			metadata: null,
+		});
+		hostConfig.sqliteStore.createPersona({
+			name: "persona-v1",
+			instructions: "Version one.",
+			skills: [],
+		});
 		const { transport, initCount } = createInitTrackingTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 		const created = await manager.createSession({
@@ -230,12 +257,17 @@ describe("prototype lazy re-init", () => {
 			yamlPath,
 			[
 				"name: claude-code",
-				"instructions: Version two.",
-				"skills:",
-				"  - demo",
+				"persona: persona-v2",
+				"model: default-model",
+				"image: sumeru/claude-code:dev",
 			].join("\n"),
 		);
-		prototype.prototype.instructions = "Version two.";
+		hostConfig.sqliteStore.createPersona({
+			name: "persona-v2",
+			instructions: "Version two.",
+			skills: [],
+		});
+		prototype.prototype.persona = "persona-v2";
 		prototype.prototypeHash = await computePrototypeHash(
 			yamlPath,
 			skillsDir,
