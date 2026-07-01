@@ -465,8 +465,8 @@ async function runHealthCheck(options: HealthCheckOptions): Promise<void> {
 		let errorMsg = "";
 		try {
 			const parsed = JSON.parse(output) as Record<string, unknown>;
-			const errObj = parsed["error"] as Record<string, unknown> | undefined;
-			errorMsg = String(errObj?.["message"] ?? parsed["message"] ?? output);
+			const errObj = parsed.error as Record<string, unknown> | undefined;
+			errorMsg = String(errObj?.message ?? parsed.message ?? output);
 		} catch {
 			errorMsg = output || stderr;
 		}

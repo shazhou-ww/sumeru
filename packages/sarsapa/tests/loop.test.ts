@@ -171,7 +171,7 @@ describe("sarsapa loop — error resilience", () => {
 		const tc = turns[0].toolCalls?.[0];
 		expect(tc).toBeDefined();
 		expect(tc!.id).toBe("call_err");
-		expect(tc!.output).toContain("Error: unknown tool");
+		expect(tc?.output).toContain("Error: unknown tool");
 		expect(tc!.exitCode).toBeNull();
 		expect(done).toBeDefined();
 	});
@@ -199,7 +199,7 @@ describe("sarsapa loop — error resilience", () => {
 		const tc = turns[0].toolCalls?.[0];
 		expect(tc).toBeDefined();
 		expect(tc!.id).toBe("call_err");
-		expect(tc!.output).toContain("Error: arguments is not valid JSON");
+		expect(tc?.output).toContain("Error: arguments is not valid JSON");
 		expect(tc!.exitCode).toBe(1);
 		expect(done).toBeDefined();
 	});
@@ -225,8 +225,8 @@ describe("sarsapa loop — error resilience", () => {
 		const tc = turns[0].toolCalls?.[0];
 		expect(tc).toBeDefined();
 		expect(tc!.id).toBe("call_err");
-		expect(tc!.output).toContain("Error: tool 'exploder' threw");
-		expect(tc!.output).toContain("kaboom");
+		expect(tc?.output).toContain("Error: tool 'exploder' threw");
+		expect(tc?.output).toContain("kaboom");
 		expect(tc!.exitCode).toBe(1);
 		expect(tc!.durationMs).toBeGreaterThanOrEqual(0);
 		expect(done).toBeDefined();

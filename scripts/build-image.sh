@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 #   ./scripts/build-image.sh sarsapa
 #   ./scripts/build-image.sh        # builds all
 
-ADAPTERS=("claude-code" "codex" "hermes" "sarsapa")
+ADAPTERS=("claude-code" "codex" "hermes" "sarsapa" "cursor-agent")
 
 if [ -n "$1" ]; then
 	ADAPTERS=("$1")
