@@ -51,7 +51,7 @@ export function createPersonasHandler(hostConfig: LoadedHostConfig) {
 			}
 			let body: PersonaBody;
 			try {
-				body = await readPersonaBody(req);
+				body = await readPersonaBody(req, "add");
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				writeJson(res, 400, errorEnvelope("invalid_body", message));
@@ -95,31 +95,30 @@ export function createPersonasHandler(hostConfig: LoadedHostConfig) {
 				);
 				return;
 			}
-			let body: PersonaBody;
+			let body: PersonaUpdateBody;
 			try {
-				body = await readPersonaBody(req);
+				body = await readPersonaBody(req, "update");
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				writeJson(res, 400, errorEnvelope("invalid_body", message));
 				return;
 			}
-			const missing = findMissingSkills(store, body.skills);
-			if (missing.length > 0) {
-				writeJson(
-					res,
-					400,
-					errorEnvelope(
-						"skills_not_found",
-						`Missing skills: ${missing.join(", ")}`,
-					),
-				);
-				return;
+			if (body.skills !== undefined) {
+				const missing = findMissingSkills(store, body.skills);
+				if (missing.length > 0) {
+					writeJson(
+						res,
+						400,
+						errorEnvelope(
+							"skills_not_found",
+							`Missing skills: ${missing.join(", ")}`,
+						),
+					);
+					return;
+				}
 			}
 			try {
-				const persona = store.updatePersona(name, {
-					instructions: body.instructions,
-					skills: body.skills,
-				});
+				const persona = store.updatePersona(name, body);
 				if (persona === null) {
 					writeJson(
 						res,
@@ -179,28 +178,61 @@ type PersonaBody = {
 	skills: Array<string>;
 };
 
-async function readPersonaBody(req: IncomingMessage): Promise<PersonaBody> {
+type PersonaUpdateBody = {
+	instructions: string | undefined;
+	skills: Array<string> | undefined;
+};
+
+async function readPersonaBody(
+	req: IncomingMessage,
+	mode: "add",
+): Promise<PersonaBody>;
+async function readPersonaBody(
+	req: IncomingMessage,
+	mode: "update",
+): Promise<PersonaUpdateBody>;
+async function readPersonaBody(
+	req: IncomingMessage,
+	mode: "add" | "update",
+): Promise<PersonaBody | PersonaUpdateBody> {
 	const body = await readJsonBody(req);
 	if (body === null || typeof body !== "object" || Array.isArray(body)) {
 		throw new Error("Request body must be a JSON object");
 	}
 	const obj = body as Record<string, unknown>;
-	const instructions = obj.instructions;
-	if (typeof instructions !== "string" || instructions.length === 0) {
+	const instructionsRaw = obj.instructions;
+	let instructions: string | undefined;
+	if (instructionsRaw === undefined) {
+		if (mode === "add") {
+			throw new Error('Field "instructions" is required');
+		}
+	} else if (
+		typeof instructionsRaw !== "string" ||
+		instructionsRaw.length === 0
+	) {
 		throw new Error('Field "instructions" must be a non-empty string');
+	} else {
+		instructions = instructionsRaw;
 	}
 	const skillsRaw = obj.skills;
-	const skills: Array<string> = [];
-	if (skillsRaw !== undefined && skillsRaw !== null) {
-		if (!Array.isArray(skillsRaw)) {
-			throw new Error('Field "skills" must be an array');
-		}
+	let skills: Array<string> | undefined;
+	if (skillsRaw === undefined) {
+		skills = mode === "add" ? [] : undefined;
+	} else if (skillsRaw === null) {
+		throw new Error('Field "skills" must be an array');
+	} else if (!Array.isArray(skillsRaw)) {
+		throw new Error('Field "skills" must be an array');
+	} else {
+		skills = [];
 		for (const item of skillsRaw) {
 			if (typeof item !== "string") {
 				throw new Error('Field "skills" must contain only strings');
 			}
 			skills.push(item);
 		}
+	}
+	if (mode === "add") {
+		return { instructions: instructions as string, skills: skills ?? [] };
 	}
 	return { instructions, skills };
 }

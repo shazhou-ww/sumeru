@@ -63,7 +63,9 @@ describe("installUnhandledRejectionGuard", () => {
 
 	it("defaults to structured logger when no log option is provided", async () => {
 		const loggerMod = await import("../src/logger.js");
-		const errorSpy = vi.spyOn(loggerMod.logger, "error").mockImplementation(() => {});
+		const errorSpy = vi
+			.spyOn(loggerMod.logger, "error")
+			.mockImplementation(() => {});
 		const target = new EventEmitter();
 		const uninstall = installUnhandledRejectionGuard({ target });
 

@@ -52,7 +52,7 @@ export function createProvidersHandler(hostConfig: LoadedHostConfig) {
 			}
 			let body: ProviderBody;
 			try {
-				body = await readProviderBody(req);
+				body = await readProviderBody(req, "add");
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				writeJson(res, 400, errorEnvelope("invalid_body", message));
@@ -85,20 +85,16 @@ export function createProvidersHandler(hostConfig: LoadedHostConfig) {
 				);
 				return;
 			}
-			let body: ProviderBody;
+			let body: ProviderUpdateBody;
 			try {
-				body = await readProviderBody(req);
+				body = await readProviderBody(req, "update");
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				writeJson(res, 400, errorEnvelope("invalid_body", message));
 				return;
 			}
 			try {
-				const provider = store.updateProvider(name, {
-					apiType: body.apiType,
-					baseUrl: body.baseUrl,
-					apiKey: body.apiKey,
-				});
+				const provider = store.updateProvider(name, body);
 				if (provider === null) {
 					writeJson(
 						res,
@@ -148,22 +144,49 @@ type ProviderBody = {
 	apiKey: string | null | undefined;
 };
 
-async function readProviderBody(req: IncomingMessage): Promise<ProviderBody> {
+type ProviderUpdateBody = {
+	apiType: ProviderApiType | undefined;
+	baseUrl: string | null | undefined;
+	apiKey: string | null | undefined;
+};
+
+async function readProviderBody(
+	req: IncomingMessage,
+	mode: "add",
+): Promise<ProviderBody>;
+async function readProviderBody(
+	req: IncomingMessage,
+	mode: "update",
+): Promise<ProviderUpdateBody>;
+async function readProviderBody(
+	req: IncomingMessage,
+	mode: "add" | "update",
+): Promise<ProviderBody | ProviderUpdateBody> {
 	const body = await readJsonBody(req);
 	if (body === null || typeof body !== "object" || Array.isArray(body)) {
 		throw new Error("Request body must be a JSON object");
 	}
 	const obj = body as Record<string, unknown>;
-	const apiType = obj.apiType;
-	if (apiType !== "anthropic" && apiType !== "openai") {
+	const apiTypeRaw = obj.apiType;
+	let apiType: ProviderApiType | undefined;
+	if (apiTypeRaw === undefined) {
+		if (mode === "add") {
+			throw new Error('Field "apiType" is required');
+		}
+	} else if (apiTypeRaw !== "anthropic" && apiTypeRaw !== "openai") {
 		throw new Error('Field "apiType" must be "anthropic" or "openai"');
+	} else {
+		apiType = apiTypeRaw;
 	}
 	const baseUrlRaw = obj.baseUrl;
-	let baseUrl: string | null = null;
-	if (baseUrlRaw !== undefined && baseUrlRaw !== null) {
-		if (typeof baseUrlRaw !== "string" || baseUrlRaw.length === 0) {
-			throw new Error('Field "baseUrl" must be a non-empty string or null');
-		}
+	let baseUrl: string | null | undefined;
+	if (baseUrlRaw === undefined) {
+		baseUrl = mode === "add" ? null : undefined;
+	} else if (baseUrlRaw === null) {
+		baseUrl = null;
+	} else if (typeof baseUrlRaw !== "string" || baseUrlRaw.length === 0) {
+		throw new Error('Field "baseUrl" must be a non-empty string or null');
+	} else {
 		baseUrl = baseUrlRaw;
 	}
 	const apiKeyRaw = obj.apiKey;
@@ -176,6 +199,13 @@ async function readProviderBody(req: IncomingMessage): Promise<ProviderBody> {
 		} else {
 			throw new Error('Field "apiKey" must be a string or null');
 		}
+	}
+	if (mode === "add") {
+		return {
+			apiType: apiType as ProviderApiType,
+			baseUrl: baseUrl ?? null,
+			apiKey,
+		};
 	}
 	return { apiType, baseUrl, apiKey };
 }

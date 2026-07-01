@@ -164,6 +164,85 @@ function prototypePath(prototypesDir: string, name: string): string {
 	return join(prototypesDir, `${name}.yaml`);
 }
 
+export type PrototypeUpdateBody = {
+	persona: string | undefined;
+	model: string | undefined;
+	image: string | undefined;
+	defaults: Prototype["defaults"] | undefined;
+};
+
+export function mergePrototype(
+	existing: Prototype,
+	update: PrototypeUpdateBody,
+): Prototype {
+	return {
+		name: existing.name,
+		persona: update.persona ?? existing.persona,
+		model: update.model ?? existing.model,
+		image: update.image ?? existing.image,
+		defaults:
+			update.defaults === undefined ? existing.defaults : update.defaults,
+	};
+}
+
+export function validatePrototypeUpdate(
+	doc: unknown,
+	path: string,
+	expectedName: string,
+): PrototypeUpdateBody {
+	if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+		throw new Error(
+			`Prototype ${path} must be a YAML mapping at the top level`,
+		);
+	}
+	const obj = doc as Record<string, unknown>;
+	const name = obj.name;
+	if (name !== undefined) {
+		if (typeof name !== "string" || name.length === 0) {
+			throw new Error(
+				`Prototype ${path} field "name" must be a non-empty string`,
+			);
+		}
+		if (name !== expectedName) {
+			throw new Error(
+				`Prototype ${path} field "name" (${JSON.stringify(name)}) must match file name ${JSON.stringify(expectedName)}`,
+			);
+		}
+	}
+	let persona: string | undefined;
+	if (obj.persona !== undefined) {
+		if (typeof obj.persona !== "string" || obj.persona.length === 0) {
+			throw new Error(
+				`Prototype ${path} field "persona" must be a non-empty string`,
+			);
+		}
+		persona = obj.persona;
+	}
+	let model: string | undefined;
+	if (obj.model !== undefined) {
+		if (typeof obj.model !== "string" || obj.model.length === 0) {
+			throw new Error(
+				`Prototype ${path} field "model" must be a non-empty string`,
+			);
+		}
+		model = obj.model;
+	}
+	let image: string | undefined;
+	if (obj.image !== undefined) {
+		if (typeof obj.image !== "string" || obj.image.length === 0) {
+			throw new Error(
+				`Prototype ${path} field "image" must be a non-empty string`,
+			);
+		}
+		image = obj.image;
+	}
+	const defaults =
+		obj.defaults === undefined
+			? undefined
+			: parsePrototypeDefaults(obj.defaults, path);
+	return { persona, model, image, defaults };
+}
+
 export function validatePrototype(
 	doc: unknown,
 	path: string,

@@ -50,7 +50,7 @@ export function createModelsHandler(hostConfig: LoadedHostConfig) {
 			}
 			let body: ModelBody;
 			try {
-				body = await readModelBody(req);
+				body = await readModelBody(req, "add");
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				writeJson(res, 400, errorEnvelope("invalid_body", message));
@@ -89,15 +89,18 @@ export function createModelsHandler(hostConfig: LoadedHostConfig) {
 				);
 				return;
 			}
-			let body: ModelBody;
+			let body: ModelUpdateBody;
 			try {
-				body = await readModelBody(req);
+				body = await readModelBody(req, "update");
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				writeJson(res, 400, errorEnvelope("invalid_body", message));
 				return;
 			}
-			if (store.getProvider(body.provider) === null) {
+			if (
+				body.provider !== undefined &&
+				store.getProvider(body.provider) === null
+			) {
 				writeJson(
 					res,
 					400,
@@ -153,32 +156,81 @@ type ModelBody = {
 	metadata: Record<string, unknown> | null;
 };
 
-async function readModelBody(req: IncomingMessage): Promise<ModelBody> {
+type ModelUpdateBody = {
+	provider: string | undefined;
+	model: string | undefined;
+	contextWindow: number | null | undefined;
+	toolUse: boolean | undefined;
+	streaming: boolean | undefined;
+	metadata: Record<string, unknown> | null | undefined;
+};
+
+async function readModelBody(
+	req: IncomingMessage,
+	mode: "add",
+): Promise<ModelBody>;
+async function readModelBody(
+	req: IncomingMessage,
+	mode: "update",
+): Promise<ModelUpdateBody>;
+async function readModelBody(
+	req: IncomingMessage,
+	mode: "add" | "update",
+): Promise<ModelBody | ModelUpdateBody> {
 	const body = await readJsonBody(req);
 	if (body === null || typeof body !== "object" || Array.isArray(body)) {
 		throw new Error("Request body must be a JSON object");
 	}
 	const obj = body as Record<string, unknown>;
-	const provider = obj.provider;
-	if (typeof provider !== "string" || provider.length === 0) {
+	const providerRaw = obj.provider;
+	let provider: string | undefined;
+	if (providerRaw === undefined) {
+		if (mode === "add") {
+			throw new Error('Field "provider" is required');
+		}
+	} else if (typeof providerRaw !== "string" || providerRaw.length === 0) {
 		throw new Error('Field "provider" must be a non-empty string');
+	} else {
+		provider = providerRaw;
 	}
-	const model = obj.model;
-	if (typeof model !== "string" || model.length === 0) {
+	const modelRaw = obj.model;
+	let model: string | undefined;
+	if (modelRaw === undefined) {
+		if (mode === "add") {
+			throw new Error('Field "model" is required');
+		}
+	} else if (typeof modelRaw !== "string" || modelRaw.length === 0) {
 		throw new Error('Field "model" must be a non-empty string');
+	} else {
+		model = modelRaw;
 	}
-	const contextWindow = parseOptionalNumber(obj.contextWindow, "contextWindow");
-	const toolUse = parseBooleanField(obj.toolUse, "toolUse", true);
-	const streaming = parseBooleanField(obj.streaming, "streaming", true);
-	const metadata = parseMetadataField(obj.metadata);
-	return {
-		provider,
-		model,
-		contextWindow,
-		toolUse,
-		streaming,
-		metadata,
-	};
+	const contextWindow =
+		obj.contextWindow === undefined && mode === "update"
+			? undefined
+			: parseOptionalNumber(obj.contextWindow, "contextWindow");
+	const toolUse =
+		obj.toolUse === undefined && mode === "update"
+			? undefined
+			: parseBooleanField(obj.toolUse, "toolUse", true);
+	const streaming =
+		obj.streaming === undefined && mode === "update"
+			? undefined
+			: parseBooleanField(obj.streaming, "streaming", true);
+	const metadata =
+		obj.metadata === undefined && mode === "update"
+			? undefined
+			: parseMetadataField(obj.metadata);
+	if (mode === "add") {
+		return {
+			provider: provider as string,
+			model: model as string,
+			contextWindow,
+			toolUse: toolUse as boolean,
+			streaming: streaming as boolean,
+			metadata,
+		};
+	}
+	return { provider, model, contextWindow, toolUse, streaming, metadata };
 }
 
 function parseOptionalNumber(value: unknown, field: string): number | null {
