@@ -48,86 +48,40 @@ Provider → Model → Persona → Prototype → Session
 pnpm add -g @sumeru/cli
 ```
 
-### 2. 创建配置目录
+### 2. 一键 setup
 
 ```bash
-mkdir -p my-sumeru/{data/prototypes,data/skills,prototypes/sarsapa}
-cd my-sumeru
-```
-
-### 3. 写 host.yaml
-
-```yaml
-name: my-sumeru
-maxRunning: 3
-workspaceRoot: /workspace
-envFile: .env
-defaults:
-  timeout: 120
-  maxTurns: 20
-  resources:
-    cpu: 2
-    memory: "4g"
-```
-
-### 4. 写 .env
-
-```bash
-echo "SILICONFLOW_API_KEY=sk-your-key" > .env
-```
-
-### 5. 写 Prototype（agent 模板）
-
-```yaml
-# data/prototypes/sarsapa.yaml
-name: sarsapa
-persona: my-agent          # → SQLite Persona.name（下一步创建）
-model: my-model            # → SQLite Model.id（下一步创建）
-image: sumeru/sarsapa:dev  # → Docker 镜像
-```
-
-```yaml
-# prototypes/sarsapa/compose.yaml
-services:
-  agent:
-    image: sumeru/sarsapa:dev
-    mem_limit: 4g
-    cpus: 2
-    volumes:
-      - "${SUMERU_PROJECT_PATH}:${SUMERU_PROJECT_PATH}"
-    environment:
-      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
-```
-
-### 6. 启动 Host
-
-```bash
-sumeru server start --port 7900 --config host.yaml
-```
-
-### 7. 注册 Provider → Model → Persona（SQLite seed）
-
-```bash
-# Provider：谁提供 API
-sumeru provider add siliconflow \
-  --api-type openai \
-  --base-url https://api.siliconflow.cn/v1 \
-  --api-key sk-your-key
-
-# Model：用哪个模型
-sumeru model add my-model \
+sumeru setup \
   --provider siliconflow \
+  --api-key sk-your-key \
   --model deepseek-ai/DeepSeek-V3 \
-  --context-window 128000
-
-# Persona：agent 身份
-# （当前 CLI 未暴露 persona 命令，用 HTTP API）
-curl -X POST http://127.0.0.1:7900/personas/my-agent \
-  -H 'Content-Type: application/json' \
-  -d '{"instructions":"You are a coding agent.","skills":[]}'
+  --root-dir ./my-sumeru
 ```
 
-### 8. 创建 Session 开始工作
+自动创建目录结构、host.yaml、.env、Provider、Model、默认 Persona。幂等可重跑。
+
+### 3. 构建 Agent 镜像
+
+```bash
+cd my-sumeru
+sumeru image build sarsapa --agent sarsapa
+```
+
+自动 Docker build + 注册到 images.yaml。支持的 agent type：`sarsapa`、`hermes`、`claude-code`、`codex`。
+
+### 4. 注册 Prototype
+
+```bash
+sumeru prototype add sarsapa --model deepseek-v3 --image sarsapa
+```
+
+### 5. 启动 Host
+
+```bash
+sumeru server start
+```
+
+### 6. 创建 Session 开始工作
 
 ```bash
 sumeru create sarsapa --project ~/my-project --task "Fix the login bug"
@@ -194,14 +148,31 @@ DELETE /personas/:name      → 204
 
 - `skills` 引用 SQLite 中的 Skill name，创建时会校验是否存在
 
-### Prototype
+### Image（images.yaml CRUD）
 
 ```
-GET  /prototypes            → @sumeru/prototype-list
-GET  /prototypes/:name      → @sumeru/prototype
+GET    /images              → @sumeru/image-list
+GET    /images/:name        → @sumeru/image
+POST   /images/:name        → @sumeru/image（注册/更新）
+DELETE /images/:name        → 204
 ```
 
-Prototype 从 `data/prototypes/*.yaml` 文件加载，Host 启动时读取。
+请求 body：`{ "name": "...", "description": "...", "dockerfile": "...", "builtAt": "...", "digest": "..." }`
+
+`sumeru image build` 成功后自动注册。`prototype add --image` 引用注册名，创建时校验存在。
+
+### Prototype（YAML CRUD）
+
+```
+GET    /prototypes          → @sumeru/prototype-list
+GET    /prototypes/:name    → @sumeru/prototype
+POST   /prototypes/:name   → 201 @sumeru/prototype
+DELETE /prototypes/:name   → 204
+```
+
+请求 body：`{ "name": "...", "persona": "...", "model": "...", "image": "..." }`
+
+创建时校验 `persona`、`model`、`image` 引用均存在。Prototype 也可通过 `data/prototypes/*.yaml` 文件加载。
 
 ### Session
 
@@ -282,6 +253,9 @@ Skills 以文件形式放在 `data/skills/` 下，Host 启动时自动导入 SQL
 | `skills_not_found` | 400 | Persona 引用了不存在的 Skill |
 | `session_not_found` | 404 | Session 不存在 |
 | `session_busy` | 409 | Session 正在运行中 |
+| `prototype_exists` | 409 | Prototype 已存在 |
+| `prototype_not_found` | 404 | Prototype 不存在 |
+| `image_not_found` | 400 | Prototype 引用了不存在的 Image |
 | `invalid_body` | 400 | 请求 body 格式错误 |
 | `invalid_json` | 400 | 非法 JSON |
 
@@ -293,10 +267,13 @@ sumeru <command> [options]
 
 | 命令 | 说明 |
 |------|------|
+| `setup --provider --api-key --model [--root-dir]` | 一键初始化（幂等） |
 | `server start [--config] [--port]` | 启动 Host 服务 |
 | `server stop` | 停止 Host |
 | `server status` | 查看 Host 状态 |
-| `prototypes` | 列出所有 Prototype |
+| `prototype list` | 列出所有 Prototype |
+| `prototype add <name> --model --image [--persona]` | 注册 Prototype |
+| `prototype remove <name>` | 删除 Prototype |
 | `provider list` | 列出 Provider |
 | `provider add <name> --api-type --base-url [--api-key]` | 添加 Provider |
 | `provider remove <name>` | 删除 Provider |
@@ -309,7 +286,8 @@ sumeru <command> [options]
 | `logs <session_id> [--follow]` | 查看 Session 日志 |
 | `stop <session_id>` | 停止 Session |
 | `delete <session_id>` | 删除 Session |
-| `images` | 列出已注册的 Docker 镜像 |
+| `image build <name> --agent <type> [--adapter <path>]` | 构建 Docker 镜像并注册 |
+| `image list` | 列出已注册镜像 |
 
 环境变量：
 
@@ -355,12 +333,19 @@ defaults:                   # 可选：session 默认值
 
 ```yaml
 images:
-  sumeru/sarsapa:dev:
-    description: "Sarsapa worker agent"
+  hermes:
+    description: "Sumeru hermes image (sumeru/hermes:dev)"
+    dockerfile: "docker/hermes/Dockerfile"
+    builtAt: "2026-07-01T09:17:24.720Z"
+    digest: "sha256:c3428a77732cf..."
+  sarsapa:
+    description: "Sumeru sarsapa image (sumeru/sarsapa:dev)"
     dockerfile: "docker/sarsapa/Dockerfile"
-    builtAt: "2026-07-01T12:00:00Z"
-    digest: "sha256:14d06f538bc6"
+    builtAt: "2026-07-01T09:07:49.225Z"
+    digest: "sha256:14d06f538bc62..."
 ```
+
+通过 `sumeru image build` 自动维护，无需手写。
 
 ### Prototype YAML
 
@@ -368,7 +353,7 @@ images:
 name: sarsapa
 persona: sarsapa-worker     # → SQLite Persona.name
 model: deepseek-v4-pro      # → SQLite Model.id
-image: sumeru/sarsapa:dev   # → images.yaml key
+image: sarsapa              # → images.yaml 注册名（sumeru image build 注册）
 defaults:                   # 可选，覆盖 host defaults
   maxTurns: 40
   timeout: 300
@@ -382,7 +367,7 @@ defaults:                   # 可选，覆盖 host defaults
 ```bash
 pnpm install
 pnpm run build        # TypeScript 编译
-pnpm run test         # vitest（184 tests）
+pnpm run test         # vitest（185 tests）
 pnpm run check        # biome lint
 pnpm run typecheck    # tsc --noEmit
 ```
