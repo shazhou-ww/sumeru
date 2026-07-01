@@ -88,8 +88,8 @@ export type CreateProviderInput = {
 };
 
 export type UpdateProviderInput = {
-	apiType: ProviderApiType;
-	baseUrl: string | null;
+	apiType: ProviderApiType | undefined;
+	baseUrl: string | null | undefined;
 	apiKey: string | null | undefined;
 };
 
@@ -104,12 +104,12 @@ export type CreateModelInput = {
 };
 
 export type UpdateModelInput = {
-	provider: string;
-	model: string;
-	contextWindow: number | null;
-	toolUse: boolean;
-	streaming: boolean;
-	metadata: Record<string, unknown> | null;
+	provider: string | undefined;
+	model: string | undefined;
+	contextWindow: number | null | undefined;
+	toolUse: boolean | undefined;
+	streaming: boolean | undefined;
+	metadata: Record<string, unknown> | null | undefined;
 };
 
 export type CreatePersonaInput = {
@@ -119,8 +119,8 @@ export type CreatePersonaInput = {
 };
 
 export type UpdatePersonaInput = {
-	instructions: string;
-	skills: Array<string>;
+	instructions: string | undefined;
+	skills: Array<string> | undefined;
 };
 
 export type CreateSkillInput = {
@@ -294,17 +294,21 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 				.get(name) as ProviderRow | undefined;
 			if (existing === undefined) return null;
 			const now = new Date().toISOString();
+			const apiType =
+				input.apiType === undefined ? existing.api_type : input.apiType;
+			const baseUrl =
+				input.baseUrl === undefined ? existing.base_url : input.baseUrl;
 			const apiKey =
 				input.apiKey === undefined ? existing.api_key : input.apiKey;
 			db.prepare(
 				`UPDATE providers
          SET api_type = ?, base_url = ?, api_key = ?, updated_at = ?
          WHERE name = ?`,
-			).run(input.apiType, input.baseUrl, apiKey, now, name);
+			).run(apiType, baseUrl, apiKey, now, name);
 			return rowToProvider({
 				...existing,
-				api_type: input.apiType,
-				base_url: input.baseUrl,
+				api_type: apiType,
+				base_url: baseUrl,
 				api_key: apiKey,
 				updated_at: now,
 			});
@@ -374,28 +378,44 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 				.get(id) as ModelRow | undefined;
 			if (existing === undefined) return null;
 			const now = new Date().toISOString();
-			const metadataJson = serializeMetadata(input.metadata);
+			const provider =
+				input.provider === undefined ? existing.provider : input.provider;
+			const model = input.model === undefined ? existing.model : input.model;
+			const contextWindow =
+				input.contextWindow === undefined
+					? existing.context_window
+					: input.contextWindow;
+			const toolUse =
+				input.toolUse === undefined ? existing.tool_use === 1 : input.toolUse;
+			const streaming =
+				input.streaming === undefined
+					? existing.streaming === 1
+					: input.streaming;
+			const metadataJson =
+				input.metadata === undefined
+					? existing.metadata
+					: serializeMetadata(input.metadata);
 			db.prepare(
 				`UPDATE models
          SET provider = ?, model = ?, context_window = ?, tool_use = ?, streaming = ?, metadata = ?, updated_at = ?
          WHERE id = ?`,
 			).run(
-				input.provider,
-				input.model,
-				input.contextWindow,
-				input.toolUse ? 1 : 0,
-				input.streaming ? 1 : 0,
+				provider,
+				model,
+				contextWindow,
+				toolUse ? 1 : 0,
+				streaming ? 1 : 0,
 				metadataJson,
 				now,
 				id,
 			);
 			return rowToModel({
 				...existing,
-				provider: input.provider,
-				model: input.model,
-				context_window: input.contextWindow,
-				tool_use: input.toolUse ? 1 : 0,
-				streaming: input.streaming ? 1 : 0,
+				provider,
+				model,
+				context_window: contextWindow,
+				tool_use: toolUse ? 1 : 0,
+				streaming: streaming ? 1 : 0,
 				metadata: metadataJson,
 				updated_at: now,
 			});
@@ -442,15 +462,22 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 				.get(name) as PersonaRow | undefined;
 			if (existing === undefined) return null;
 			const now = new Date().toISOString();
-			const skillsJson = JSON.stringify(input.skills);
+			const instructions =
+				input.instructions === undefined
+					? existing.instructions
+					: input.instructions;
+			const skillsJson =
+				input.skills === undefined
+					? existing.skills
+					: JSON.stringify(input.skills);
 			db.prepare(
 				`UPDATE personas
          SET instructions = ?, skills = ?, updated_at = ?
          WHERE name = ?`,
-			).run(input.instructions, skillsJson, now, name);
+			).run(instructions, skillsJson, now, name);
 			return rowToPersona({
 				...existing,
-				instructions: input.instructions,
+				instructions,
 				skills: skillsJson,
 				updated_at: now,
 			});

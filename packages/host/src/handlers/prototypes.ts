@@ -6,8 +6,12 @@ import {
 } from "../config.js";
 import {
 	deletePrototypeFile,
+	mergePrototype,
+	type PrototypeUpdateBody,
 	prototypeFileExists,
+	readPrototypeFile,
 	validatePrototype,
+	validatePrototypeUpdate,
 	writePrototypeFile,
 } from "../data-store.js";
 import {
@@ -114,7 +118,13 @@ async function upsertPrototype(
 ): Promise<void> {
 	let prototype: Prototype;
 	try {
-		prototype = await readPrototypeBody(req, name);
+		if (mode === "add") {
+			prototype = await readPrototypeBody(req, name, "add");
+		} else {
+			const existing = await readPrototypeFile(hostConfig.prototypesDir, name);
+			const update = await readPrototypeBody(req, name, "update");
+			prototype = mergePrototype(existing, update);
+		}
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
 		writeJson(res, 400, errorEnvelope("invalid_body", message));
@@ -161,16 +171,33 @@ async function upsertPrototype(
 async function readPrototypeBody(
 	req: IncomingMessage,
 	expectedName: string,
-): Promise<Prototype> {
+	mode: "add",
+): Promise<Prototype>;
+async function readPrototypeBody(
+	req: IncomingMessage,
+	expectedName: string,
+	mode: "update",
+): Promise<PrototypeUpdateBody>;
+async function readPrototypeBody(
+	req: IncomingMessage,
+	expectedName: string,
+	mode: "add" | "update",
+): Promise<Prototype | PrototypeUpdateBody> {
 	const contentType = req.headers["content-type"] ?? "";
 	if (contentType.includes("application/json")) {
 		const body = await readJsonBody(req);
-		return validatePrototype(body, "request body", expectedName);
+		if (mode === "add") {
+			return validatePrototype(body, "request body", expectedName);
+		}
+		return validatePrototypeUpdate(body, "request body", expectedName);
 	}
 	const raw = await readTextBody(req);
 	const { parse: parseYaml } = await import("yaml");
 	const doc = parseYaml(raw);
-	return validatePrototype(doc, "request body", expectedName);
+	if (mode === "add") {
+		return validatePrototype(doc, "request body", expectedName);
+	}
+	return validatePrototypeUpdate(doc, "request body", expectedName);
 }
 
 function writePrototypeError(res: ServerResponse, err: unknown): void {

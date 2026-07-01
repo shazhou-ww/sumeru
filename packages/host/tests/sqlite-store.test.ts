@@ -51,9 +51,18 @@ describe("sqlite-store", () => {
 		expect(updated?.baseUrl).toBe("http://localhost:9090");
 		expect(updated?.apiKey).toBe("sk-new-s****");
 
+		const partialUpdate = store.updateProvider("anthropic-local", {
+			apiType: undefined,
+			baseUrl: "http://localhost:7070",
+			apiKey: undefined,
+		});
+		expect(partialUpdate?.apiType).toBe("openai");
+		expect(partialUpdate?.baseUrl).toBe("http://localhost:7070");
+		expect(partialUpdate?.apiKey).toBe("sk-new-s****");
+
 		const keptKey = store.updateProvider("anthropic-local", {
-			apiType: "openai",
-			baseUrl: "http://localhost:9090",
+			apiType: undefined,
+			baseUrl: undefined,
 			apiKey: undefined,
 		});
 		expect(keptKey?.apiKey).toBe("sk-new-s****");
@@ -96,17 +105,28 @@ describe("sqlite-store", () => {
 		expect(listed).toHaveLength(1);
 
 		const updated = store.updateModel("gpt-4o-mini", {
-			provider: "openai-proxy",
+			provider: undefined,
 			model: "gpt-4o",
-			contextWindow: 200000,
+			contextWindow: undefined,
 			toolUse: false,
-			streaming: false,
-			metadata: null,
+			streaming: undefined,
+			metadata: undefined,
 		});
 		expect(updated?.model).toBe("gpt-4o");
+		expect(updated?.contextWindow).toBe(128000);
 		expect(updated?.toolUse).toBe(false);
-		expect(updated?.streaming).toBe(false);
-		expect(updated?.metadata).toBeNull();
+		expect(updated?.streaming).toBe(true);
+		expect(updated?.metadata).toEqual({ tier: "fast" });
+
+		const clearedMetadata = store.updateModel("gpt-4o-mini", {
+			provider: undefined,
+			model: undefined,
+			contextWindow: undefined,
+			toolUse: undefined,
+			streaming: undefined,
+			metadata: null,
+		});
+		expect(clearedMetadata?.metadata).toBeNull();
 
 		expect(store.deleteModel("gpt-4o-mini")).toBe(true);
 		expect(store.getModel("gpt-4o-mini")).toBeNull();
