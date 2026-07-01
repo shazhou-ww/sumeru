@@ -6,3 +6,4 @@ dist/
 false/
 data/
 .pnpm-store
+.build/

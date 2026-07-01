@@ -62,11 +62,18 @@ prerequisites:
      -d '{"name":"tc-bad-model","persona":"tc-persona","model":"ghost-model","image":"sumeru-worker:latest"}'
    ```
 
-5. 缺少 persona 字段（400）：
+5. 引用不存在的 image（400）：
+   ```bash
+   curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:7901/prototypes/tc-bad-image \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"tc-bad-image","persona":"tc-persona","model":"tc-model","image":"ghost-image"}'
+   ```
+
+6. 缺少 persona 字段（400）：
    ```bash
    curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:7901/prototypes/tc-missing-field \
      -H 'Content-Type: application/json' \
-     -d '{"name":"tc-missing-field","model":"tc-model","image":"sumeru-worker:latest"}'
+     -d '{"name":"tc-missing-field","model":"tc-model","image":"tc-image"}'
    ```
 
 ## Expected
@@ -75,7 +82,8 @@ prerequisites:
 - [ ] Step 2 返回 400，`error` = `invalid_body`，message 含 `must match`
 - [ ] Step 3 返回 400，`error` = `persona_not_found`
 - [ ] Step 4 返回 400，`error` = `model_not_found`
-- [ ] Step 5 返回 400，`error` = `invalid_body`，message 含 `persona`
+- [ ] Step 5 返回 400，`error` = `image_not_found`
+- [ ] Step 6 返回 400，`error` = `invalid_body`，message 含 `persona`
 
 ## Cleanup
 
@@ -88,3 +96,4 @@ curl -s -X DELETE http://127.0.0.1:7901/prototypes/tc-url-name
 
 - Step 3 返回 201 → 创建时未校验 persona 引用有效性
 - Step 4 返回 201 → 创建时未校验 model 引用有效性
+- Step 5 返回 201 → 创建时未校验 image 注册名有效性
