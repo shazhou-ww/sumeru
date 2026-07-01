@@ -15,8 +15,19 @@ const port = Number(process.env.SUMERU_PORT ?? "7900");
 const started = await startHost({ rootDir, host, port, transport: null });
 console.log(`Listening on http://${started.host}:${started.port}`);
 
-process.on("SIGINT", () => {
+let stopping = false;
+const graceful = (): void => {
+	if (stopping) return;
+	stopping = true;
+	const timeout = setTimeout(() => {
+		console.error("Graceful shutdown timed out (10s), forcing exit.");
+		process.exit(1);
+	}, 10_000);
 	void started.stop().then(() => {
+		clearTimeout(timeout);
 		process.exit(0);
 	});
-});
+};
+
+process.on("SIGINT", graceful);
+process.on("SIGTERM", graceful);

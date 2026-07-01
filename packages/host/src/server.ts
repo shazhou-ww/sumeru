@@ -137,13 +137,15 @@ export async function startHost(config: StartHostConfig): Promise<StartedHost> {
 			resolve({
 				host: config.host,
 				port: address.port,
-				stop: () =>
-					new Promise<void>((res, rej) => {
+				stop: async () => {
+					await manager.destroyAll();
+					await new Promise<void>((res, rej) => {
 						server.close((err) => {
 							if (err) rej(err);
 							else res();
 						});
-					}),
+					});
+				},
 			});
 		};
 		server.once("error", onError);

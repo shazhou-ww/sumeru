@@ -69,6 +69,7 @@ export type SessionManager = {
 	getHistory(id: string, limit: number, offset: number): HistoryValue;
 	getSessionTurns(id: string, after: number | null): Array<Turn>;
 	hostRoot(): HostRootSnapshot;
+	destroyAll(): Promise<void>;
 };
 
 export type HostRootSnapshot = {
@@ -775,6 +776,28 @@ export function createSessionManager(input: {
 		};
 	}
 
+	async function destroyAll(): Promise<void> {
+		const ids = [...sessions.keys()];
+		await Promise.allSettled(
+			ids.map(async (id) => {
+				const record = sessions.get(id);
+				if (record === undefined) return;
+				stopAdapter(id);
+				try {
+					await input.transport.down({
+						projectName: record.projectName,
+						composePath: record.composePath,
+						workDir: input.hostConfig.rootDir,
+					});
+				} catch {
+					// best-effort: container may already be gone
+				}
+				sessions.delete(id);
+				adapters.delete(id);
+			}),
+		);
+	}
+
 	return {
 		listSessions,
 		getSession,
@@ -787,6 +810,7 @@ export function createSessionManager(input: {
 		getHistory,
 		getSessionTurns,
 		hostRoot,
+		destroyAll,
 	};
 }
 
