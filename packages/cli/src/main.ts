@@ -4,7 +4,9 @@ import { dirname, resolve } from "node:path";
 import {
 	formatDockerImagesOutput,
 	formatHostStatus,
+	formatModelTable,
 	formatPrototypeTable,
+	formatProviderTable,
 	formatSessionTable,
 } from "./format.js";
 import { createHostClient, HostClientError } from "./http-client.js";
@@ -23,6 +25,12 @@ Commands:
   server stop
   server status
   prototypes
+  provider list
+  provider add <name> --api-type <type> --base-url <url> [--api-key <key>]
+  provider remove <name>
+  model list
+  model add <id> --provider <name> --model <model> [--context-window N] [--no-tool-use] [--no-streaming]
+  model remove <id>
   sessions
   create <prototype> --project <path> --task <description>
   delete <session_id>
@@ -223,6 +231,140 @@ async function runPrototypes(
 	}
 }
 
+async function runProviderList(
+	flags: Map<string, string | boolean>,
+): Promise<void> {
+	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+	try {
+		const envelope = await client.listProviders();
+		process.stdout.write(`${formatProviderTable(envelope.value)}\n`);
+	} catch (err) {
+		writeClientError(err);
+	}
+}
+
+async function runProviderAdd(
+	flags: Map<string, string | boolean>,
+	positionals: Array<string>,
+): Promise<void> {
+	const name = positionals[0];
+	const apiType = flagString(flags, "api-type");
+	const baseUrl = flagString(flags, "base-url");
+	const apiKey = flagString(flags, "api-key");
+	if (
+		name === undefined ||
+		name.length === 0 ||
+		apiType === null ||
+		baseUrl === null
+	) {
+		fail(
+			"Usage: sumeru provider add <name> --api-type <type> --base-url <url> [--api-key <key>]",
+		);
+	}
+	if (apiType !== "anthropic" && apiType !== "openai") {
+		fail('Flag --api-type must be "anthropic" or "openai"');
+	}
+	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+	try {
+		const envelope = await client.createProvider(name, {
+			apiType,
+			baseUrl,
+			apiKey,
+		});
+		process.stdout.write(`${envelope.value.name}\n`);
+	} catch (err) {
+		writeClientError(err);
+	}
+}
+
+async function runProviderRemove(
+	flags: Map<string, string | boolean>,
+	positionals: Array<string>,
+): Promise<void> {
+	const name = positionals[0];
+	if (name === undefined || name.length === 0) {
+		fail("Usage: sumeru provider remove <name>");
+	}
+	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+	try {
+		await client.deleteProvider(name);
+		process.stdout.write(`removed provider ${name}\n`);
+	} catch (err) {
+		writeClientError(err);
+	}
+}
+
+async function runModelList(
+	flags: Map<string, string | boolean>,
+): Promise<void> {
+	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+	try {
+		const envelope = await client.listModels();
+		process.stdout.write(`${formatModelTable(envelope.value)}\n`);
+	} catch (err) {
+		writeClientError(err);
+	}
+}
+
+async function runModelAdd(
+	flags: Map<string, string | boolean>,
+	positionals: Array<string>,
+): Promise<void> {
+	const id = positionals[0];
+	const provider = flagString(flags, "provider");
+	const model = flagString(flags, "model");
+	const contextWindowRaw = flagString(flags, "context-window");
+	if (
+		id === undefined ||
+		id.length === 0 ||
+		provider === null ||
+		model === null
+	) {
+		fail(
+			"Usage: sumeru model add <id> --provider <name> --model <model> [--context-window N] [--no-tool-use] [--no-streaming]",
+		);
+	}
+	let contextWindow: number | null = null;
+	if (contextWindowRaw !== null) {
+		const parsed = Number.parseInt(contextWindowRaw, 10);
+		if (!Number.isFinite(parsed)) {
+			fail("Flag --context-window must be a finite number");
+		}
+		contextWindow = parsed;
+	}
+	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+	try {
+		const envelope = await client.createModel(id, {
+			provider,
+			model,
+			contextWindow,
+			toolUse: !flagBoolean(flags, "no-tool-use"),
+			streaming: !flagBoolean(flags, "no-streaming"),
+			metadata: null,
+		});
+		process.stdout.write(`${envelope.value.id}\n`);
+	} catch (err) {
+		writeClientError(err);
+	}
+}
+
+async function runModelRemove(
+	flags: Map<string, string | boolean>,
+	positionals: Array<string>,
+): Promise<void> {
+	const id = positionals[0];
+	if (id === undefined || id.length === 0) {
+		fail("Usage: sumeru model remove <id>");
+	}
+	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+	try {
+		await client.deleteModel(id);
+		process.stdout.write(`removed model ${id}\n`);
+	} catch (err) {
+		writeClientError(err);
+	}
+}
+
 async function runSessions(
 	flags: Map<string, string | boolean>,
 ): Promise<void> {
@@ -411,6 +553,36 @@ async function main(): Promise<void> {
 	if (cmd === "prototypes") {
 		await runPrototypes(parsed.flags);
 		return;
+	}
+	if (cmd === "provider") {
+		if (sub === "list") {
+			await runProviderList(parsed.flags);
+			return;
+		}
+		if (sub === "add") {
+			await runProviderAdd(parsed.flags, parsed.positionals);
+			return;
+		}
+		if (sub === "remove") {
+			await runProviderRemove(parsed.flags, parsed.positionals);
+			return;
+		}
+		fail(`Unknown provider subcommand: ${sub ?? "(none)"}`);
+	}
+	if (cmd === "model") {
+		if (sub === "list") {
+			await runModelList(parsed.flags);
+			return;
+		}
+		if (sub === "add") {
+			await runModelAdd(parsed.flags, parsed.positionals);
+			return;
+		}
+		if (sub === "remove") {
+			await runModelRemove(parsed.flags, parsed.positionals);
+			return;
+		}
+		fail(`Unknown model subcommand: ${sub ?? "(none)"}`);
 	}
 	if (cmd === "sessions") {
 		await runSessions(parsed.flags);

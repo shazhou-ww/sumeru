@@ -1,4 +1,4 @@
-import type { SessionInfo } from "@sumeru/core";
+import type { Model, Provider, SessionInfo } from "@sumeru/core";
 import type { HostRootValue, PrototypeListItem } from "./http-client.js";
 
 export type TableColumn<T> = {
@@ -39,6 +39,39 @@ export function formatPrototypeTable(
 ): string {
 	return formatTable(prototypes, [
 		{ header: "NAME", width: 24, value: (row) => row.name },
+	]);
+}
+
+export function formatProviderTable(providers: Array<Provider>): string {
+	return formatTable(providers, [
+		{ header: "NAME", width: 20, value: (row) => row.name },
+		{ header: "API TYPE", width: 12, value: (row) => row.apiType },
+		{ header: "BASE URL", width: 32, value: (row) => row.baseUrl ?? "-" },
+		{ header: "API KEY", width: 16, value: (row) => row.apiKey ?? "-" },
+	]);
+}
+
+export function formatModelTable(models: Array<Model>): string {
+	return formatTable(models, [
+		{ header: "ID", width: 20, value: (row) => row.id },
+		{ header: "PROVIDER", width: 16, value: (row) => row.provider },
+		{ header: "MODEL", width: 24, value: (row) => row.model },
+		{
+			header: "CTX",
+			width: 8,
+			value: (row) =>
+				row.contextWindow === null ? "-" : String(row.contextWindow),
+		},
+		{
+			header: "TOOLS",
+			width: 6,
+			value: (row) => (row.toolUse ? "yes" : "no"),
+		},
+		{
+			header: "STREAM",
+			width: 7,
+			value: (row) => (row.streaming ? "yes" : "no"),
+		},
 	]);
 }
 

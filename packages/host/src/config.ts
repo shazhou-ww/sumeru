@@ -16,6 +16,7 @@ import {
 	loadPrototypeInfo,
 	loadPrototypesFromDisk,
 } from "./data-store.js";
+import { openDatabase } from "./sqlite-store.js";
 import type { LoadedHostConfig, PrototypeInfo } from "./types.js";
 
 const DEFAULT_HOST_FILE = "host.yaml";
@@ -51,6 +52,7 @@ export async function loadHostConfig(
 		}
 	}
 	const images = await loadImagesConfig(rootDir, doc, configPath);
+	const sqliteStore = openDatabase(join(dataDir, "sumeru.db"));
 	return {
 		rootDir,
 		configPath,
@@ -60,6 +62,7 @@ export async function loadHostConfig(
 		config,
 		prototypes,
 		images,
+		sqliteStore,
 	};
 }
 

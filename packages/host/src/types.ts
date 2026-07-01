@@ -6,6 +6,7 @@ import type {
 	SessionInfo,
 } from "@sumeru/core";
 import type { TurnRecord } from "./ocas-recorder.js";
+import type { SqliteStore } from "./sqlite-store.js";
 
 export type Envelope<T> = {
 	type: string;
@@ -45,6 +46,7 @@ export type LoadedHostConfig = {
 	config: HostConfig;
 	prototypes: Map<string, PrototypeInfo>;
 	images: Map<string, Image>;
+	sqliteStore: SqliteStore;
 };
 
 export type ManagedSession = SessionInfo & {

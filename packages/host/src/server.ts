@@ -7,7 +7,9 @@ import {
 	createHistoryHandler,
 	createImagesHandler,
 	createMessagesHandler,
+	createModelsHandler,
 	createPrototypesHandler,
+	createProvidersHandler,
 	createRootHandler,
 	createSearchHandler,
 	createSessionsHandler,
@@ -46,6 +48,8 @@ export function createHostHandler(input: {
 	version: string;
 }): (req: IncomingMessage, res: ServerResponse) => void {
 	const prototypes = createPrototypesHandler(input.hostConfig);
+	const providers = createProvidersHandler(input.hostConfig);
+	const models = createModelsHandler(input.hostConfig);
 	const skills = createSkillsHandler(input.hostConfig);
 	const images = createImagesHandler(input.hostConfig);
 	const sessions = createSessionsHandler(input.manager);
@@ -61,6 +65,16 @@ export function createHostHandler(input: {
 		.route("POST", "/prototypes/:name", prototypes.create)
 		.route("PUT", "/prototypes/:name", prototypes.update)
 		.route("DELETE", "/prototypes/:name", prototypes.remove)
+		.route("GET", "/providers", providers.list)
+		.route("GET", "/providers/:name", providers.detail)
+		.route("POST", "/providers/:name", providers.create)
+		.route("PUT", "/providers/:name", providers.update)
+		.route("DELETE", "/providers/:name", providers.remove)
+		.route("GET", "/models", models.list)
+		.route("GET", "/models/:id", models.detail)
+		.route("POST", "/models/:id", models.create)
+		.route("PUT", "/models/:id", models.update)
+		.route("DELETE", "/models/:id", models.remove)
 		.route("GET", "/skills/:name", skills.get)
 		.route("PUT", "/skills/:name", skills.put)
 		.route("DELETE", "/skills/:name", skills.remove)
