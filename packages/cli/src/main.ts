@@ -10,7 +10,6 @@ import {
 	formatSessionTable,
 } from "./format.js";
 import { createHostClient, HostClientError } from "./http-client.js";
-import { runSetup } from "./setup.js";
 import {
 	isProcessAlive,
 	readPidFile,
@@ -18,6 +17,7 @@ import {
 	resolvePidFilePath,
 	writePidFile,
 } from "./pid-file.js";
+import { runSetup } from "./setup.js";
 
 const HELP_TEXT = `Usage: sumeru <command> [options]
 
@@ -28,6 +28,9 @@ Commands:
   server stop
   server status
   prototypes
+  prototype list
+  prototype add <name> --model <model-id> --image <docker-image> [--persona <name>]
+  prototype remove <name>
   provider list
   provider add <name> --api-type <type> --base-url <url> [--api-key <key>]
   provider remove <name>
@@ -234,6 +237,54 @@ async function runPrototypes(
 	try {
 		const envelope = await client.listPrototypes();
 		process.stdout.write(`${formatPrototypeTable(envelope.value)}\n`);
+	} catch (err) {
+		writeClientError(err);
+	}
+}
+
+async function runPrototypeAdd(
+	flags: Map<string, string | boolean>,
+	positionals: Array<string>,
+): Promise<void> {
+	const name = positionals[0];
+	const model = flagString(flags, "model");
+	const image = flagString(flags, "image");
+	const persona = flagString(flags, "persona") ?? "default";
+	if (
+		name === undefined ||
+		name.length === 0 ||
+		model === null ||
+		image === null
+	) {
+		fail(
+			"Usage: sumeru prototype add <name> --model <model-id> --image <docker-image> [--persona <name>]",
+		);
+	}
+	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+	try {
+		const envelope = await client.createPrototype(name, {
+			persona,
+			model,
+			image,
+		});
+		process.stdout.write(`${envelope.value.name}\n`);
+	} catch (err) {
+		writeClientError(err);
+	}
+}
+
+async function runPrototypeRemove(
+	flags: Map<string, string | boolean>,
+	positionals: Array<string>,
+): Promise<void> {
+	const name = positionals[0];
+	if (name === undefined || name.length === 0) {
+		fail("Usage: sumeru prototype remove <name>");
+	}
+	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+	try {
+		await client.deletePrototype(name);
+		process.stdout.write(`removed prototype ${name}\n`);
 	} catch (err) {
 		writeClientError(err);
 	}
@@ -583,9 +634,20 @@ async function main(): Promise<void> {
 		fail(`Unknown server subcommand: ${sub ?? "(none)"}`);
 	}
 
-	if (cmd === "prototypes") {
+	if (cmd === "prototypes" || (cmd === "prototype" && sub === "list")) {
 		await runPrototypes(parsed.flags);
 		return;
+	}
+	if (cmd === "prototype") {
+		if (sub === "add") {
+			await runPrototypeAdd(parsed.flags, parsed.positionals);
+			return;
+		}
+		if (sub === "remove") {
+			await runPrototypeRemove(parsed.flags, parsed.positionals);
+			return;
+		}
+		fail(`Unknown prototype subcommand: ${sub ?? "(none)"}`);
 	}
 	if (cmd === "provider") {
 		if (sub === "list") {

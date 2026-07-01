@@ -24,6 +24,21 @@ export type PrototypeListItem = {
 	name: string;
 };
 
+export type PrototypeDetail = {
+	name: string;
+	prototype: {
+		name: string;
+		persona: string;
+		model: string;
+		image: string;
+		defaults: {
+			maxTurns: number;
+			timeout: number;
+			resources: { cpu: number; memory: string };
+		} | null;
+	};
+};
+
 export type CreateSessionBody = {
 	prototype: string;
 	project: string;
@@ -35,6 +50,15 @@ export type CreateSessionBody = {
 export type HostClient = {
 	getRoot(): Promise<Envelope<HostRootValue>>;
 	listPrototypes(): Promise<Envelope<Array<PrototypeListItem>>>;
+	createPrototype(
+		name: string,
+		body: {
+			persona: string;
+			model: string;
+			image: string;
+		},
+	): Promise<Envelope<PrototypeDetail>>;
+	deletePrototype(name: string): Promise<void>;
 	listProviders(): Promise<Envelope<Array<Provider>>>;
 	createProvider(
 		name: string,
@@ -131,6 +155,39 @@ export function createHostClient(options: HostClientOptions): HostClient {
 				null,
 			);
 			return json;
+		},
+		async createPrototype(name, body) {
+			const { json } = await requestJson<PrototypeDetail>(
+				"POST",
+				`/prototypes/${encodeURIComponent(name)}`,
+				{ name, ...body },
+			);
+			return json;
+		},
+		async deletePrototype(name) {
+			const response = await fetch(
+				`${baseUrl}/prototypes/${encodeURIComponent(name)}`,
+				{ method: "DELETE" },
+			);
+			if (response.status === 204) return;
+			const text = await response.text();
+			if (text.length === 0) {
+				throw new HostClientError(
+					response.status,
+					"request_failed",
+					`HTTP ${String(response.status)}`,
+				);
+			}
+			const json = JSON.parse(text) as Envelope<{
+				error: string;
+				message: string;
+			}>;
+			const errValue = json.value;
+			throw new HostClientError(
+				response.status,
+				errValue.error,
+				errValue.message,
+			);
 		},
 		async listProviders() {
 			const { json } = await requestJson<Array<Provider>>(
