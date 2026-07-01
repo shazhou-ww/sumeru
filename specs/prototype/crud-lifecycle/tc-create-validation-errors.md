@@ -3,7 +3,8 @@ id: tc-create-validation-errors
 spec: crud-lifecycle
 tags: [e2e, prototype, create, validation, error]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - Prototype "tc-conflict-target" exists (for 409 test)
   - Persona "tc-persona" and Model "tc-model" exist in SQLite
 ---

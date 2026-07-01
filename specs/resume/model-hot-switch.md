@@ -3,7 +3,8 @@ id: tc-model-hot-switch
 spec: resume
 tags: [e2e, session, model, hot-switch, message]
 prerequisites:
-  - Sumeru host running
+  - "[e2e-prerequisites](../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - Session in idle state (completed first task)
   - Multiple Models registered in SQLite
 ---

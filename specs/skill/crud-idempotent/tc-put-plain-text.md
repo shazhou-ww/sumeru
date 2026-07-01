@@ -3,7 +3,8 @@ id: tc-put-plain-text
 spec: crud-idempotent
 tags: [e2e, skill, crud, create, plain-text]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - Skill "plain-skill" does NOT exist (clean state)
 ---
 

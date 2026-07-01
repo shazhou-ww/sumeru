@@ -3,7 +3,8 @@ id: tc-get-skill
 spec: crud-idempotent
 tags: [e2e, skill, crud, get, read]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - Skill "test-skill" exists (from previous PUT)
 ---
 

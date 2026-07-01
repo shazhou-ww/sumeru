@@ -3,7 +3,8 @@ id: tc-detail-not-found
 spec: list-and-detail
 tags: [e2e, api, error, session]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
 ---
 
 # Detail Not Found: 404 Error Envelope

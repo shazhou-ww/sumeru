@@ -20,7 +20,7 @@ shape is defined in `packages/core/src/types.ts:87-95`.
 
 ## Setup
 
-1. Sumeru host running (port 7901), an adapter-hermes session created.
+1. [e2e-prerequisites](../../e2e-prerequisites.md) 已完成，host running (port 7901), an adapter-hermes session created.
 
 ## Steps
 

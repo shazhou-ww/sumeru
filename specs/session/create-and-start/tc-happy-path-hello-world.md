@@ -3,8 +3,8 @@ id: tc-happy-path-hello-world
 spec: create-and-start
 tags: [e2e, session, create, happy-path]
 prerequisites:
-  - Sumeru host running
-  - Provider + Model + Persona + Prototype 已在 SQLite 和磁盘中创建
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
 ---
 
 # Happy Path: Create Session & Hello World
@@ -17,35 +17,13 @@ prerequisites:
    ```bash
    curl -s http://127.0.0.1:7901/ | jq '.value.status'
    ```
+   → `{ "running": 0, "queued": 0, "idle": 0 }`
 
-2. Seed 数据（如未创建）：
+2. 确认 prototype 可用：
    ```bash
-   # Provider
-   curl -s -X POST http://127.0.0.1:7901/providers/tc-anthropic \
-     -H 'Content-Type: application/json' \
-     -d '{"apiType":"anthropic","baseUrl":"https://api.anthropic.com","apiKey":"sk-test-key"}'
-
-   # Model
-   curl -s -X POST http://127.0.0.1:7901/models/tc-sonnet \
-     -H 'Content-Type: application/json' \
-     -d '{"provider":"tc-anthropic","model":"claude-sonnet-4-20250514"}'
-
-   # Persona
-   curl -s -X POST http://127.0.0.1:7901/personas/tc-basic \
-     -H 'Content-Type: application/json' \
-     -d '{"instructions":"A general-purpose coding agent.","skills":[]}'
-
-   # Prototype (需要已有 compose.yaml)
-   curl -s -X POST http://127.0.0.1:7901/prototypes/hermes \
-     -H 'Content-Type: application/json' \
-     -d '{"name":"hermes","persona":"tc-basic","model":"tc-sonnet","image":"sumeru-worker:latest"}'
+   curl -s http://127.0.0.1:7901/prototypes | jq '.value[].name'
    ```
-
-3. 确认 prototype 已就绪：
-   ```bash
-   curl -s http://127.0.0.1:7901/prototypes/hermes | jq '.value.prototype.model'
-   ```
-   → 应返回 `"tc-sonnet"`
+   → 应含 `"sarsapa"`
 
 ## Steps
 
@@ -53,7 +31,7 @@ prerequisites:
    ```bash
    curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:7901/sessions \
      -H 'Content-Type: application/json' \
-     -d '{"prototype":"hermes","project":"test-project","task":"Say hello"}'
+     -d '{"prototype":"sarsapa","project":"test-project","task":"Say hello world"}'
    ```
    → 保存返回的 `value.id` 为 `$SID`
 
@@ -74,8 +52,8 @@ prerequisites:
 - [ ] Step 1 `type` = `@sumeru/session`
 - [ ] Step 1 `value.status` = `running`
 - [ ] Step 1 `value.model.provider` 是对象（含 name/endpoint/apiType）
-- [ ] Step 1 `value.model.name` = `claude-sonnet-4-20250514`
-- [ ] Step 1 `value.prototype` = `hermes`
+- [ ] Step 1 `value.model.name` = `deepseek-ai/DeepSeek-V3`
+- [ ] Step 1 `value.prototype` = `sarsapa`
 - [ ] Step 2 收到至少一个 `event: turn`（role=assistant）
 - [ ] Step 2 收到 `event: exit`
 - [ ] Step 3 `value.status` = `idle`
@@ -83,7 +61,7 @@ prerequisites:
 
 ## Failure Signals
 
-- 404 prototype_not_found → prototype YAML 文件缺失或 persona/model 引用无效
-- 500 model_not_found → SQLite 中 Model 未创建
+- 404 prototype_not_found → `sumeru setup` 未执行或 prototype YAML 文件缺失
+- 500 model_not_found → SQLite 中 Model 未创建（检查 `sumeru setup` 输出）
 - 500 provider_not_found → SQLite 中 Provider 未创建
-- adapter 超时 → Docker image 未构建或容器启动失败
+- adapter 超时 → Docker image 未构建（`bash scripts/build-image.sh sarsapa`）

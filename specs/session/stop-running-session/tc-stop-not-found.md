@@ -3,7 +3,8 @@ id: tc-stop-not-found
 spec: stop-running-session
 tags: [e2e, session, lifecycle, stop, not-found]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
 ---
 
 # Stop Non-Existent Session

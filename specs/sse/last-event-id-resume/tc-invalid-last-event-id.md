@@ -13,7 +13,8 @@ Verify that invalid (non-integer or negative) `Last-Event-ID` values are treated
 
 ## Preconditions
 
-- Sumeru host running on port 7901
+- "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+- Host running on port 7901
 - A completed session with events in the buffer
 
 ## Steps

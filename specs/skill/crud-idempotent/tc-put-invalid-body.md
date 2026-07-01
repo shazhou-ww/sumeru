@@ -3,7 +3,8 @@ id: tc-put-invalid-body
 spec: crud-idempotent
 tags: [e2e, skill, crud, validation, error]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
 ---
 
 # PUT Skill: Invalid Body (JSON missing content field)

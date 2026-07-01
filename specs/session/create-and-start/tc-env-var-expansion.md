@@ -3,7 +3,8 @@ id: tc-env-var-expansion
 spec: create-and-start
 tags: [e2e, config, env, host]
 prerequisites:
-  - Sumeru host running
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - host.yaml uses ${VAR} or ${VAR:-default} syntax in at least one field
   - Referenced env vars are set in host process environment (or envFile)
 ---

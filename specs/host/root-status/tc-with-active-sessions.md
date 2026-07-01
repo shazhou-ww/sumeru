@@ -3,7 +3,8 @@ id: tc-with-active-sessions
 spec: root-status
 tags: [e2e, host, status, session-count]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - hermes prototype available
   - sumeru/hermes:dev image built
 ---

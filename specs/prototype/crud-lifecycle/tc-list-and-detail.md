@@ -3,7 +3,8 @@ id: tc-list-and-detail
 spec: crud-lifecycle
 tags: [e2e, prototype, read]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - Persona "tc-persona" and Model "tc-model" exist in SQLite
 ---
 

@@ -3,7 +3,8 @@ id: tc-delete-not-found
 spec: delete-session
 tags: [e2e, session, error, 404]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
 ---
 
 # Delete Non-Existent Session → 404

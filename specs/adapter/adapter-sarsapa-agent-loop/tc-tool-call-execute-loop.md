@@ -9,7 +9,8 @@ status: PASS
 
 ## Preconditions
 
-- Sumeru host running (port 7901)
+- "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+- Host running on port 7901
 - Prototype `sarsapa` available（内建 adapter，无外部 CLI 依赖）
 - OpenAI-compatible endpoint 可达（host 配置中的 model/apiKey 有效）
 

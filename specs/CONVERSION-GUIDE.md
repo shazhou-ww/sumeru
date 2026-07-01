@@ -52,7 +52,8 @@ id: tc-<kebab-name>
 spec: <parent-spec-name>
 tags: [e2e, <domain>, <relevant-tags>]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - <other requirements>
 ---
 

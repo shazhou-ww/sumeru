@@ -3,7 +3,8 @@ id: tc-409-stop-idle-session
 spec: standard-http-errors
 tags: [e2e, errors, 409, session, conflict, docker]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - Docker daemon available
   - Prototype "echo-agent" exists with compose.yaml
 ---

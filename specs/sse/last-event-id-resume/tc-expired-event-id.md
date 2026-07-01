@@ -13,7 +13,8 @@ Verify that when `Last-Event-ID` references an event that has been evicted from 
 
 ## Preconditions
 
-- Sumeru host running on port 7901
+- "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+- Host running on port 7901
 - A session that has generated MORE than 1024 events (so the buffer has wrapped)
 - The ring buffer default capacity is 1024 events
 

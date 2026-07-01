@@ -13,7 +13,8 @@ Verify that reconnecting to SSE with `Last-Event-ID: N` replays only events with
 
 ## Preconditions
 
-- Sumeru host running on port 7901
+- "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+- Host running on port 7901
 - A session that has completed with multiple events in the buffer
 
 ## Steps

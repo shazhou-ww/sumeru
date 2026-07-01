@@ -3,7 +3,8 @@ id: tc-create-happy-path
 spec: crud-lifecycle
 tags: [e2e, prototype, create]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - Persona "tc-persona" and Model "tc-model" exist in SQLite
   - Prototype "tc-create-new" does NOT exist (clean state)
 ---

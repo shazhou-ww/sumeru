@@ -3,7 +3,8 @@ id: tc-fresh-host-no-sessions
 spec: root-status
 tags: [e2e, host, status, health-check, happy-path]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - No sessions currently active
 ---
 

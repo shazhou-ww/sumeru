@@ -3,7 +3,8 @@ id: tc-assistant-turn-event
 spec: turn-exit-heartbeat
 tags: [e2e, sse, streaming, hermes]
 prerequisites:
-  - Sumeru host running (port 7901)
+  - "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+  - Host running on port 7901
   - sumeru/hermes:dev image built from latest main
   - copilot-bridge (or compatible LLM endpoint) reachable from container
 ---

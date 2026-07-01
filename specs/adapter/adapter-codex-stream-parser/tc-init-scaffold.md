@@ -9,7 +9,8 @@ status: PASS
 
 ## Preconditions
 
-- Sumeru host running (port 7901)
+- "[e2e-prerequisites](../../e2e-prerequisites.md) 已完成"
+- Host running on port 7901
 - Prototype `codex` available
 - Docker image 的 home 目录可检查（或通过 session 的 task 验证）
 
