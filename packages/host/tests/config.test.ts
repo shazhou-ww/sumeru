@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	expandEnvVars,
 	loadHostConfig,
+	mergeSessionEnv,
 	resolveSessionModel,
 	validateComposeProjectVolume,
 } from "../src/config.js";
@@ -21,6 +22,51 @@ function writeV3HostFixture(rootDir: string): void {
 		].join("\n"),
 	);
 }
+
+describe("mergeSessionEnv", () => {
+	it("loads env vars from envFile", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-merge-env-"));
+		const envFile = join(rootDir, ".env");
+		writeFileSync(
+			envFile,
+			[
+				"# host defaults",
+				"HOST_KEY=from-file",
+				"SHARED=from-file",
+				"",
+			].join("\n"),
+		);
+
+		await expect(mergeSessionEnv(envFile, null)).resolves.toEqual({
+			HOST_KEY: "from-file",
+			SHARED: "from-file",
+		});
+	});
+
+	it("session env overrides envFile values", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-merge-env-override-"));
+		const envFile = join(rootDir, ".env");
+		writeFileSync(envFile, "SHARED=from-file\nONLY_FILE=yes\n");
+
+		await expect(
+			mergeSessionEnv(envFile, { SHARED: "from-session", SESSION_ONLY: "yes" }),
+		).resolves.toEqual({
+			SHARED: "from-session",
+			ONLY_FILE: "yes",
+			SESSION_ONLY: "yes",
+		});
+	});
+
+	it("does not throw when envFile is missing", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-merge-env-missing-"));
+		const envFile = join(rootDir, "missing.env");
+
+		await expect(mergeSessionEnv(envFile, { A: "1" })).resolves.toEqual({
+			A: "1",
+		});
+		await expect(mergeSessionEnv(envFile, null)).resolves.toEqual({});
+	});
+});
 
 describe("loadHostConfig — v3 HostConfig", () => {
 	it("loads host.yaml and scans dataDir prototypes/skills", async () => {

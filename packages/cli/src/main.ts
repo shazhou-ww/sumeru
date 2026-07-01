@@ -26,6 +26,7 @@ import {
 	resolvePidFilePath,
 	writePidFile,
 } from "./pid-file.js";
+import { parseEnvFlagsFromArgv } from "./env-flags.js";
 import { runSetup } from "./setup.js";
 
 // ─── Shared schemas ─────────────────────────────────────────────────────
@@ -937,6 +938,7 @@ cli
 	.arg("prototype")
 	.flag("project", { type: "string" })
 	.flag("task", { type: "string" })
+	.flag("env", { type: "string" })
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
 	.returns(idSchema, "{{id}}")
@@ -945,8 +947,15 @@ cli
 		const task = flags.task as string | undefined;
 		if (!project || !task) {
 			ctx.error(
-				"Usage: sumeru session add <prototype> --project <path> --task <description>",
+				"Usage: sumeru session add <prototype> --project <path> --task <description> [--env KEY=VALUE ...]",
 			);
+		}
+		let env: Record<string, string> | null = null;
+		try {
+			env = parseEnvFlagsFromArgv(process.argv.slice(2));
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			ctx.error(msg);
 		}
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
@@ -955,7 +964,7 @@ cli
 				project: project!,
 				task: task!,
 				model: null,
-				env: null,
+				env,
 			});
 			return { id: envelope.value.id };
 		} catch (err) {

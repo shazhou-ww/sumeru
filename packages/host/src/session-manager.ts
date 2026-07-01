@@ -152,7 +152,7 @@ export function createSessionManager(input: {
 			body.model,
 		);
 		const image = await extractImageFromCompose(prototype.composePath);
-		const sessionEnv = mergeSessionEnv(
+		const sessionEnv = await mergeSessionEnv(
 			input.hostConfig.config.envFile,
 			body.env,
 		);
