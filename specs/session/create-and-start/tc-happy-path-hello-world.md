@@ -1,16 +1,15 @@
 ---
 id: tc-happy-path-hello-world
 spec: create-and-start
-tags: [e2e, docker, smoke, hermes]
+tags: [e2e, session, create, happy-path]
 prerequisites:
-  - Sumeru host running (port 7901 or configured port)
-  - sumeru/hermes:dev image built from latest main
-  - copilot-bridge (or compatible LLM endpoint) reachable from container
+  - Sumeru host running
+  - Provider + Model + Persona + Prototype 已在 SQLite 和磁盘中创建
 ---
 
-# Happy Path: Create Session → Agent Replies
+# Happy Path: Create Session & Hello World
 
-验证最基本的端到端流程：创建 session → adapter 启动 → agent 收到 task → 回复 → session 变 idle。
+验证完整的 session 创建→运行→退出流程。
 
 ## Setup
 
@@ -18,62 +17,73 @@ prerequisites:
    ```bash
    curl -s http://127.0.0.1:7901/ | jq '.value.status'
    ```
-   → 应返回 `{"running": 0, "idle": N}` 或类似
 
-2. 确认 Docker image 存在：
+2. Seed 数据（如未创建）：
    ```bash
-   docker images sumeru/hermes:dev --format '{{.ID}}'
+   # Provider
+   curl -s -X POST http://127.0.0.1:7901/providers/tc-anthropic \
+     -H 'Content-Type: application/json' \
+     -d '{"apiType":"anthropic","baseUrl":"https://api.anthropic.com","apiKey":"sk-test-key"}'
+
+   # Model
+   curl -s -X POST http://127.0.0.1:7901/models/tc-sonnet \
+     -H 'Content-Type: application/json' \
+     -d '{"provider":"tc-anthropic","model":"claude-sonnet-4-20250514"}'
+
+   # Persona
+   curl -s -X POST http://127.0.0.1:7901/personas/tc-basic \
+     -H 'Content-Type: application/json' \
+     -d '{"instructions":"A general-purpose coding agent.","skills":[]}'
+
+   # Prototype (需要已有 compose.yaml)
+   curl -s -X POST http://127.0.0.1:7901/prototypes/hermes \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"hermes","persona":"tc-basic","model":"tc-sonnet","image":"sumeru-worker:latest"}'
    ```
-   → 应返回非空 image ID
+
+3. 确认 prototype 已就绪：
+   ```bash
+   curl -s http://127.0.0.1:7901/prototypes/hermes | jq '.value.prototype.model'
+   ```
+   → 应返回 `"tc-sonnet"`
 
 ## Steps
 
 1. 创建 session：
    ```bash
-   curl -s -X POST http://127.0.0.1:7901/sessions \
+   curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:7901/sessions \
      -H 'Content-Type: application/json' \
-     -d '{
-       "prototype": "hermes",
-       "project": "sumeru",
-       "task": "Reply with exactly: Hello World!",
-       "model": "claude-opus-4.6"
-     }'
+     -d '{"prototype":"hermes","project":"test-project","task":"Say hello"}'
    ```
-   → 记录返回的 `value.id` 为 `$SID`
+   → 保存返回的 `value.id` 为 `$SID`
 
-2. 等待 session 完成（poll 直到 status ≠ running）：
+2. 订阅 SSE 等待退出：
    ```bash
-   # 每 5s poll 一次，最多 2 分钟
-   for i in $(seq 1 24); do
-     STATUS=$(curl -s "http://127.0.0.1:7901/sessions/$SID" | jq -r '.value.status')
-     [ "$STATUS" != "running" ] && break
-     sleep 5
-   done
-   echo "Final status: $STATUS"
+   curl -sN http://127.0.0.1:7901/sessions/$SID/events
    ```
+   → 等待 `event: exit`
 
-3. 获取 session 详情：
+3. 查看 session 详情：
    ```bash
-   curl -s "http://127.0.0.1:7901/sessions/$SID" | jq '.value'
-   ```
-
-4. 获取 turns：
-   ```bash
-   curl -s "http://127.0.0.1:7901/sessions/$SID/turns" | jq '.value'
+   curl -s http://127.0.0.1:7901/sessions/$SID | jq .
    ```
 
 ## Expected
 
-- [ ] Step 1 返回 HTTP 201，`type` = `@sumeru/session`
-- [ ] Step 1 返回的 `value.id` 以 `ses_` 开头
-- [ ] Step 1 返回的 `value.status` = `running`
-- [ ] Step 2 最终 status = `idle`（不是 `error`）
-- [ ] Step 3 的 `exit.turnCount` ≥ 1
-- [ ] Step 4 至少有 1 个 turn，role = `assistant`
-- [ ] Step 4 assistant turn 的 content 包含 "Hello World"
+- [ ] Step 1 返回 HTTP 201
+- [ ] Step 1 `type` = `@sumeru/session`
+- [ ] Step 1 `value.status` = `running`
+- [ ] Step 1 `value.model.provider` 是对象（含 name/endpoint/apiType）
+- [ ] Step 1 `value.model.name` = `claude-sonnet-4-20250514`
+- [ ] Step 1 `value.prototype` = `hermes`
+- [ ] Step 2 收到至少一个 `event: turn`（role=assistant）
+- [ ] Step 2 收到 `event: exit`
+- [ ] Step 3 `value.status` = `idle`
+- [ ] Step 3 `value.exit` 非 null
 
 ## Failure Signals
 
-- status 卡在 `running` 超过 2 分钟 → adapter 可能没启动，检查容器日志
-- status = `error` → 查 `exit.message`，常见：API key 无效、模型名错误
-- turnCount = 0 但 status = idle → ACP 通信问题，检查容器内 config.yaml
+- 404 prototype_not_found → prototype YAML 文件缺失或 persona/model 引用无效
+- 500 model_not_found → SQLite 中 Model 未创建
+- 500 provider_not_found → SQLite 中 Provider 未创建
+- adapter 超时 → Docker image 未构建或容器启动失败

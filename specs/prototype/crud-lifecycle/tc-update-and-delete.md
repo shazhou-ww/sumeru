@@ -4,7 +4,7 @@ spec: crud-lifecycle
 tags: [e2e, prototype, update, delete]
 prerequisites:
   - Sumeru host running (port 7901)
-  - Prototype "tc-mut-target" exists (for update/delete)
+  - Persona "tc-persona" and Model "tc-model" exist in SQLite
 ---
 
 # Update & Delete: Mutation Operations
@@ -24,8 +24,9 @@ prerequisites:
      -H 'Content-Type: application/json' \
      -d '{
        "name": "tc-mut-target",
-       "instructions": "Original instructions.",
-       "skills": ["git"],
+       "persona": "tc-persona",
+       "model": "tc-model",
+       "image": "sumeru-worker:latest",
        "defaults": { "maxTurns": 10, "timeout": 60, "resources": { "cpu": 1, "memory": "1Gi" } }
      }'
    ```
@@ -43,62 +44,50 @@ prerequisites:
      -H 'Content-Type: application/json' \
      -d '{
        "name": "tc-mut-target",
-       "instructions": "Updated instructions for mutation test.",
-       "skills": [],
-       "defaults": null
+       "persona": "tc-persona",
+       "model": "tc-model",
+       "image": "sumeru-worker:v2",
+       "defaults": { "maxTurns": 50, "timeout": 600, "resources": { "cpu": 2, "memory": "4Gi" } }
      }'
    ```
-   → 返回 200 + 更新后对象
 
-2. 验证更新持久化：
+2. 验证更新生效：
    ```bash
-   curl -s http://127.0.0.1:7901/prototypes/tc-mut-target | jq .
+   curl -s http://127.0.0.1:7901/prototypes/tc-mut-target | jq '.value.prototype'
    ```
-   → instructions 已更新，skills 为空数组，defaults 为 null
 
 3. 更新不存在的 prototype（404）：
    ```bash
    curl -s -w '\n%{http_code}' -X PUT http://127.0.0.1:7901/prototypes/tc-ghost-mut \
      -H 'Content-Type: application/json' \
-     -d '{
-       "name": "tc-ghost-mut",
-       "instructions": "Does not exist."
-     }'
+     -d '{"name":"tc-ghost-mut","persona":"tc-persona","model":"tc-model","image":"sumeru-worker:latest"}'
    ```
-   → 返回 404
 
 4. 删除 prototype（成功）：
    ```bash
-   curl -s -o /dev/null -w '%{http_code}' -X DELETE http://127.0.0.1:7901/prototypes/tc-mut-target
+   curl -s -w '\n%{http_code}' -X DELETE http://127.0.0.1:7901/prototypes/tc-mut-target
    ```
-   → 返回 204
 
 5. 验证删除后 GET 返回 404：
    ```bash
-   curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7901/prototypes/tc-mut-target
+   curl -s -w '\n%{http_code}' http://127.0.0.1:7901/prototypes/tc-mut-target
    ```
-   → 返回 404
 
 6. 删除不存在的 prototype（404）：
    ```bash
    curl -s -w '\n%{http_code}' -X DELETE http://127.0.0.1:7901/prototypes/tc-ghost-mut
    ```
-   → 返回 404
 
 ## Expected
 
-- [ ] Step 1 返回 HTTP 200，`type` = `@sumeru/prototype`
-- [ ] Step 1 `value.instructions` = `"Updated instructions for mutation test."`
-- [ ] Step 1 `value.skills` = `[]`，`value.defaults` = `null`
-- [ ] Step 2 返回的字段与 Step 1 一致（持久化生效）
-- [ ] Step 3 返回 HTTP 404，`value.error` = `prototype_not_found`
-- [ ] Step 4 返回 HTTP 204
-- [ ] Step 5 返回 HTTP 404
-- [ ] Step 6 返回 HTTP 404，`value.error` = `prototype_not_found`
+- [ ] Step 1 返回 200
+- [ ] Step 2 `image` = `sumeru-worker:v2`，`defaults.maxTurns` = 50
+- [ ] Step 3 返回 404，`error` = `prototype_not_found`
+- [ ] Step 4 返回 204
+- [ ] Step 5 返回 404
+- [ ] Step 6 返回 404
 
 ## Failure Signals
 
-- Step 1 返回 404 → Setup 创建未生效，检查 POST 返回码
-- Step 2 字段未变化 → PUT 可能未写盘，检查 data-store 逻辑
-- Step 4 返回 404 → prototype 可能在 Step 1 之后意外消失
-- Step 4 返回 200 而非 204 → DELETE handler 状态码错误
+- Step 1 返回 400 → 请求体格式错误（检查是否包含所有必填字段）
+- Step 2 字段未变 → 写入持久化失败或 reload 逻辑有 bug

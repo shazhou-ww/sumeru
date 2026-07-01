@@ -4,6 +4,7 @@ prerequisites:
   - Sumeru host running
   - sumeru/hermes:dev image built
   - LLM endpoint reachable
+  - SQLite seeded with Provider + Model + Persona
 
 scenarios:
   - session/create-and-start/tc-happy-path-hello-world.md

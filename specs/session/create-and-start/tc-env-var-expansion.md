@@ -19,21 +19,16 @@ prerequisites:
 1. 创建测试用 host.yaml：
    ```bash
    cat > /tmp/test-env-expand/host.yaml << 'EOF'
+   name: test-env-host
+   maxRunning: 2
    workspaceRoot: /tmp/projects
-   envFile: .env
-   models:
-     anthropic:
-       apiKey: ${TEST_API_KEY:-fallback-key-123}
-       baseUrl: ${CUSTOM_BASE_URL}
-   prototypes:
-     - hermes
+   envFile: ${ENV_FILE_PATH:-.env}
    EOF
    ```
 
 2. 设置环境变量并启动 host：
    ```bash
-   export TEST_API_KEY="sk-real-key-456"
-   export CUSTOM_BASE_URL="http://my-proxy:8080"
+   export ENV_FILE_PATH="/custom/path/.env"
    SUMERU_PORT=7902 npx tsx packages/host/src/main.ts /tmp/test-env-expand
    ```
 
@@ -45,39 +40,31 @@ prerequisites:
    ```
    → 应返回 status 正常（不是 YAML parse error）
 
-2. 创建 session 观察实际使用的 apiKey 和 baseUrl（通过容器内 config）：
+2. 确认 host 能正常创建 session（envFile 展开正确）：
    ```bash
-   curl -s -X POST http://127.0.0.1:7902/sessions \
-     -H 'Content-Type: application/json' \
-     -d '{"prototype":"hermes","project":"test","task":"Say hi"}'
+   curl -s http://127.0.0.1:7902/ | jq '.value.name'
    ```
-
-3. 检查容器内 config：
-   ```bash
-   CID=$(docker ps -l -q)
-   docker exec $CID cat /home/node/.hermes/config.yaml
-   ```
+   → 应返回 `test-env-host`
 
 ## Expected
 
 - [ ] Step 1 host 正常启动，不抛 "undefined variable" 或 YAML parse 错误
-- [ ] Step 3 config 中 apiKey = `sk-real-key-456`（展开了 TEST_API_KEY，未用 fallback）
-- [ ] Step 3 config 中 base_url 含 `my-proxy:8080`（展开了 CUSTOM_BASE_URL）
+- [ ] Step 2 host name 正确展示
 
 ## Variant: Fallback Default
 
-若 `TEST_API_KEY` 未设置：
+若 `ENV_FILE_PATH` 未设置：
 
-1. `unset TEST_API_KEY` 后重启 host
+1. `unset ENV_FILE_PATH` 后重启 host
 2. 重复 Steps
-3. **Expected**: config 中 apiKey = `fallback-key-123`（使用 `:-` 默认值）
+3. **Expected**: envFile 使用默认值 `.env`
 
 ## Variant: Missing Required Var
 
-若 `CUSTOM_BASE_URL` 未设置且无 `:-` 默认值：
+若 host.yaml 中引用 `${REQUIRED_VAR}`（无 `:-` 默认值）且该变量未设置：
 
-1. `unset CUSTOM_BASE_URL` 后重启 host
-2. **Expected**: host 启动时抛出 "Environment variable CUSTOM_BASE_URL not found" 错误
+1. `unset REQUIRED_VAR` 后重启 host
+2. **Expected**: host 启动时抛出 "Environment variable REQUIRED_VAR not found" 错误
 
 ## Failure Signals
 

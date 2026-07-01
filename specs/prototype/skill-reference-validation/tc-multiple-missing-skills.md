@@ -1,23 +1,22 @@
 ---
-test: Create prototype referencing multiple nonexistent skills
+test: Create persona referencing multiple nonexistent skills
 spec: skill-reference-validation
-tags: [prototype, skill, validation, error]
+tags: [persona, skill, validation, error]
 ---
 
-# TC: Create Prototype With Multiple Missing Skills
+# TC: Create Persona With Multiple Missing Skills
 
 ## Purpose
-Verify that creating a prototype referencing multiple nonexistent skills returns HTTP 400 with error code `skills_not_found` and a message listing all missing skill names.
+Verify that creating a persona referencing multiple nonexistent skills returns HTTP 400 with error code `skills_not_found` and a message listing all missing skill names.
 
 ## Preconditions
 - No skills named `alpha`, `beta`, or `gamma` exist in the system
 
 ## Steps
 
-1. **POST** `/prototypes/multi-fail` with body:
+1. **POST** `/personas/multi-fail` with body:
 ```json
 {
-  "name": "multi-fail",
   "instructions": "Test multiple missing skills.",
   "skills": ["alpha", "beta", "gamma"]
 }
@@ -44,3 +43,8 @@ Verify that creating a prototype referencing multiple nonexistent skills returns
 - `value.message` contains `alpha`
 - `value.message` contains `beta`
 - `value.message` contains `gamma`
+
+## Cleanup
+```bash
+curl -s -X DELETE $HOST/personas/multi-fail
+```

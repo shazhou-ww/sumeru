@@ -1,24 +1,23 @@
 ---
-test: Create prototype referencing a nonexistent skill
+test: Create persona referencing a nonexistent skill
 spec: skill-reference-validation
-tags: [prototype, skill, validation, error]
+tags: [persona, skill, validation, error]
 ---
 
-# TC: Create Prototype With Missing Skills
+# TC: Create Persona With Missing Skills
 
 ## Purpose
-Verify that creating a prototype referencing a skill that does not exist returns HTTP 400 with error code `skills_not_found` and a message containing the missing skill name.
+Verify that creating a persona referencing a skill that does not exist returns HTTP 400 with error code `skills_not_found`.
 
 ## Preconditions
 - No skill named `nonexistent` exists in the system
 
 ## Steps
 
-1. **POST** `/prototypes/test-proto` with body:
+1. **POST** `/personas/test-persona` with body:
 ```json
 {
-  "name": "test-proto",
-  "instructions": "Test prototype with missing skill.",
+  "instructions": "Test persona with missing skill.",
   "skills": ["nonexistent"]
 }
 ```

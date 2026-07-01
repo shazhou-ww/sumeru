@@ -1,13 +1,13 @@
 ---
-test: Create prototype referencing a valid skill
+test: Create persona referencing a valid skill
 spec: skill-reference-validation
-tags: [prototype, skill, validation, success]
+tags: [persona, skill, validation, success]
 ---
 
-# TC: Create Prototype With Valid Skills
+# TC: Create Persona With Valid Skills
 
 ## Purpose
-Verify that creating a prototype referencing an existing skill succeeds with HTTP 201 and returns the prototype.
+Verify that creating a persona referencing an existing skill succeeds with HTTP 201.
 
 ## Preconditions
 - A skill named `test-skill` must exist (created via PUT /skills/test-skill)
@@ -24,10 +24,9 @@ Verify that creating a prototype referencing an existing skill succeeds with HTT
 
 ## Steps
 
-2. **POST** `/prototypes/valid-proto` with body:
+2. **POST** `/personas/valid-persona` with body:
 ```json
 {
-  "name": "valid-proto",
   "instructions": "Agent with valid skills.",
   "skills": ["test-skill"]
 }
@@ -39,18 +38,24 @@ Verify that creating a prototype referencing an existing skill succeeds with HTT
 - Response body:
 ```json
 {
-  "type": "@sumeru/prototype",
+  "type": "@sumeru/persona",
   "value": {
-    "name": "valid-proto",
+    "name": "valid-persona",
     "instructions": "Agent with valid skills.",
     "skills": ["test-skill"],
-    "defaults": null
+    "createdAt": "...",
+    "updatedAt": "..."
   }
 }
 ```
 
 ## Assertions
 - Status code is 201
-- `type` equals `@sumeru/prototype`
-- `value.name` equals `valid-proto`
+- `type` equals `@sumeru/persona`
 - `value.skills` contains `test-skill`
+
+## Cleanup
+```bash
+curl -s -X DELETE $HOST/personas/valid-persona
+curl -s -X DELETE $HOST/skills/test-skill
+```

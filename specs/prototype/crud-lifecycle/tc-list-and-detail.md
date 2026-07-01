@@ -4,7 +4,7 @@ spec: crud-lifecycle
 tags: [e2e, prototype, read]
 prerequisites:
   - Sumeru host running (port 7901)
-  - At least one prototype exists (e.g. seed data or prior create)
+  - Persona "tc-persona" and Model "tc-model" exist in SQLite
 ---
 
 # List & Detail: Read Operations
@@ -24,16 +24,18 @@ prerequisites:
      -H 'Content-Type: application/json' \
      -d '{
        "name": "tc-read-alpha",
-       "instructions": "Alpha agent for read tests.",
-       "skills": [],
+       "persona": "tc-persona",
+       "model": "tc-model",
+       "image": "sumeru-worker:latest",
        "defaults": null
      }'
    curl -s -X POST http://127.0.0.1:7901/prototypes/tc-read-beta \
      -H 'Content-Type: application/json' \
      -d '{
        "name": "tc-read-beta",
-       "instructions": "Beta agent for read tests.",
-       "skills": ["git"],
+       "persona": "tc-persona",
+       "model": "tc-model",
+       "image": "sumeru-worker:latest",
        "defaults": { "maxTurns": 10, "timeout": 120, "resources": { "cpu": 1, "memory": "1Gi" } }
      }'
    ```
@@ -44,37 +46,35 @@ prerequisites:
    ```bash
    curl -s http://127.0.0.1:7901/prototypes | jq .
    ```
-   → 返回包含 tc-read-alpha 和 tc-read-beta 的列表
 
-2. 获取单个 prototype 详情：
+2. 获取单个详情：
    ```bash
    curl -s http://127.0.0.1:7901/prototypes/tc-read-alpha | jq .
    ```
-   → 返回 tc-read-alpha 完整信息
 
 3. 获取不存在的 prototype：
    ```bash
-   curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7901/prototypes/nonexistent-ghost
+   curl -s -w '\n%{http_code}' http://127.0.0.1:7901/prototypes/tc-ghost-read
    ```
-   → 返回 404
-
-4. 获取不存在的 prototype 错误体：
-   ```bash
-   curl -s http://127.0.0.1:7901/prototypes/nonexistent-ghost | jq .
-   ```
-   → 返回 error 结构
 
 ## Expected
 
-- [ ] Step 1 返回 HTTP 200，`type` = `@sumeru/prototype-list`
-- [ ] Step 1 `value` 数组包含 `tc-read-alpha` 和 `tc-read-beta`
-- [ ] Step 2 返回 HTTP 200，`type` = `@sumeru/prototype`
-- [ ] Step 2 `value.name` = `tc-read-alpha`，`value.instructions` = `"Alpha agent for read tests."`
-- [ ] Step 3 返回状态码 `404`
-- [ ] Step 4 `type` = `@sumeru/error`，`value.error` = `prototype_not_found`
+- [ ] Step 1 返回 200，`type` = `@sumeru/prototype-list`
+- [ ] Step 1 列表中包含 `tc-read-alpha` 和 `tc-read-beta`
+- [ ] Step 1 每项含 `name`, `prototype`, `yamlPath`, `prototypeHash`, `composePath`
+- [ ] Step 2 返回 200，`type` = `@sumeru/prototype`
+- [ ] Step 2 `value.prototype.persona` = `tc-persona`
+- [ ] Step 2 `value.prototype.model` = `tc-model`
+- [ ] Step 3 返回 404，`error` = `prototype_not_found`
+
+## Cleanup
+
+```bash
+curl -s -X DELETE http://127.0.0.1:7901/prototypes/tc-read-alpha
+curl -s -X DELETE http://127.0.0.1:7901/prototypes/tc-read-beta
+```
 
 ## Failure Signals
 
-- 列表为空 → prototype 目录可能未初始化或 seed 数据缺失
-- 详情返回 404 → Setup 中 POST 创建可能失败，检查返回码
-- 返回 500 → 检查 host 日志中的文件系统权限错误
+- 列表为空 → Setup 创建失败（检查 persona/model 是否存在）
+- 响应中 prototype 对象含 `instructions` / `skills` → 使用的是旧格式，代码未更新

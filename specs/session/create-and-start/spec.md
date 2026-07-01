@@ -1,202 +1,99 @@
 ---
-scenario: 创建新 session 并立即启动容器执行任务
-feature: session-create-and-start
-tags: [session, lifecycle, api, happy-path, validation]
+scenario: 创建并启动 Session
+feature: Session Create & Start
+tags: [session, create, model, e2e]
 ---
 
-# 创建并启动 Session
+# Session Create & Start
 
-## Given
+通过 `POST /sessions` 创建 session，host 执行以下流程：
 
-- Sumeru Host 已启动，监听端口 `7900`
-- `host.yaml` 配置了 `workspaceRoot: /projects`，`maxRunning: 4`
-- 已注册 prototype `coder`，对应 `compose.yaml` 存在
-- 项目目录 `/projects/my-app` 存在于磁盘
-- 当前 running session 数 < `maxRunning`
+1. 解析 `prototype` → 从 Prototype YAML 读取 persona / model / image / defaults
+2. 解析 `model` → 三态 model override 解析（见下文）
+3. 解析 `project` → 验证路径在 workspaceRoot 内
+4. 启动容器 → Docker Compose up
+5. 初始化 adapter → 发送 init config（含 persona skills / model / defaults）
+6. 投递 task → 作为第一条 user message 发送
 
-## When — 成功创建
+## Model 解析三态
 
-```bash
-curl -X POST http://localhost:7900/sessions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prototype": "coder",
-    "project": "my-app",
-    "task": "Implement the login page",
-    "model": {
-      "provider": "anthropic",
-      "name": "claude-sonnet-4-20250514"
-    },
-    "env": {
-      "CUSTOM_VAR": "value1"
-    }
-  }'
+`model` 字段支持三种模式：
+
+| 模式 | 请求体 | 行为 |
+|------|--------|------|
+| **省略/null** | `"model": null` 或不传 | 使用 prototype 定义的 `model` (Model.id)，从 SQLite 查 Model → Provider → 组装 ModelConfig |
+| **Model ID (string)** | `"model": "gpt-4o"` | 覆盖 prototype 默认值，从 SQLite 查 Model.id = "gpt-4o" |
+| **Ad-hoc (object)** | `"model": {"provider": {...}, "name": "..."}` | 完全跳过 SQLite，直接使用 inline provider 配置 |
+
+### Model ID 解析链
+
+```
+model (string) → sqliteStore.getModel(id) → Model.provider → sqliteStore.getProvider(name)
+  → Provider.apiType / Provider.baseUrl / Provider.apiKey
+  → 组装 ModelConfig { provider: CustomProvider, name: Model.model, apiKey }
 ```
 
-## Then — 201 Created
+若 Model 或 Provider 不存在，抛 `model_not_found` / `provider_not_found` 错误。
+
+## 请求格式
+
+```http
+POST /sessions
+Content-Type: application/json
+
+{
+  "prototype": "hermes",
+  "project": "my-project",
+  "task": "Say hello",
+  "model": null,
+  "env": { "EXTRA_VAR": "value" }
+}
+```
+
+## 前置条件
+
+Session 创建要求以下实体在 SQLite 中预先存在：
+
+1. **Provider** — `POST /providers/:name` 创建
+2. **Model** — `POST /models/:id` 创建，引用已有 Provider
+3. **Persona** — `POST /personas/:name` 创建，可引用已有 Skills
+4. **Prototype** — `POST /prototypes/:name` 创建，引用已有 Persona + Model
+
+## 成功响应
 
 ```json
 {
   "type": "@sumeru/session",
   "value": {
-    "id": "ses_01JXXXXXXXXXXXXXXXXXXXXXXX",
-    "prototype": "coder",
+    "id": "ses-xxx-xxx",
+    "prototype": "hermes",
     "model": {
-      "provider": "anthropic",
+      "provider": { "name": "my-provider", "endpoint": "https://api.anthropic.com", "apiType": "anthropic" },
       "name": "claude-sonnet-4-20250514",
-      "apiKey": "sk-ant-..."
+      "apiKey": null
     },
-    "image": "sumeru-coder:latest",
-    "project": "my-app",
-    "task": "Implement the login page",
+    "image": "sumeru-worker:latest",
+    "project": "my-project",
+    "task": "Say hello",
     "status": "running",
     "exit": null,
-    "createdAt": "2026-06-29T10:00:00.000Z"
+    "createdAt": "2026-07-01T12:00:00.000Z"
   }
 }
 ```
 
-**状态变化:**
-- Session ID 使用 `ses_` 前缀 + ULID 生成
-- Docker 容器已通过 `transport.up()` 启动
-- Adapter 进程已 exec 进容器并完成 init 握手
-- task 内容已作为首条 message 发送给 adapter
+注意 `model` 字段返回的是解析后的完整 `ModelConfig`（始终是 `{ provider, name, apiKey }` 结构），不是请求时的 string/null。
 
 ---
 
-## When — prototype 不存在
+## 错误路径
 
-```bash
-curl -X POST http://localhost:7900/sessions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prototype": "nonexistent",
-    "project": "my-app",
-    "task": "Do something"
-  }'
-```
-
-## Then — 404 Not Found
-
-```json
-{
-  "type": "@sumeru/error",
-  "value": {
-    "error": "prototype_not_found",
-    "message": "Prototype not found"
-  }
-}
-```
-
----
-
-## When — project 路径无效或不存在
-
-```bash
-curl -X POST http://localhost:7900/sessions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prototype": "coder",
-    "project": "../escape-attempt",
-    "task": "Do something"
-  }'
-```
-
-## Then — 400 Bad Request
-
-```json
-{
-  "type": "@sumeru/error",
-  "value": {
-    "error": "invalid_project",
-    "message": "Project path traversal not allowed"
-  }
-}
-```
-
----
-
-## When — 缺少必填字段
-
-```bash
-curl -X POST http://localhost:7900/sessions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prototype": "coder",
-    "project": ""
-  }'
-```
-
-## Then — 400 Bad Request
-
-```json
-{
-  "type": "@sumeru/error",
-  "value": {
-    "error": "invalid_request",
-    "message": "Body must include non-empty string fields \"prototype\", \"project\", and \"task\""
-  }
-}
-```
-
----
-
-## When — prototype 无 compose.yaml
-
-```bash
-curl -X POST http://localhost:7900/sessions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prototype": "no-compose-proto",
-    "project": "my-app",
-    "task": "Do something"
-  }'
-```
-
-## Then — 400 Bad Request
-
-```json
-{
-  "type": "@sumeru/error",
-  "value": {
-    "error": "prototype_no_compose",
-    "message": "Prototype has no legacy compose.yaml for Docker workers"
-  }
-}
-```
-
----
-
-## When — model 字段无效
-
-```bash
-curl -X POST http://localhost:7900/sessions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prototype": "coder",
-    "project": "my-app",
-    "task": "Do something",
-    "model": { "provider": "invalid_provider", "name": "gpt-4" }
-  }'
-```
-
-## Then — 400 Bad Request
-
-```json
-{
-  "type": "@sumeru/error",
-  "value": {
-    "error": "invalid_request",
-    "message": "Body must include non-empty string fields \"prototype\", \"project\", and \"task\""
-  }
-}
-```
-
----
-
-## Notes
-
-- `model` 字段可选；为 `null` 时使用 host 默认 model 配置
-- `env` 字段可选；会与 host.yaml 中 `envFile` 指定的环境变量合并
-- provider 支持 `"anthropic"` | `"openai"` | `"openrouter"` 或自定义 `{ name, endpoint, apiType }`
-- 创建过程中若 transport.up 失败，会尝试 best-effort cleanup（down + rm）后抛出错误
+| 错误 | HTTP | error code |
+|------|------|------------|
+| Prototype 不存在 | 404 | `prototype_not_found` |
+| Prototype 无 compose.yaml | 400 | `prototype_no_compose` |
+| Project 路径越界 | 400 | `invalid_project` |
+| Model ID 在 SQLite 中不存在 | 500 | `internal_error` (msg: `model_not_found:<id>`) |
+| Provider 在 SQLite 中不存在 | 500 | `internal_error` (msg: `provider_not_found:<name>`) |
+| JSON 解析失败 | 400 | `invalid_json` |
+| 缺少必填字段 | 400 | `invalid_request` |
