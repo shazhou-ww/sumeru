@@ -651,7 +651,7 @@ async function main(): Promise<void> {
 			);
 		}
 		try {
-			runSetup({
+			await runSetup({
 				provider,
 				apiKey,
 				model,

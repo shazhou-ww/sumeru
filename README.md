@@ -72,7 +72,7 @@ sumeru image build sarsapa --agent sarsapa
 ### 4. 注册 Prototype
 
 ```bash
-sumeru prototype add sarsapa --model deepseek-v3 --image sarsapa
+sumeru prototype add sarsapa --model deepseek-v3 --image sarsapa --persona default
 ```
 
 ### 5. 启动 Host

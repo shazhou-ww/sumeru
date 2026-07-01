@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "@sumeru/host/sqlite";
+import { findRepoRoot, runImageBuild } from "./image-build.js";
+import { createHostClient } from "./http-client.js";
 
 // ── Provider presets ────────────────────────────────────────────────
 type ProviderPreset = {
@@ -68,7 +70,7 @@ export type SetupInput = {
 	rootDir: string | null;
 };
 
-export function runSetup(input: SetupInput): void {
+export async function runSetup(input: SetupInput): Promise<void> {
 	const rootDir = input.rootDir ?? join(homedir(), ".sumeru");
 
 	// ── Resolve provider preset ─────────────────────────────────────
@@ -132,7 +134,7 @@ export function runSetup(input: SetupInput): void {
 	if (!existsSync(protoYamlPath)) {
 		writeFileSync(
 			protoYamlPath,
-			`name: sarsapa\npersona: default\nmodel: ${modelId}\nimage: sumeru/sarsapa:dev\n`,
+			`name: sarsapa\npersona: default\nmodel: ${modelId}\nimage: sarsapa\n`,
 		);
 		actions.push("created data/prototypes/sarsapa.yaml");
 	}
@@ -228,5 +230,52 @@ export function runSetup(input: SetupInput): void {
 	if (!isUpdate) {
 		process.stdout.write(`\nStart the server:\n`);
 		process.stdout.write(`  sumeru server start\n`);
+	}
+
+	// ── Image build (best-effort) ────────────────────────────────────
+	let imageRegistered = false;
+	try {
+		const repoRoot = await findRepoRoot(process.cwd());
+		const baseUrl = `http://127.0.0.1:${process.env.SUMERU_PORT ?? "7900"}`;
+		process.stdout.write(`\nBuilding sarsapa image...\n`);
+		const result = await runImageBuild({
+			name: "sarsapa",
+			agent: "sarsapa",
+			adapter: null,
+			baseUrl,
+			repoRoot,
+		});
+		actions.push(`built image "sarsapa" (${result.tag})`);
+		process.stdout.write(`  ✓ Image built: ${result.tag}\n`);
+		imageRegistered = true;
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		process.stdout.write(
+			`\n⚠ Image build skipped: ${msg}\n  Run later: sumeru image build sarsapa --agent sarsapa\n`,
+		);
+	}
+
+	// ── Prototype registration (best-effort) ─────────────────────────
+	if (imageRegistered) {
+		try {
+			const baseUrl = `http://127.0.0.1:${process.env.SUMERU_PORT ?? "7900"}`;
+			const client = createHostClient({ baseUrl });
+			await client.createPrototype("sarsapa", {
+				persona: "default",
+				model: modelId,
+				image: "sarsapa",
+			});
+			actions.push('created prototype "sarsapa"');
+			process.stdout.write(`  ✓ Prototype "sarsapa" registered\n`);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			if (msg.includes("prototype_exists")) {
+				process.stdout.write(`  • Prototype "sarsapa" already exists\n`);
+			} else {
+				process.stdout.write(
+					`  ⚠ Prototype registration skipped: ${msg}\n  Run later: sumeru prototype add sarsapa --model ${modelId} --image sarsapa --persona default\n`,
+				);
+			}
+		}
 	}
 }
