@@ -44,6 +44,14 @@ export type ModelConfig = {
 	apiKey: string | null;
 };
 
+// === Skill (SQLite-backed, issue #191) ===
+export type Skill = {
+	name: string;
+	content: string;
+	createdAt: string;
+	updatedAt: string;
+};
+
 // === Persona (SQLite-backed, issue #189) ===
 export type Persona = {
 	name: string;
@@ -142,24 +150,6 @@ export type HostConfig = {
 	maxRunning: number;
 	workspaceRoot: string;
 	envFile: string;
-	models: {
-		anthropic: {
-			baseUrl: string | null;
-			apiKey: string;
-			model: string | null;
-		} | null;
-		openai: {
-			baseUrl: string | null;
-			apiKey: string;
-			model: string | null;
-		} | null;
-		openrouter: {
-			baseUrl: string | null;
-			apiKey: string;
-			model: string | null;
-		} | null;
-	};
-	resourceLimits: { maxCpu: number; maxMemory: string } | null;
 	defaults: {
 		timeout: number;
 		maxTurns: number;

@@ -16,12 +16,6 @@ function writeHostFixture(rootDir: string, maxRunning = 4): void {
 			`maxRunning: ${maxRunning}`,
 			"workspaceRoot: /tmp/workspaces",
 			"envFile: /dev/null",
-			"models:",
-			"  anthropic:",
-			"    baseUrl: null",
-			"    apiKey: sk-test",
-			"  openai: null",
-			"  openrouter: null",
 		].join("\n"),
 	);
 	mkdirSync("/tmp/workspaces/demo", { recursive: true });
@@ -128,9 +122,26 @@ describe("adapter abnormal exit resilience (#177)", () => {
 
 	function seedDb(hostConfig: {
 		sqliteStore: {
-			createPersona: Function;
-			createProvider: Function;
-			createModel: Function;
+			createPersona: (input: {
+				name: string;
+				instructions: string;
+				skills: Array<string>;
+			}) => unknown;
+			createProvider: (input: {
+				name: string;
+				apiType: string;
+				baseUrl: string | null;
+				apiKey: string;
+			}) => unknown;
+			createModel: (input: {
+				id: string;
+				provider: string;
+				model: string;
+				contextWindow: number | null;
+				toolUse: boolean;
+				streaming: boolean;
+				metadata: null;
+			}) => unknown;
 		};
 	}): void {
 		hostConfig.sqliteStore.createProvider({

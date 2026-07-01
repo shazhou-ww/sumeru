@@ -1,7 +1,13 @@
-import type { Model, Persona, Provider, ProviderApiType } from "@sumeru/core";
+import type {
+	Model,
+	Persona,
+	Provider,
+	ProviderApiType,
+	Skill,
+} from "@sumeru/core";
 import Database from "better-sqlite3";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS providers (
@@ -32,6 +38,15 @@ CREATE TABLE IF NOT EXISTS personas (
   name TEXT PRIMARY KEY NOT NULL,
   instructions TEXT NOT NULL,
   skills TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
+const MIGRATION_V3 = `
+CREATE TABLE IF NOT EXISTS skills (
+  name TEXT PRIMARY KEY NOT NULL,
+  content TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -108,10 +123,20 @@ export type UpdatePersonaInput = {
 	skills: Array<string>;
 };
 
+export type CreateSkillInput = {
+	name: string;
+	content: string;
+};
+
+export type UpdateSkillInput = {
+	content: string;
+};
+
 export type SqliteStore = {
 	close(): void;
 	createProvider(input: CreateProviderInput): Provider;
 	getProvider(name: string): Provider | null;
+	getProviderApiKey(name: string): string | null;
 	listProviders(): Array<Provider>;
 	updateProvider(name: string, input: UpdateProviderInput): Provider | null;
 	deleteProvider(name: string): boolean;
@@ -126,6 +151,12 @@ export type SqliteStore = {
 	updatePersona(name: string, input: UpdatePersonaInput): Persona | null;
 	deletePersona(name: string): boolean;
 	findPersonasReferencingSkill(skillName: string): Array<string>;
+	createSkill(input: CreateSkillInput): Skill;
+	getSkill(name: string): Skill | null;
+	listSkills(): Array<Skill>;
+	updateSkill(name: string, input: UpdateSkillInput): Skill | null;
+	deleteSkill(name: string): boolean;
+	skillExists(name: string): boolean;
 };
 
 type ProviderRow = {
@@ -153,6 +184,13 @@ type PersonaRow = {
 	name: string;
 	instructions: string;
 	skills: string;
+	created_at: string;
+	updated_at: string;
+};
+
+type SkillRow = {
+	name: string;
+	content: string;
 	created_at: string;
 	updated_at: string;
 };
@@ -189,6 +227,9 @@ CREATE TABLE IF NOT EXISTS schema_version (
 		}
 		if (current < 2) {
 			db.exec(MIGRATION_V2);
+		}
+		if (current < 3) {
+			db.exec(MIGRATION_V3);
 		}
 		if (row === undefined) {
 			db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
@@ -231,6 +272,13 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 				.prepare("SELECT * FROM providers WHERE name = ?")
 				.get(name) as ProviderRow | undefined;
 			return row === undefined ? null : rowToProvider(row);
+		},
+
+		getProviderApiKey(name) {
+			const row = db
+				.prepare("SELECT api_key FROM providers WHERE name = ?")
+				.get(name) as { api_key: string | null } | undefined;
+			return row?.api_key ?? null;
 		},
 
 		listProviders() {
@@ -428,6 +476,62 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 			}
 			return result;
 		},
+
+		createSkill(input) {
+			const now = new Date().toISOString();
+			db.prepare(
+				`INSERT INTO skills (name, content, created_at, updated_at)
+         VALUES (?, ?, ?, ?)`,
+			).run(input.name, input.content, now, now);
+			return rowToSkill({
+				name: input.name,
+				content: input.content,
+				created_at: now,
+				updated_at: now,
+			});
+		},
+
+		getSkill(name) {
+			const row = db.prepare("SELECT * FROM skills WHERE name = ?").get(name) as
+				| SkillRow
+				| undefined;
+			return row === undefined ? null : rowToSkill(row);
+		},
+
+		listSkills() {
+			const rows = db
+				.prepare("SELECT * FROM skills ORDER BY name")
+				.all() as Array<SkillRow>;
+			return rows.map(rowToSkill);
+		},
+
+		updateSkill(name, input) {
+			const existing = db
+				.prepare("SELECT * FROM skills WHERE name = ?")
+				.get(name) as SkillRow | undefined;
+			if (existing === undefined) return null;
+			const now = new Date().toISOString();
+			db.prepare(
+				`UPDATE skills SET content = ?, updated_at = ? WHERE name = ?`,
+			).run(input.content, now, name);
+			return rowToSkill({
+				...existing,
+				content: input.content,
+				updated_at: now,
+			});
+		},
+
+		deleteSkill(name) {
+			const result = db.prepare("DELETE FROM skills WHERE name = ?").run(name);
+			return result.changes > 0;
+		},
+
+		skillExists(name) {
+			const row = db
+				.prepare("SELECT 1 FROM skills WHERE name = ? LIMIT 1")
+				.get(name);
+			return row !== undefined;
+		},
 	};
 }
 
@@ -483,6 +587,15 @@ function rowToPersona(row: PersonaRow): Persona {
 		name: row.name,
 		instructions: row.instructions,
 		skills: parseSkillsJson(row.skills),
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+	};
+}
+
+function rowToSkill(row: SkillRow): Skill {
+	return {
+		name: row.name,
+		content: row.content,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};

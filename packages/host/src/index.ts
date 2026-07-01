@@ -1,6 +1,5 @@
 export {
 	computePrototypeHash,
-	defaultModelFromHostConfig,
 	expandEnvVars,
 	extractImageFromCompose,
 	loadHostConfig,
@@ -8,8 +7,8 @@ export {
 	mergeSessionEnv,
 	reloadPrototypeInConfig,
 	removePrototypeFromConfig,
-	resolveModelConfig,
 	resolveProjectPath,
+	resolveSessionModel,
 } from "./config.js";
 export type { UnhandledRejectionGuardOptions } from "./process-guards.js";
 export { installUnhandledRejectionGuard } from "./process-guards.js";
@@ -38,6 +37,7 @@ export type {
 	MessageRequest,
 	PrototypeInfo,
 	RouteHandler,
+	SessionModelOverride,
 	SkillValue,
 	Transport,
 	TransportExecSession,

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve as pathResolve, sep } from "node:path";
 import type { SkillContent } from "@sumeru/adapter-core";
@@ -6,9 +6,9 @@ import type {
 	CustomProvider,
 	HostConfig,
 	Image,
-	KnownProvider,
 	ModelConfig,
 	Persona,
+	ProviderApiType,
 } from "@sumeru/core";
 import { parse as parseYaml } from "yaml";
 import {
@@ -16,8 +16,12 @@ import {
 	loadPrototypeInfo,
 	loadPrototypesFromDisk,
 } from "./data-store.js";
-import { openDatabase } from "./sqlite-store.js";
-import type { LoadedHostConfig, PrototypeInfo } from "./types.js";
+import { openDatabase, type SqliteStore } from "./sqlite-store.js";
+import type {
+	LoadedHostConfig,
+	PrototypeInfo,
+	SessionModelOverride,
+} from "./types.js";
 
 const DEFAULT_HOST_FILE = "host.yaml";
 const DEFAULT_IMAGES_FILE = "images.yaml";
@@ -53,6 +57,7 @@ export async function loadHostConfig(
 	}
 	const images = await loadImagesConfig(rootDir, doc, configPath);
 	const sqliteStore = openDatabase(join(dataDir, "sumeru.db"));
+	await importSkillsFromFiles(sqliteStore, skillsDir);
 	return {
 		rootDir,
 		configPath,
@@ -180,92 +185,49 @@ function validateImageEntry(
 	return { name, description, dockerfile, builtAt, digest };
 }
 
-export async function loadPrototypeInitSkills(
-	skillsDir: string,
+export function loadPrototypeInitSkills(
+	sqliteStore: SqliteStore,
 	persona: Persona,
-): Promise<Array<SkillContent>> {
+): Array<SkillContent> {
 	const skills: Array<SkillContent> = [];
 	for (const skillName of persona.skills) {
-		const skillPath = join(skillsDir, `${skillName}.md`);
-		let content = "";
-		try {
-			content = await readFile(skillPath, "utf-8");
-		} catch {
-			content = "";
-		}
-		skills.push({ name: skillName, content });
+		const skill = sqliteStore.getSkill(skillName);
+		skills.push({ name: skillName, content: skill?.content ?? "" });
 	}
 	return skills;
 }
 
-/** Map a KnownProvider key to the apiType that hermes custom_providers expects. */
-const KNOWN_API_TYPE: Record<KnownProvider, "anthropic" | "openai"> = {
-	anthropic: "anthropic",
-	openai: "openai",
-	openrouter: "openai",
+const DEFAULT_ENDPOINTS: Record<ProviderApiType, string> = {
+	anthropic: "https://api.anthropic.com",
+	openai: "https://api.openai.com/v1",
 };
 
-const KNOWN_DEFAULT_MODEL: Record<KnownProvider, string> = {
-	anthropic: "claude-sonnet-4",
-	openai: "gpt-4o",
-	openrouter: "anthropic/claude-sonnet-4",
-};
-
-/**
- * When a known provider has a `baseUrl`, promote it to a CustomProvider so
- * that `buildHermesConfig` generates a `custom_providers` block pointing at
- * the right endpoint (e.g. a local copilot-bridge proxy).
- */
-function promoteIfCustomEndpoint(
-	known: KnownProvider,
-	providerConfig: {
-		baseUrl: string | null;
-		apiKey: string;
-		model: string | null;
-	},
+export function resolveSessionModel(
+	sqliteStore: SqliteStore,
+	prototypeModelId: string,
+	override: SessionModelOverride,
 ): ModelConfig {
-	if (providerConfig.baseUrl !== null) {
-		return {
-			provider: {
-				name: known,
-				endpoint: providerConfig.baseUrl,
-				apiType: KNOWN_API_TYPE[known],
-			},
-			name: KNOWN_DEFAULT_MODEL[known],
-			apiKey: providerConfig.apiKey,
-		};
+	if (override !== null && typeof override !== "string") {
+		return { provider: override.provider, name: override.name, apiKey: null };
 	}
-	return {
-		provider: known,
-		name: KNOWN_DEFAULT_MODEL[known],
-		apiKey: providerConfig.apiKey,
+	const modelId = typeof override === "string" ? override : prototypeModelId;
+	const model = sqliteStore.getModel(modelId);
+	if (model === null) {
+		throw new Error(`model_not_found:${modelId}`);
+	}
+	const provider = sqliteStore.getProvider(model.provider);
+	if (provider === null) {
+		throw new Error(`provider_not_found:${model.provider}`);
+	}
+	const apiKey = sqliteStore.getProviderApiKey(model.provider);
+	const endpoint =
+		provider.baseUrl ?? DEFAULT_ENDPOINTS[provider.apiType] ?? null;
+	const custom: CustomProvider = {
+		name: provider.name,
+		endpoint: endpoint ?? DEFAULT_ENDPOINTS.anthropic,
+		apiType: provider.apiType,
 	};
-}
-
-export function defaultModelFromHostConfig(config: HostConfig): ModelConfig {
-	if (config.models.anthropic !== null) {
-		return {
-			...promoteIfCustomEndpoint("anthropic", config.models.anthropic),
-			name: config.models.anthropic.model ?? KNOWN_DEFAULT_MODEL.anthropic,
-		};
-	}
-	if (config.models.openai !== null) {
-		return {
-			...promoteIfCustomEndpoint("openai", config.models.openai),
-			name: config.models.openai.model ?? KNOWN_DEFAULT_MODEL.openai,
-		};
-	}
-	if (config.models.openrouter !== null) {
-		return {
-			...promoteIfCustomEndpoint("openrouter", config.models.openrouter),
-			name: config.models.openrouter.model ?? KNOWN_DEFAULT_MODEL.openrouter,
-		};
-	}
-	return {
-		provider: "anthropic",
-		name: "claude-sonnet-4",
-		apiKey: null,
-	};
+	return { provider: custom, name: model.model, apiKey };
 }
 
 export type ResolveProjectResult =
@@ -294,39 +256,6 @@ export function resolveProjectPath(
 		};
 	}
 	return { ok: true, project: rawProject, projectPath: resolved };
-}
-
-export function resolveModelConfig(
-	hostConfig: HostConfig,
-	requested: { provider: ModelConfig["provider"]; name: string } | null,
-): ModelConfig {
-	// When no model is explicitly requested, defaultModelFromHostConfig already
-	// returns a fully-resolved ModelConfig (with apiKey). Return it directly.
-	if (requested === null || requested === undefined) {
-		return defaultModelFromHostConfig(hostConfig);
-	}
-	const provider = requested.provider;
-	if (typeof provider === "string") {
-		const known = provider as KnownProvider;
-		const providerConfig = hostConfig.models[known];
-		if (providerConfig !== null && providerConfig !== undefined) {
-			// When a baseUrl is configured, promote to CustomProvider so the
-			// adapter generates the right endpoint in hermes config.yaml.
-			const promoted = promoteIfCustomEndpoint(known, providerConfig);
-			return { ...promoted, name: requested.name };
-		}
-		return {
-			provider: known,
-			name: requested.name,
-			apiKey: null,
-		};
-	}
-	const custom = provider as CustomProvider;
-	return {
-		provider: custom,
-		name: requested.name,
-		apiKey: null,
-	};
 }
 
 export async function extractImageFromCompose(
@@ -451,94 +380,23 @@ function validateHostConfig(doc: unknown, path: string): HostConfig {
 			`Config ${path} field "envFile" must be a non-empty string`,
 		);
 	}
-	const modelsRaw = obj.models;
-	if (
-		modelsRaw === null ||
-		typeof modelsRaw !== "object" ||
-		Array.isArray(modelsRaw)
-	) {
-		throw new Error(`Config ${path} field "models" must be a mapping`);
+	if (obj.models !== undefined && obj.models !== null) {
+		console.warn(
+			`[sumeru] ${path}: "models" section is deprecated — use SQLite Provider/Model entities instead`,
+		);
 	}
-	const modelsObj = modelsRaw as Record<string, unknown>;
+	if (obj.resourceLimits !== undefined && obj.resourceLimits !== null) {
+		console.warn(
+			`[sumeru] ${path}: "resourceLimits" section is deprecated and ignored`,
+		);
+	}
 	return {
 		name,
 		maxRunning,
 		workspaceRoot,
 		envFile,
-		models: {
-			anthropic: parseProviderConfig(
-				modelsObj.anthropic,
-				`${path} models.anthropic`,
-			),
-			openai: parseProviderConfig(modelsObj.openai, `${path} models.openai`),
-			openrouter: parseProviderConfig(
-				modelsObj.openrouter,
-				`${path} models.openrouter`,
-			),
-		},
-		resourceLimits: parseResourceLimits(obj.resourceLimits, path),
 		defaults: parseHostDefaults(obj.defaults, path),
 	};
-}
-
-function parseProviderConfig(
-	value: unknown,
-	label: string,
-): { baseUrl: string | null; apiKey: string; model: string | null } | null {
-	if (value === undefined || value === null) {
-		return null;
-	}
-	if (typeof value !== "object" || Array.isArray(value)) {
-		throw new Error(`${label} must be a mapping or null`);
-	}
-	const obj = value as Record<string, unknown>;
-	const apiKey = obj.apiKey;
-	if (typeof apiKey !== "string" || apiKey.length === 0) {
-		throw new Error(`${label}.apiKey must be a non-empty string`);
-	}
-	const baseUrlRaw = obj.baseUrl;
-	let baseUrl: string | null = null;
-	if (baseUrlRaw !== undefined && baseUrlRaw !== null) {
-		if (typeof baseUrlRaw !== "string" || baseUrlRaw.length === 0) {
-			throw new Error(`${label}.baseUrl must be a non-empty string when set`);
-		}
-		baseUrl = baseUrlRaw;
-	}
-	const modelRaw = obj.model;
-	let model: string | null = null;
-	if (modelRaw !== undefined && modelRaw !== null) {
-		if (typeof modelRaw !== "string" || modelRaw.length === 0) {
-			throw new Error(`${label}.model must be a non-empty string when set`);
-		}
-		model = modelRaw;
-	}
-	return { baseUrl, apiKey, model };
-}
-
-function parseResourceLimits(
-	value: unknown,
-	path: string,
-): HostConfig["resourceLimits"] {
-	if (value === undefined || value === null) {
-		return null;
-	}
-	if (typeof value !== "object" || Array.isArray(value)) {
-		throw new Error(`Config ${path} field "resourceLimits" must be a mapping`);
-	}
-	const obj = value as Record<string, unknown>;
-	const maxCpu = obj.maxCpu;
-	const maxMemory = obj.maxMemory;
-	if (typeof maxCpu !== "number" || !Number.isFinite(maxCpu)) {
-		throw new Error(
-			`Config ${path} field "resourceLimits.maxCpu" must be a finite number`,
-		);
-	}
-	if (typeof maxMemory !== "string" || maxMemory.length === 0) {
-		throw new Error(
-			`Config ${path} field "resourceLimits.maxMemory" must be a non-empty string`,
-		);
-	}
-	return { maxCpu, maxMemory };
 }
 
 function parseHostDefaults(
@@ -592,6 +450,28 @@ function parseHostDefaults(
 		maxTurns,
 		resources: { cpu, memory },
 	};
+}
+
+async function importSkillsFromFiles(
+	store: SqliteStore,
+	skillsDir: string,
+): Promise<void> {
+	if (store.listSkills().length > 0) return;
+	let entries: Array<string>;
+	try {
+		const dirEntries = await readdir(skillsDir, { withFileTypes: true });
+		entries = dirEntries
+			.filter((e) => e.isFile() && e.name.endsWith(".md"))
+			.map((e) => e.name);
+	} catch {
+		return;
+	}
+	if (entries.length === 0) return;
+	for (const fileName of entries) {
+		const name = fileName.slice(0, -".md".length);
+		const content = await readFile(join(skillsDir, fileName), "utf-8");
+		store.createSkill({ name, content });
+	}
 }
 
 /**

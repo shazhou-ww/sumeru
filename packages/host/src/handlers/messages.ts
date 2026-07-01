@@ -1,5 +1,4 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { KnownProvider } from "@sumeru/core";
 import { errorEnvelope, messageAcceptedEnvelope } from "../envelope.js";
 import { readJsonBody, writeJson } from "../http-utils.js";
 import { generateMessageId } from "../id.js";
@@ -74,27 +73,40 @@ function parseMessageBody(body: unknown): MessageBody | null {
 	const modelRaw = body.model;
 	let model: MessageBody["model"] = null;
 	if (modelRaw !== undefined && modelRaw !== null) {
-		if (!isRecord(modelRaw)) return null;
-		const provider = modelRaw.provider;
-		const name = modelRaw.name;
-		if (typeof name !== "string" || name.length === 0) return null;
-		if (typeof provider === "string") {
-			model = { provider: provider as KnownProvider, name };
-		} else if (isRecord(provider)) {
-			const providerName = provider.name;
-			const endpoint = provider.endpoint;
-			const apiType = provider.apiType;
-			if (
-				typeof providerName !== "string" ||
-				typeof endpoint !== "string" ||
-				(apiType !== "openai" && apiType !== "anthropic")
-			) {
+		if (typeof modelRaw === "string") {
+			if (modelRaw.length === 0) return null;
+			model = modelRaw;
+		} else if (isRecord(modelRaw)) {
+			const name = modelRaw.name;
+			if (typeof name !== "string" || name.length === 0) return null;
+			const provider = modelRaw.provider;
+			if (typeof provider === "string") {
+				if (
+					provider !== "anthropic" &&
+					provider !== "openai" &&
+					provider !== "openrouter"
+				) {
+					return null;
+				}
+				model = { provider, name };
+			} else if (isRecord(provider)) {
+				const providerName = provider.name;
+				const endpoint = provider.endpoint;
+				const apiType = provider.apiType;
+				if (
+					typeof providerName !== "string" ||
+					typeof endpoint !== "string" ||
+					(apiType !== "openai" && apiType !== "anthropic")
+				) {
+					return null;
+				}
+				model = {
+					provider: { name: providerName, endpoint, apiType },
+					name,
+				};
+			} else {
 				return null;
 			}
-			model = {
-				provider: { name: providerName, endpoint, apiType },
-				name,
-			};
 		} else {
 			return null;
 		}

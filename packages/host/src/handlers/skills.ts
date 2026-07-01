@@ -1,23 +1,21 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import {
-	deleteSkill,
-	readSkill,
-	skillExists,
-	writeSkill,
-} from "../data-store.js";
+import { validateResourceName } from "../data-store.js";
 import { errorEnvelope, skillEnvelope } from "../envelope.js";
 import { readJsonBody, readTextBody, writeJson } from "../http-utils.js";
 import type { LoadedHostConfig } from "../types.js";
 
 export function createSkillsHandler(hostConfig: LoadedHostConfig) {
+	const store = hostConfig.sqliteStore;
+
 	return {
-		async get(
+		get(
 			_req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
-		): Promise<void> {
+		): void {
 			const name = params.name ?? "";
-			if (!(await skillExists(hostConfig.skillsDir, name))) {
+			const skill = store.getSkill(name);
+			if (skill === null) {
 				writeJson(
 					res,
 					404,
@@ -25,12 +23,11 @@ export function createSkillsHandler(hostConfig: LoadedHostConfig) {
 				);
 				return;
 			}
-			try {
-				const content = await readSkill(hostConfig.skillsDir, name);
-				writeJson(res, 200, skillEnvelope({ name, content }));
-			} catch (err) {
-				writeSkillError(res, err);
-			}
+			writeJson(
+				res,
+				200,
+				skillEnvelope({ name: skill.name, content: skill.content }),
+			);
 		},
 
 		async put(
@@ -54,20 +51,26 @@ export function createSkillsHandler(hostConfig: LoadedHostConfig) {
 				return;
 			}
 			try {
-				await writeSkill(hostConfig.skillsDir, name, content);
+				validateResourceName(name, "skill name");
+				const existing = store.getSkill(name);
+				if (existing !== null) {
+					store.updateSkill(name, { content });
+				} else {
+					store.createSkill({ name, content });
+				}
 				writeJson(res, 200, skillEnvelope({ name, content }));
 			} catch (err) {
 				writeSkillError(res, err);
 			}
 		},
 
-		async remove(
+		remove(
 			_req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
-		): Promise<void> {
+		): void {
 			const name = params.name ?? "";
-			if (!(await skillExists(hostConfig.skillsDir, name))) {
+			if (!store.skillExists(name)) {
 				writeJson(
 					res,
 					404,
@@ -75,26 +78,21 @@ export function createSkillsHandler(hostConfig: LoadedHostConfig) {
 				);
 				return;
 			}
-			try {
-				const references =
-					hostConfig.sqliteStore.findPersonasReferencingSkill(name);
-				if (references.length > 0) {
-					writeJson(
-						res,
-						409,
-						errorEnvelope(
-							"skill_referenced",
-							`Skill ${name} is referenced by personas: ${references.join(", ")}`,
-						),
-					);
-					return;
-				}
-				await deleteSkill(hostConfig.skillsDir, name);
-				res.statusCode = 204;
-				res.end();
-			} catch (err) {
-				writeSkillError(res, err);
+			const references = store.findPersonasReferencingSkill(name);
+			if (references.length > 0) {
+				writeJson(
+					res,
+					409,
+					errorEnvelope(
+						"skill_referenced",
+						`Skill ${name} is referenced by personas: ${references.join(", ")}`,
+					),
+				);
+				return;
 			}
+			store.deleteSkill(name);
+			res.statusCode = 204;
+			res.end();
 		},
 	};
 }

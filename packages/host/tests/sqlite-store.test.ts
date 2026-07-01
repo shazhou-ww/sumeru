@@ -143,4 +143,53 @@ describe("sqlite-store", () => {
 		}
 		expect(store.getProvider("in-use")).not.toBeNull();
 	});
+
+	it("returns raw api key via getProviderApiKey", () => {
+		store = openDatabase(":memory:");
+		store.createProvider({
+			name: "key-test",
+			apiType: "anthropic",
+			baseUrl: null,
+			apiKey: "sk-very-secret-key-12345",
+		});
+		expect(store.getProviderApiKey("key-test")).toBe(
+			"sk-very-secret-key-12345",
+		);
+		expect(store.getProvider("key-test")?.apiKey).toBe("sk-very-****");
+		expect(store.getProviderApiKey("nonexistent")).toBeNull();
+	});
+
+	it("runs skill CRUD lifecycle", () => {
+		store = openDatabase(":memory:");
+
+		const created = store.createSkill({
+			name: "test-skill",
+			content: "# Test Skill\nSome content.",
+		});
+		expect(created.name).toBe("test-skill");
+		expect(created.content).toBe("# Test Skill\nSome content.");
+		expect(created.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+		expect(created.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+		const fetched = store.getSkill("test-skill");
+		expect(fetched?.content).toBe("# Test Skill\nSome content.");
+
+		const listed = store.listSkills();
+		expect(listed).toHaveLength(1);
+		expect(listed[0]?.name).toBe("test-skill");
+
+		expect(store.skillExists("test-skill")).toBe(true);
+		expect(store.skillExists("nonexistent")).toBe(false);
+
+		const updated = store.updateSkill("test-skill", {
+			content: "# Updated\nNew content.",
+		});
+		expect(updated?.content).toBe("# Updated\nNew content.");
+
+		expect(store.updateSkill("missing", { content: "x" })).toBeNull();
+
+		expect(store.deleteSkill("test-skill")).toBe(true);
+		expect(store.getSkill("test-skill")).toBeNull();
+		expect(store.deleteSkill("missing")).toBe(false);
+	});
 });

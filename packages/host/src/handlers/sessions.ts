@@ -143,6 +143,9 @@ function parseModelBody(
 	if (value === undefined || value === null) {
 		return null;
 	}
+	if (typeof value === "string") {
+		return value.length > 0 ? value : "invalid";
+	}
 	if (!isRecord(value)) return "invalid";
 	const name = value.name;
 	if (typeof name !== "string" || name.length === 0) return "invalid";

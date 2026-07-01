@@ -13,6 +13,9 @@ import type { Prototype } from "@sumeru/core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { PrototypeInfo } from "./types.js";
 
+// Skill I/O has been migrated to SQLite (issue #191).
+// Only prototype and resource-name functions remain here.
+
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
 
 export function validateResourceName(name: string, label: string): void {
@@ -29,65 +32,6 @@ export async function ensureDataDirs(
 ): Promise<void> {
 	await mkdir(skillsDir, { recursive: true });
 	await mkdir(prototypesDir, { recursive: true });
-}
-
-export async function listSkillNames(
-	skillsDir: string,
-): Promise<Array<string>> {
-	try {
-		const entries = await readdir(skillsDir, { withFileTypes: true });
-		return entries
-			.filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-			.map((entry) => entry.name.slice(0, -".md".length))
-			.sort();
-	} catch {
-		return [];
-	}
-}
-
-export async function skillExists(
-	skillsDir: string,
-	name: string,
-): Promise<boolean> {
-	try {
-		await access(skillPath(skillsDir, name));
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-export async function readSkill(
-	skillsDir: string,
-	name: string,
-): Promise<string> {
-	validateResourceName(name, "skill name");
-	return readFile(skillPath(skillsDir, name), "utf-8");
-}
-
-export async function writeSkill(
-	skillsDir: string,
-	name: string,
-	content: string,
-): Promise<void> {
-	validateResourceName(name, "skill name");
-	await mkdir(skillsDir, { recursive: true });
-	const target = skillPath(skillsDir, name);
-	const temp = `${target}.tmp`;
-	await writeFile(temp, content, "utf-8");
-	await rename(temp, target);
-}
-
-export async function deleteSkill(
-	skillsDir: string,
-	name: string,
-): Promise<void> {
-	validateResourceName(name, "skill name");
-	await unlink(skillPath(skillsDir, name));
-}
-
-function skillPath(skillsDir: string, name: string): string {
-	return join(skillsDir, `${name}.md`);
 }
 
 export async function findPrototypeReferencesToPersona(
@@ -160,19 +104,6 @@ export async function prototypeFileExists(
 	} catch {
 		return false;
 	}
-}
-
-export async function assertSkillsExist(
-	skillsDir: string,
-	skillNames: Array<string>,
-): Promise<Array<string>> {
-	const missing: Array<string> = [];
-	for (const skillName of skillNames) {
-		if (!(await skillExists(skillsDir, skillName))) {
-			missing.push(skillName);
-		}
-	}
-	return missing;
 }
 
 export async function loadPrototypesFromDisk(input: {

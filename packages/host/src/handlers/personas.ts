@@ -1,8 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import {
-	assertSkillsExist,
-	findPrototypeReferencesToPersona,
-} from "../data-store.js";
+import { findPrototypeReferencesToPersona } from "../data-store.js";
 import {
 	errorEnvelope,
 	personaEnvelope,
@@ -60,10 +57,7 @@ export function createPersonasHandler(hostConfig: LoadedHostConfig) {
 				writeJson(res, 400, errorEnvelope("invalid_body", message));
 				return;
 			}
-			const missing = await assertSkillsExist(
-				hostConfig.skillsDir,
-				body.skills,
-			);
+			const missing = findMissingSkills(store, body.skills);
 			if (missing.length > 0) {
 				writeJson(
 					res,
@@ -109,10 +103,7 @@ export function createPersonasHandler(hostConfig: LoadedHostConfig) {
 				writeJson(res, 400, errorEnvelope("invalid_body", message));
 				return;
 			}
-			const missing = await assertSkillsExist(
-				hostConfig.skillsDir,
-				body.skills,
-			);
+			const missing = findMissingSkills(store, body.skills);
 			if (missing.length > 0) {
 				writeJson(
 					res,
@@ -212,6 +203,19 @@ async function readPersonaBody(req: IncomingMessage): Promise<PersonaBody> {
 		}
 	}
 	return { instructions, skills };
+}
+
+function findMissingSkills(
+	store: LoadedHostConfig["sqliteStore"],
+	skillNames: Array<string>,
+): Array<string> {
+	const missing: Array<string> = [];
+	for (const name of skillNames) {
+		if (!store.skillExists(name)) {
+			missing.push(name);
+		}
+	}
+	return missing;
 }
 
 function writePersonaError(res: ServerResponse, err: unknown): void {

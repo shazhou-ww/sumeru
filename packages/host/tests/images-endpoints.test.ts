@@ -15,12 +15,6 @@ function writeHostFixture(rootDir: string, withEmbeddedImages: boolean): void {
 		"maxRunning: 2",
 		"workspaceRoot: /tmp/workspaces",
 		"envFile: /dev/null",
-		"models:",
-		"  anthropic:",
-		"    baseUrl: null",
-		"    apiKey: sk-test",
-		"  openai: null",
-		"  openrouter: null",
 	];
 	if (withEmbeddedImages) {
 		lines.push(

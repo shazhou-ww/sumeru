@@ -16,12 +16,6 @@ function writeV3HostFixture(rootDir: string): void {
 			"maxRunning: 4",
 			"workspaceRoot: /tmp/workspaces",
 			"envFile: /dev/null",
-			"models:",
-			"  anthropic:",
-			"    baseUrl: null",
-			"    apiKey: sk-test",
-			"  openai: null",
-			"  openrouter: null",
 		].join("\n"),
 	);
 	mkdirSync("/tmp/workspaces/demo", { recursive: true });
