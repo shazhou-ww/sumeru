@@ -270,6 +270,8 @@ export async function runSetup(input: SetupInput): Promise<void> {
 			envKey,
 			apiKey: input.apiKey,
 			baseUrl,
+			apiType,
+			model: input.model,
 		});
 	}
 }
@@ -408,6 +410,8 @@ type HealthCheckOptions = {
 	envKey: string;
 	apiKey: string;
 	baseUrl: string | null;
+	apiType: "openai" | "anthropic";
+	model: string;
 };
 
 async function runHealthCheck(options: HealthCheckOptions): Promise<void> {
@@ -433,37 +437,35 @@ async function runHealthCheck(options: HealthCheckOptions): Promise<void> {
 	}
 	process.stdout.write(`  ✓ Container starts successfully\n`);
 
-	// Step 2: Can the container reach the provider endpoint?
-	let networkOk = false;
-	if (options.baseUrl !== null) {
-		// Use docker exec to curl from inside the container
-		const containerName = `${projectName}-agent-1`;
-		// Give container a moment to fully start
-		spawnSync("sleep", ["1"]);
-		const curlResult = spawnSync(
-			"docker",
-			[
-				"exec", containerName,
-				"curl", "-s", "--max-time", "5", "-o", "/dev/null",
-				"-w", "%{http_code}",
-				`${options.baseUrl}/models`,
-			],
-			{ encoding: "utf-8", timeout: 15_000 },
-		);
-		const httpCode = parseInt(curlResult.stdout?.trim() ?? "0", 10);
-		if (httpCode > 0) {
-			process.stdout.write(`  ✓ Provider reachable from container (${options.baseUrl}) [HTTP ${String(httpCode)}]\n`);
-			networkOk = true;
-		} else {
-			const hint = curlResult.stdout?.trim() ?? curlResult.stderr?.trim() ?? "";
-			process.stdout.write(
-				`  ✗ Provider unreachable from container (${options.baseUrl})\n    ${hint}\n    Hint: check network_mode / proxy settings in compose.yaml\n`,
-			);
-		}
+	// Step 2: Send a minimal LLM request from inside the container
+	const containerName = `${projectName}-agent-1`;
+	spawnSync("sleep", ["1"]);
+
+	const curlArgs = buildLlmProbeArgs(options);
+	const curlResult = spawnSync(
+		"docker",
+		["exec", containerName, "curl", ...curlArgs],
+		{ encoding: "utf-8", timeout: 30_000 },
+	);
+
+	const output = curlResult.stdout?.trim() ?? "";
+	const stderr = curlResult.stderr?.trim() ?? "";
+
+	if (curlResult.status === 0 && !output.includes('"error"')) {
+		process.stdout.write(`  ✓ LLM probe succeeded (model: ${options.model})\n`);
 	} else {
-		// No base URL (e.g. direct Anthropic/OpenAI) — skip network check
-		process.stdout.write(`  – Network check skipped (no base URL configured)\n`);
-		networkOk = true;
+		// Try to extract error message
+		let errorMsg = "";
+		try {
+			const parsed = JSON.parse(output) as Record<string, unknown>;
+			const errObj = parsed["error"] as Record<string, unknown> | undefined;
+			errorMsg = String(errObj?.["message"] ?? parsed["message"] ?? output);
+		} catch {
+			errorMsg = output || stderr;
+		}
+		process.stdout.write(
+			`  ✗ LLM probe failed (model: ${options.model})\n    ${errorMsg}\n    Hint: verify API key, model name, and network access\n`,
+		);
 	}
 
 	// Cleanup
@@ -472,8 +474,39 @@ async function runHealthCheck(options: HealthCheckOptions): Promise<void> {
 		["compose", "-f", options.composePath, "-p", projectName, "down", "-t", "2"],
 		{ encoding: "utf-8", env, timeout: 15_000 },
 	);
+}
 
-	if (networkOk) {
-		process.stdout.write(`\n  All checks passed ✓\n`);
+function buildLlmProbeArgs(options: HealthCheckOptions): Array<string> {
+	if (options.apiType === "anthropic") {
+		const url = options.baseUrl ?? "https://api.anthropic.com";
+		const body = JSON.stringify({
+			model: options.model,
+			max_tokens: 1,
+			messages: [{ role: "user", content: "hi" }],
+		});
+		return [
+			"-s", "--max-time", "15",
+			"-X", "POST",
+			`${url}/v1/messages`,
+			"-H", "Content-Type: application/json",
+			"-H", `x-api-key: ${options.apiKey}`,
+			"-H", "anthropic-version: 2023-06-01",
+			"-d", body,
+		];
 	}
+	// OpenAI-compatible
+	const url = options.baseUrl ?? "https://api.openai.com/v1";
+	const body = JSON.stringify({
+		model: options.model,
+		max_tokens: 1,
+		messages: [{ role: "user", content: "hi" }],
+	});
+	return [
+		"-s", "--max-time", "15",
+		"-X", "POST",
+		`${url}/chat/completions`,
+		"-H", "Content-Type: application/json",
+		"-H", `Authorization: Bearer ${options.apiKey}`,
+		"-d", body,
+	];
 }
