@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "@sumeru/host/sqlite";
@@ -27,10 +27,35 @@ const PROVIDER_PRESETS: Record<string, ProviderPreset> = {
 function deriveModelId(modelName: string): string {
 	// "deepseek-ai/DeepSeek-V3" → "deepseek-v3"
 	// "claude-sonnet-4-20250514" → "claude-sonnet-4-20250514"
+	const parts = modelName.split("/");
 	const lastSegment = modelName.includes("/")
-		? modelName.split("/").pop()!
+		? parts[parts.length - 1]
 		: modelName;
 	return lastSegment.toLowerCase();
+}
+
+// ── .env upsert helper ─────────────────────────────────────────────
+function upsertEnvFile(envPath: string, key: string, value: string): void {
+	let lines: Array<string> = [];
+	if (existsSync(envPath)) {
+		lines = readFileSync(envPath, "utf-8").split("\n");
+	}
+	const prefix = `${key}=`;
+	const idx = lines.findIndex((l) => l.startsWith(prefix));
+	const entry = `${key}=${value}`;
+	if (idx >= 0) {
+		lines[idx] = entry;
+	} else {
+		// Append before trailing empty line
+		if (lines.length > 0 && lines[lines.length - 1] === "") {
+			lines.splice(lines.length - 1, 0, entry);
+		} else {
+			lines.push(entry);
+		}
+	}
+	// Ensure trailing newline
+	const content = `${lines.filter((l, i) => i < lines.length - 1 || l !== "").join("\n")}\n`;
+	writeFileSync(envPath, content, { mode: 0o600 });
 }
 
 // ── Setup input ─────────────────────────────────────────────────────
@@ -69,14 +94,8 @@ export function runSetup(input: SetupInput): void {
 	}
 
 	const modelId = deriveModelId(input.model);
-
-	// ── Guard: don't overwrite ──────────────────────────────────────
-	const hostYamlPath = join(rootDir, "host.yaml");
-	if (existsSync(hostYamlPath)) {
-		throw new Error(
-			`${hostYamlPath} already exists. Remove it or use a different --root-dir.`,
-		);
-	}
+	const isUpdate = existsSync(join(rootDir, "host.yaml"));
+	const actions: Array<string> = [];
 
 	// ── Create directory tree ───────────────────────────────────────
 	const dirs = [
@@ -92,85 +111,122 @@ export function runSetup(input: SetupInput): void {
 		mkdirSync(dir, { recursive: true });
 	}
 
-	// ── host.yaml ───────────────────────────────────────────────────
-	writeFileSync(
-		hostYamlPath,
-		`name: sumeru
-maxRunning: 3
-workspaceRoot: ${rootDir}/workspace
-envFile: ${rootDir}/.env
-`,
-	);
+	// ── host.yaml (create only, never overwrite) ────────────────────
+	const hostYamlPath = join(rootDir, "host.yaml");
+	if (!existsSync(hostYamlPath)) {
+		writeFileSync(
+			hostYamlPath,
+			`name: sumeru\nmaxRunning: 3\nworkspaceRoot: ${rootDir}/workspace\nenvFile: ${rootDir}/.env\n`,
+		);
+		actions.push("created host.yaml");
+	}
 
-	// ── .env ────────────────────────────────────────────────────────
+	// ── .env (upsert key) ───────────────────────────────────────────
 	const envKey = `${input.provider.toUpperCase().replace(/-/g, "_")}_API_KEY`;
-	writeFileSync(join(rootDir, ".env"), `${envKey}=${input.apiKey}\n`, {
-		mode: 0o600,
-	});
+	const envPath = join(rootDir, ".env");
+	upsertEnvFile(envPath, envKey, input.apiKey);
+	actions.push(`${isUpdate ? "updated" : "created"} .env (${envKey})`);
 
-	// ── data/prototypes/sarsapa.yaml ────────────────────────────────
-	writeFileSync(
-		join(rootDir, "data", "prototypes", "sarsapa.yaml"),
-		`name: sarsapa
-persona: default
-model: ${modelId}
-image: sumeru/sarsapa:dev
-`,
-	);
+	// ── data/prototypes/sarsapa.yaml (create only) ──────────────────
+	const protoYamlPath = join(rootDir, "data", "prototypes", "sarsapa.yaml");
+	if (!existsSync(protoYamlPath)) {
+		writeFileSync(
+			protoYamlPath,
+			`name: sarsapa\npersona: default\nmodel: ${modelId}\nimage: sumeru/sarsapa:dev\n`,
+		);
+		actions.push("created data/prototypes/sarsapa.yaml");
+	}
 
-	// ── prototypes/sarsapa/compose.yaml ─────────────────────────────
-	writeFileSync(
-		join(rootDir, "prototypes", "sarsapa", "compose.yaml"),
-		`services:
-  agent:
-    image: sumeru/sarsapa:dev
-    mem_limit: 4g
-    cpus: 2
-    volumes:
-      - "\${SUMERU_PROJECT_PATH}:\${SUMERU_PROJECT_PATH}"
-    environment:
-      - ${envKey}=\${${envKey}}
-`,
-	);
+	// ── prototypes/sarsapa/compose.yaml (create only) ───────────────
+	const composePath = join(rootDir, "prototypes", "sarsapa", "compose.yaml");
+	if (!existsSync(composePath)) {
+		writeFileSync(
+			composePath,
+			`services:\n  agent:\n    image: sumeru/sarsapa:dev\n    mem_limit: 4g\n    cpus: 2\n    volumes:\n      - "\${SUMERU_PROJECT_PATH}:\${SUMERU_PROJECT_PATH}"\n    environment:\n      - ${envKey}=\${${envKey}}\n`,
+		);
+		actions.push("created prototypes/sarsapa/compose.yaml");
+	}
 
-	// ── SQLite: Provider → Model → Persona ──────────────────────────
+	// ── SQLite: upsert Provider → Model → Persona ───────────────────
 	const dbPath = join(rootDir, "data", "sumeru.db");
 	const store = openDatabase(dbPath);
 	try {
-		store.createProvider({
-			name: input.provider,
-			apiType,
-			baseUrl,
-			apiKey: input.apiKey,
-		});
+		// Provider: update if exists, create if not
+		const existingProvider = store.getProvider(input.provider);
+		if (existingProvider !== null) {
+			store.updateProvider(input.provider, {
+				apiType,
+				baseUrl,
+				apiKey: input.apiKey,
+			});
+			actions.push(`updated provider "${input.provider}"`);
+		} else {
+			store.createProvider({
+				name: input.provider,
+				apiType,
+				baseUrl,
+				apiKey: input.apiKey,
+			});
+			actions.push(`created provider "${input.provider}"`);
+		}
 
-		store.createModel({
-			id: modelId,
-			provider: input.provider,
-			model: input.model,
-			contextWindow: null,
-			toolUse: true,
-			streaming: true,
-			metadata: null,
-		});
+		// Model: update if exists, create if not
+		const existingModel = store.getModel(modelId);
+		if (existingModel !== null) {
+			store.updateModel(modelId, {
+				provider: input.provider,
+				model: input.model,
+				contextWindow: null,
+				toolUse: true,
+				streaming: true,
+				metadata: null,
+			});
+			actions.push(`updated model "${modelId}"`);
+		} else {
+			store.createModel({
+				id: modelId,
+				provider: input.provider,
+				model: input.model,
+				contextWindow: null,
+				toolUse: true,
+				streaming: true,
+				metadata: null,
+			});
+			actions.push(`created model "${modelId}"`);
+		}
 
-		store.createPersona({
-			name: "default",
-			instructions: "You are a helpful coding assistant.",
-			skills: [],
-		});
+		// Persona: create only if not exists
+		const existingPersona = store.getPersona("default");
+		if (existingPersona === null) {
+			store.createPersona({
+				name: "default",
+				instructions: "You are a helpful coding assistant.",
+				skills: [],
+			});
+			actions.push('created persona "default"');
+		}
 	} finally {
 		store.close();
 	}
 
 	// ── Summary ─────────────────────────────────────────────────────
-	process.stdout.write(`Sumeru initialized at ${rootDir}\n\n`);
+	process.stdout.write(
+		isUpdate
+			? `Sumeru updated at ${rootDir}\n\n`
+			: `Sumeru initialized at ${rootDir}\n\n`,
+	);
 	process.stdout.write(`  Provider: ${input.provider} (${apiType})\n`);
 	if (baseUrl !== null) {
 		process.stdout.write(`  Base URL: ${baseUrl}\n`);
 	}
 	process.stdout.write(`  Model:    ${input.model} → id="${modelId}"\n`);
 	process.stdout.write(`  Persona:  default\n\n`);
-	process.stdout.write(`Start the server:\n`);
-	process.stdout.write(`  sumeru server start\n`);
+	process.stdout.write(`Actions:\n`);
+	for (const action of actions) {
+		process.stdout.write(`  • ${action}\n`);
+	}
+	if (!isUpdate) {
+		process.stdout.write(`\nStart the server:\n`);
+		process.stdout.write(`  sumeru server start\n`);
+	}
 }
