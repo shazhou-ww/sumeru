@@ -373,17 +373,46 @@ export async function validateComposeProjectVolume(
 	);
 }
 
-export function mergeSessionEnv(
+export function parseDotenvContent(raw: string): Record<string, string> {
+	const result: Record<string, string> = {};
+	for (const line of raw.split("\n")) {
+		const trimmed = line.trim();
+		if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
+		const eq = trimmed.indexOf("=");
+		if (eq <= 0) continue;
+		const key = trimmed.slice(0, eq).trim();
+		let value = trimmed.slice(eq + 1).trim();
+		if (
+			(value.startsWith('"') && value.endsWith('"')) ||
+			(value.startsWith("'") && value.endsWith("'"))
+		) {
+			value = value.slice(1, -1);
+		}
+		result[key] = value;
+	}
+	return result;
+}
+
+async function loadEnvFile(envFilePath: string): Promise<Record<string, string>> {
+	const expanded = expandHome(envFilePath);
+	try {
+		const raw = await readFile(expanded, "utf-8");
+		return parseDotenvContent(raw);
+	} catch {
+		return {};
+	}
+}
+
+export async function mergeSessionEnv(
 	hostEnvFile: string,
 	sessionEnv: Record<string, string> | null,
-): Record<string, string> {
-	const merged: Record<string, string> = {};
+): Promise<Record<string, string>> {
+	const merged = await loadEnvFile(hostEnvFile);
 	if (sessionEnv !== null) {
 		for (const [key, value] of Object.entries(sessionEnv)) {
 			merged[key] = value;
 		}
 	}
-	void hostEnvFile;
 	return merged;
 }
 
@@ -533,26 +562,8 @@ function extractEnvFilePath(raw: string): string | null {
 }
 
 async function applyEnvFile(envFilePath: string): Promise<void> {
-	const expanded = expandHome(envFilePath);
-	let raw: string;
-	try {
-		raw = await readFile(expanded, "utf-8");
-	} catch {
-		return;
-	}
-	for (const line of raw.split("\n")) {
-		const trimmed = line.trim();
-		if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
-		const eq = trimmed.indexOf("=");
-		if (eq <= 0) continue;
-		const key = trimmed.slice(0, eq).trim();
-		let value = trimmed.slice(eq + 1).trim();
-		if (
-			(value.startsWith('"') && value.endsWith('"')) ||
-			(value.startsWith("'") && value.endsWith("'"))
-		) {
-			value = value.slice(1, -1);
-		}
+	const vars = await loadEnvFile(envFilePath);
+	for (const [key, value] of Object.entries(vars)) {
 		if (process.env[key] === undefined) {
 			process.env[key] = value;
 		}
