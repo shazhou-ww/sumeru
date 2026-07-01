@@ -1,4 +1,4 @@
-import type { Model, Provider, SessionInfo } from "@sumeru/core";
+import type { Image, Model, Provider, SessionInfo } from "@sumeru/core";
 import type { HostRootValue, PrototypeListItem } from "./http-client.js";
 
 export type TableColumn<T> = {
@@ -94,6 +94,15 @@ export function formatDockerImagesOutput(stdout: string): string {
 		return "(no sumeru/* images found)";
 	}
 	return lines.join("\n");
+}
+
+export function formatImageTable(images: Array<Image>): string {
+	return formatTable(images, [
+		{ header: "NAME", width: 24, value: (row) => row.name },
+		{ header: "DIGEST", width: 20, value: (row) => row.digest },
+		{ header: "BUILT AT", width: 28, value: (row) => row.builtAt },
+		{ header: "DOCKERFILE", width: 32, value: (row) => row.dockerfile },
+	]);
 }
 
 function pad(value: string, width: number): string {

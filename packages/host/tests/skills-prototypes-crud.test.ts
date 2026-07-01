@@ -142,6 +142,20 @@ describe("skills and prototypes CRUD routes", () => {
 		);
 		expect(createPersona.status).toBe(201);
 
+		const createImage = await request(
+			server,
+			"POST",
+			"/images/worker",
+			JSON.stringify({
+				name: "worker",
+				description: "Worker image",
+				dockerfile: "docker/sarsapa/Dockerfile",
+				builtAt: "2026-06-29T00:00:00.000Z",
+				digest: "sha256:worker",
+			}),
+		);
+		expect(createImage.status).toBe(201);
+
 		const createPrototype = await request(
 			server,
 			"POST",
@@ -150,11 +164,28 @@ describe("skills and prototypes CRUD routes", () => {
 				name: "worker",
 				persona: "worker-persona",
 				model: "test-model",
-				image: "sumeru/worker:dev",
+				image: "worker",
 				defaults: null,
 			}),
 		);
 		expect(createPrototype.status).toBe(201);
+
+		const missingImage = await request(
+			server,
+			"POST",
+			"/prototypes/bad-image",
+			JSON.stringify({
+				name: "bad-image",
+				persona: "worker-persona",
+				model: "test-model",
+				image: "missing-image",
+				defaults: null,
+			}),
+		);
+		expect(missingImage.status).toBe(400);
+		expect(
+			(missingImage.body as { value: { error: string } }).value.error,
+		).toBe("image_not_found");
 
 		const missingPersona = await request(
 			server,
@@ -164,7 +195,7 @@ describe("skills and prototypes CRUD routes", () => {
 				name: "bad",
 				persona: "missing",
 				model: "test-model",
-				image: "sumeru/bad:dev",
+				image: "worker",
 				defaults: null,
 			}),
 		);

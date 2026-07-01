@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve as pathResolve, sep } from "node:path";
 import type { SkillContent } from "@sumeru/adapter-core";
@@ -10,7 +10,7 @@ import type {
 	Persona,
 	ProviderApiType,
 } from "@sumeru/core";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
 	ensureDataDirs,
 	loadPrototypeInfo,
@@ -88,6 +88,43 @@ export async function removePrototypeFromConfig(
 	name: string,
 ): Promise<void> {
 	hostConfig.prototypes.delete(name);
+}
+
+export async function saveImageInConfig(
+	hostConfig: LoadedHostConfig,
+	image: Image,
+): Promise<void> {
+	hostConfig.images.set(image.name, image);
+	await writeImagesFile(hostConfig.rootDir, hostConfig.images);
+}
+
+export async function removeImageFromConfig(
+	hostConfig: LoadedHostConfig,
+	name: string,
+): Promise<void> {
+	hostConfig.images.delete(name);
+	await writeImagesFile(hostConfig.rootDir, hostConfig.images);
+}
+
+async function writeImagesFile(
+	rootDir: string,
+	images: Map<string, Image>,
+): Promise<void> {
+	const imagesPath = join(rootDir, DEFAULT_IMAGES_FILE);
+	const mapping: Record<string, Omit<Image, "name">> = {};
+	const sortedNames = [...images.keys()].sort();
+	for (const name of sortedNames) {
+		const image = images.get(name);
+		if (image === undefined) continue;
+		mapping[name] = {
+			description: image.description,
+			dockerfile: image.dockerfile,
+			builtAt: image.builtAt,
+			digest: image.digest,
+		};
+	}
+	const yaml = stringifyYaml(mapping);
+	await writeFile(imagesPath, yaml, "utf-8");
 }
 
 function toStoreInput(hostConfig: LoadedHostConfig): {

@@ -31,15 +31,30 @@ function writeHostFixture(rootDir: string, withEmbeddedImages: boolean): void {
 
 async function request(
 	server: Server,
+	method: string,
 	path: string,
+	body?: string,
 ): Promise<{ status: number; body: unknown }> {
 	const address = server.address();
 	if (address === null || typeof address === "string") {
 		throw new Error("server not listening");
 	}
-	const response = await fetch(`http://127.0.0.1:${address.port}${path}`);
+	const headers: Record<string, string> = {};
+	if (body !== undefined) {
+		headers["Content-Type"] = "application/json";
+		headers["Content-Length"] = Buffer.byteLength(body).toString();
+	}
+	const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
+		method,
+		headers,
+		body,
+	});
 	const text = await response.text();
-	return { status: response.status, body: JSON.parse(text) as unknown };
+	let parsed: unknown = null;
+	if (text.length > 0) {
+		parsed = JSON.parse(text) as unknown;
+	}
+	return { status: response.status, body: parsed };
 }
 
 describe("images endpoints", () => {
@@ -81,7 +96,7 @@ describe("images endpoints", () => {
 		writeHostFixture(rootDir, true);
 		const server = await startTestServer(rootDir);
 
-		const list = await request(server, "/images");
+		const list = await request(server, "GET", "/images");
 		expect(list.status).toBe(200);
 		expect(list.body).toEqual({
 			type: "@sumeru/image-list",
@@ -102,7 +117,7 @@ describe("images endpoints", () => {
 		writeHostFixture(rootDir, true);
 		const server = await startTestServer(rootDir);
 
-		const detail = await request(server, "/images/worker");
+		const detail = await request(server, "GET", "/images/worker");
 		expect(detail.status).toBe(200);
 		expect(detail.body).toEqual({
 			type: "@sumeru/image",
@@ -121,7 +136,7 @@ describe("images endpoints", () => {
 		writeHostFixture(rootDir, true);
 		const server = await startTestServer(rootDir);
 
-		const detail = await request(server, "/images/missing");
+		const detail = await request(server, "GET", "/images/missing");
 		expect(detail.status).toBe(404);
 		expect(detail.body).toEqual({
 			type: "@sumeru/error",
@@ -149,7 +164,7 @@ describe("images endpoints", () => {
 		);
 		const server = await startTestServer(rootDir);
 
-		const list = await request(server, "/images");
+		const list = await request(server, "GET", "/images");
 		expect(list.status).toBe(200);
 		expect(list.body).toEqual({
 			type: "@sumeru/image-list",
@@ -163,5 +178,55 @@ describe("images endpoints", () => {
 				},
 			],
 		});
+	});
+
+	it("POST /images/:name registers an image and DELETE removes it", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-images-"));
+		writeHostFixture(rootDir, false);
+		const server = await startTestServer(rootDir);
+
+		const created = await request(
+			server,
+			"POST",
+			"/images/hermes",
+			JSON.stringify({
+				name: "hermes",
+				description: "Hermes worker",
+				dockerfile: "docker/hermes/Dockerfile",
+				builtAt: "2026-06-29T02:00:00.000Z",
+				digest: "sha256:hermes",
+			}),
+		);
+		expect(created.status).toBe(201);
+		expect(created.body).toEqual({
+			type: "@sumeru/image",
+			value: {
+				name: "hermes",
+				description: "Hermes worker",
+				dockerfile: "docker/hermes/Dockerfile",
+				builtAt: "2026-06-29T02:00:00.000Z",
+				digest: "sha256:hermes",
+			},
+		});
+
+		const updated = await request(
+			server,
+			"POST",
+			"/images/hermes",
+			JSON.stringify({
+				name: "hermes",
+				description: "Hermes worker v2",
+				dockerfile: "docker/hermes/Dockerfile",
+				builtAt: "2026-06-29T03:00:00.000Z",
+				digest: "sha256:hermes2",
+			}),
+		);
+		expect(updated.status).toBe(200);
+
+		const removed = await request(server, "DELETE", "/images/hermes");
+		expect(removed.status).toBe(204);
+
+		const missing = await request(server, "GET", "/images/hermes");
+		expect(missing.status).toBe(404);
 	});
 });

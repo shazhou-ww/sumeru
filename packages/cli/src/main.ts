@@ -4,12 +4,17 @@ import { dirname, resolve } from "node:path";
 import {
 	formatDockerImagesOutput,
 	formatHostStatus,
+	formatImageTable,
 	formatModelTable,
 	formatPrototypeTable,
 	formatProviderTable,
 	formatSessionTable,
 } from "./format.js";
 import { createHostClient, HostClientError } from "./http-client.js";
+import {
+	runImageBuild as executeImageBuild,
+	findRepoRoot,
+} from "./image-build.js";
 import {
 	isProcessAlive,
 	readPidFile,
@@ -29,7 +34,7 @@ Commands:
   server status
   prototypes
   prototype list
-  prototype add <name> --model <model-id> --image <docker-image> [--persona <name>]
+  prototype add <name> --model <model-id> --image <image-name> [--persona <name>]
   prototype remove <name>
   provider list
   provider add <name> --api-type <type> --base-url <url> [--api-key <key>]
@@ -37,6 +42,8 @@ Commands:
   model list
   model add <id> --provider <name> --model <model> [--context-window N] [--no-tool-use] [--no-streaming]
   model remove <id>
+  image build <name> --agent <type> [--adapter <pkg-or-path>]
+  image list
   sessions
   create <prototype> --project <path> --task <description>
   delete <session_id>
@@ -257,7 +264,7 @@ async function runPrototypeAdd(
 		image === null
 	) {
 		fail(
-			"Usage: sumeru prototype add <name> --model <model-id> --image <docker-image> [--persona <name>]",
+			"Usage: sumeru prototype add <name> --model <model-id> --image <image-name> [--persona <name>]",
 		);
 	}
 	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
@@ -557,6 +564,47 @@ async function runStop(
 	}
 }
 
+async function runImageList(
+	flags: Map<string, string | boolean>,
+): Promise<void> {
+	const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+	try {
+		const envelope = await client.listImages();
+		process.stdout.write(`${formatImageTable(envelope.value)}\n`);
+	} catch (err) {
+		writeClientError(err);
+	}
+}
+
+async function runImageBuild(
+	flags: Map<string, string | boolean>,
+	positionals: Array<string>,
+): Promise<void> {
+	const name = positionals[0];
+	const agent = flagString(flags, "agent");
+	const adapter = flagString(flags, "adapter");
+	if (name === undefined || name.length === 0 || agent === null) {
+		fail(
+			"Usage: sumeru image build <name> --agent <type> [--adapter <pkg-or-path>]",
+		);
+	}
+	const repoRoot = await findRepoRoot(process.cwd());
+	try {
+		const result = await executeImageBuild({
+			name,
+			agent,
+			adapter,
+			baseUrl: resolveBaseUrl(flags),
+			repoRoot,
+		});
+		process.stdout.write(`built ${result.tag} (${result.digest})\n`);
+		process.stdout.write(`registered image ${name}\n`);
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		fail(msg);
+	}
+}
+
 function runImages(): void {
 	const result = spawnSync("docker", ["images", "sumeru/*"], {
 		encoding: "utf-8",
@@ -678,6 +726,17 @@ async function main(): Promise<void> {
 			return;
 		}
 		fail(`Unknown model subcommand: ${sub ?? "(none)"}`);
+	}
+	if (cmd === "image") {
+		if (sub === "list") {
+			await runImageList(parsed.flags);
+			return;
+		}
+		if (sub === "build") {
+			await runImageBuild(parsed.flags, parsed.positionals);
+			return;
+		}
+		fail(`Unknown image subcommand: ${sub ?? "(none)"}`);
 	}
 	if (cmd === "sessions") {
 		await runSessions(parsed.flags);

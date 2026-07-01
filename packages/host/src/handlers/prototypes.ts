@@ -141,6 +141,14 @@ async function upsertPrototype(
 		);
 		return;
 	}
+	if (!hostConfig.images.has(prototype.image)) {
+		writeJson(
+			res,
+			400,
+			errorEnvelope("image_not_found", `Image ${prototype.image} not found`),
+		);
+		return;
+	}
 	try {
 		await writePrototypeFile(hostConfig.prototypesDir, prototype);
 		const info = await reloadPrototypeInConfig(hostConfig, name);

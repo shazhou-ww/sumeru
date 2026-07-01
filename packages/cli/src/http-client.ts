@@ -1,4 +1,4 @@
-import type { Model, Provider, SessionInfo } from "@sumeru/core";
+import type { Image, Model, Provider, SessionInfo } from "@sumeru/core";
 
 export type HostClientOptions = {
 	baseUrl: string;
@@ -82,6 +82,18 @@ export type HostClient = {
 		},
 	): Promise<Envelope<Model>>;
 	deleteModel(id: string): Promise<void>;
+	listImages(): Promise<Envelope<Array<Image>>>;
+	createImage(
+		name: string,
+		body: {
+			name: string;
+			description: string;
+			dockerfile: string;
+			builtAt: string;
+			digest: string;
+		},
+	): Promise<Envelope<Image>>;
+	deleteImage(name: string): Promise<void>;
 	listSessions(): Promise<Envelope<Array<SessionInfo>>>;
 	createSession(body: CreateSessionBody): Promise<Envelope<SessionInfo>>;
 	deleteSession(id: string): Promise<void>;
@@ -245,6 +257,43 @@ export function createHostClient(options: HostClientOptions): HostClient {
 		async deleteModel(id) {
 			const response = await fetch(
 				`${baseUrl}/models/${encodeURIComponent(id)}`,
+				{ method: "DELETE" },
+			);
+			if (response.status === 204) return;
+			const text = await response.text();
+			if (text.length === 0) {
+				throw new HostClientError(
+					response.status,
+					"request_failed",
+					`HTTP ${String(response.status)}`,
+				);
+			}
+			const json = JSON.parse(text) as Envelope<{
+				error: string;
+				message: string;
+			}>;
+			const errValue = json.value;
+			throw new HostClientError(
+				response.status,
+				errValue.error,
+				errValue.message,
+			);
+		},
+		async listImages() {
+			const { json } = await requestJson<Array<Image>>("GET", "/images", null);
+			return json;
+		},
+		async createImage(name, body) {
+			const { json } = await requestJson<Image>(
+				"POST",
+				`/images/${encodeURIComponent(name)}`,
+				body,
+			);
+			return json;
+		},
+		async deleteImage(name) {
+			const response = await fetch(
+				`${baseUrl}/images/${encodeURIComponent(name)}`,
 				{ method: "DELETE" },
 			);
 			if (response.status === 204) return;
