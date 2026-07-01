@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, dirname, isAbsolute } from "node:path";
+import { access, cp, mkdir, rm } from "node:fs/promises";
 import { openDatabase } from "@sumeru/host/sqlite";
-import { findRepoRoot, runImageBuild } from "./image-build.js";
-import { createHostClient } from "./http-client.js";
 
 // ── Provider presets ────────────────────────────────────────────────
 type ProviderPreset = {
@@ -236,14 +236,13 @@ export async function runSetup(input: SetupInput): Promise<void> {
 	let imageRegistered = false;
 	try {
 		const repoRoot = await findRepoRoot(process.cwd());
-		const baseUrl = `http://127.0.0.1:${process.env.SUMERU_PORT ?? "7900"}`;
 		process.stdout.write(`\nBuilding sarsapa image...\n`);
-		const result = await runImageBuild({
+		const result = await runImageBuildLocal({
 			name: "sarsapa",
 			agent: "sarsapa",
 			adapter: null,
-			baseUrl,
 			repoRoot,
+			rootDir,
 		});
 		actions.push(`built image "sarsapa" (${result.tag})`);
 		process.stdout.write(`  ✓ Image built: ${result.tag}\n`);
@@ -255,27 +254,137 @@ export async function runSetup(input: SetupInput): Promise<void> {
 		);
 	}
 
-	// ── Prototype registration (best-effort) ─────────────────────────
+	// ── Prototype (file already created above, just update image ref) ─
 	if (imageRegistered) {
+		// Ensure prototype yaml references the correct image name
+		const updatedProto = `name: sarsapa\npersona: default\nmodel: ${modelId}\nimage: sarsapa\n`;
+		writeFileSync(protoYamlPath, updatedProto);
+		process.stdout.write(`  ✓ Prototype "sarsapa" ready (image: sarsapa)\n`);
+	}
+}
+
+// ── Local image build (no host API needed) ────────────────────────────
+
+type LocalBuildOptions = {
+	name: string;
+	agent: string;
+	adapter: string | null;
+	repoRoot: string;
+	rootDir: string;
+};
+
+async function runImageBuildLocal(
+	options: LocalBuildOptions,
+): Promise<{ tag: string; digest: string }> {
+	const agent = options.agent;
+	const adapterPath = options.adapter
+		? isAbsolute(options.adapter)
+			? options.adapter
+			: resolve(options.repoRoot, options.adapter)
+		: agent === "sarsapa"
+			? join(options.repoRoot, "packages/sarsapa")
+			: join(options.repoRoot, `packages/adapter-${agent}`);
+
+	const dockerTag = `sumeru/${options.name}:dev`;
+	const dockerfileSource = join(options.repoRoot, "docker", agent, "Dockerfile");
+	const buildDir = join(options.repoRoot, ".build");
+	const packagesDir = join(buildDir, "packages");
+
+	await rm(buildDir, { recursive: true, force: true });
+	await mkdir(packagesDir, { recursive: true });
+
+	// Copy core + adapter-core + agent adapter
+	await copyPkg(join(options.repoRoot, "packages/core"), join(packagesDir, "core"));
+	await copyPkg(
+		join(options.repoRoot, "packages/adapter-core"),
+		join(packagesDir, "adapter-core"),
+	);
+	const adapterDest = agent === "sarsapa" ? "sarsapa" : `adapter-${agent}`;
+	await copyPkg(adapterPath, join(packagesDir, adapterDest));
+
+	await cp(dockerfileSource, join(buildDir, "Dockerfile"));
+	const dockerignore = join(options.repoRoot, "docker", ".dockerignore");
+	try {
+		await cp(dockerignore, join(buildDir, ".dockerignore"));
+	} catch {
+		// optional
+	}
+
+	const buildResult = spawnSync(
+		"docker",
+		["build", "-t", dockerTag, "-f", "Dockerfile", "."],
+		{ cwd: buildDir, encoding: "utf-8", stdio: "inherit" },
+	);
+	if (buildResult.error !== undefined) {
+		throw new Error(`docker build failed: ${buildResult.error.message}`);
+	}
+	if (buildResult.status !== 0) {
+		throw new Error(`docker build exited with code ${String(buildResult.status)}`);
+	}
+
+	// Get digest
+	const inspectResult = spawnSync(
+		"docker",
+		["inspect", "--format", "{{.Id}}", dockerTag],
+		{ encoding: "utf-8" },
+	);
+	const digest =
+		inspectResult.status === 0 ? inspectResult.stdout.trim() : "unknown";
+
+	// Write images.yaml directly (no host API needed)
+	const imagesPath = join(options.rootDir, "images.yaml");
+	const builtAt = new Date().toISOString();
+	let imagesContent = "";
+	if (existsSync(imagesPath)) {
+		imagesContent = readFileSync(imagesPath, "utf-8");
+	}
+	// Simple append/replace — just rewrite the whole file
+	const imageEntry = [
+		`  ${options.name}:`,
+		`    description: "Sumeru ${agent} image (${dockerTag})"`,
+		`    dockerfile: "docker/${agent}/Dockerfile"`,
+		`    builtAt: "${builtAt}"`,
+		`    digest: "${digest}"`,
+	].join("\n");
+
+	if (imagesContent.includes(`  ${options.name}:`)) {
+		// Replace existing entry (simple regex for our known format)
+		const re = new RegExp(
+			`  ${options.name}:\\n(    [^\\n]+\\n)*`,
+			"m",
+		);
+		imagesContent = imagesContent.replace(re, imageEntry + "\n");
+	} else {
+		if (!imagesContent.startsWith("images:")) {
+			imagesContent = "images:\n";
+		}
+		imagesContent += imageEntry + "\n";
+	}
+	writeFileSync(imagesPath, imagesContent);
+
+	return { tag: dockerTag, digest };
+}
+
+async function copyPkg(srcDir: string, destDir: string): Promise<void> {
+	await mkdir(join(destDir, "dist"), { recursive: true });
+	await cp(join(srcDir, "package.json"), join(destDir, "package.json"));
+	await cp(join(srcDir, "dist"), join(destDir, "dist"), { recursive: true });
+}
+
+async function findRepoRoot(startDir: string): Promise<string> {
+	let current = resolve(startDir);
+	for (;;) {
 		try {
-			const baseUrl = `http://127.0.0.1:${process.env.SUMERU_PORT ?? "7900"}`;
-			const client = createHostClient({ baseUrl });
-			await client.createPrototype("sarsapa", {
-				persona: "default",
-				model: modelId,
-				image: "sarsapa",
-			});
-			actions.push('created prototype "sarsapa"');
-			process.stdout.write(`  ✓ Prototype "sarsapa" registered\n`);
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			if (msg.includes("prototype_exists")) {
-				process.stdout.write(`  • Prototype "sarsapa" already exists\n`);
-			} else {
-				process.stdout.write(
-					`  ⚠ Prototype registration skipped: ${msg}\n  Run later: sumeru prototype add sarsapa --model ${modelId} --image sarsapa --persona default\n`,
+			await access(join(current, "pnpm-workspace.yaml"));
+			return current;
+		} catch {
+			const parent = dirname(current);
+			if (parent === current) {
+				throw new Error(
+					"Could not find monorepo root (pnpm-workspace.yaml). Run from the sumeru repository.",
 				);
 			}
+			current = parent;
 		}
 	}
 }
