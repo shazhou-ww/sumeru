@@ -10,6 +10,7 @@ import {
 	formatSessionTable,
 } from "./format.js";
 import { createHostClient, HostClientError } from "./http-client.js";
+import { runSetup } from "./setup.js";
 import {
 	isProcessAlive,
 	readPidFile,
@@ -21,6 +22,8 @@ import {
 const HELP_TEXT = `Usage: sumeru <command> [options]
 
 Commands:
+  setup --provider <name> --api-key <key> --model <model-name>
+        [--api-type <type>] [--base-url <url>] [--root-dir <path>]
   server start [--config <path>] [--host <host>] [--port <port>]
   server stop
   server status
@@ -38,6 +41,11 @@ Commands:
   logs <session_id> [--follow]
   stop <session_id>
   images
+
+Setup:
+  Initialize ~/.sumeru with config, prototype, and SQLite data.
+  Known providers (auto-detect apiType + baseUrl): anthropic, openai, openrouter, siliconflow, deepseek.
+  Custom providers require --api-type and --base-url.
 
 Environment:
   SUMERU_HOST       Host bind address for API client (default: 127.0.0.1)
@@ -533,6 +541,31 @@ async function main(): Promise<void> {
 
 	const parsed = parseArgs(argv);
 	const [cmd, sub] = parsed.command;
+
+	if (cmd === "setup") {
+		const provider = flagString(parsed.flags, "provider");
+		const apiKey = flagString(parsed.flags, "api-key");
+		const model = flagString(parsed.flags, "model");
+		if (provider === null || apiKey === null || model === null) {
+			fail(
+				"Usage: sumeru setup --provider <name> --api-key <key> --model <model-name>",
+			);
+		}
+		try {
+			runSetup({
+				provider,
+				apiKey,
+				model,
+				apiType: flagString(parsed.flags, "api-type"),
+				baseUrl: flagString(parsed.flags, "base-url"),
+				rootDir: flagString(parsed.flags, "root-dir"),
+			});
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			fail(msg);
+		}
+		return;
+	}
 
 	if (cmd === "server") {
 		if (sub === "start") {

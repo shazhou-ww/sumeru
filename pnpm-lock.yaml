@@ -62,6 +62,9 @@ importers:
       '@sumeru/core':
         specifier: workspace:*
         version: link:../core
+      '@sumeru/host':
+        specifier: workspace:*
+        version: link:../host
 
   packages/core: {}
 
