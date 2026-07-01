@@ -58,23 +58,23 @@ export type ManagedSession = SessionInfo & {
 	sessionEnv: Record<string, string>;
 };
 
+export type SessionModelOverride =
+	| string
+	| { provider: ModelConfig["provider"]; name: string }
+	| null;
+
 export type CreateSessionRequest = {
 	prototype: string;
 	project: string;
 	task: string;
-	model: {
-		provider: ModelConfig["provider"];
-		name: string;
-	} | null;
+	model: SessionModelOverride;
 	env: Record<string, string> | null;
 };
-
-export type SessionModelRequest = CreateSessionRequest["model"];
 
 export type MessageBody = {
 	content: string;
 	env: Record<string, string> | null;
-	model: SessionModelRequest | null;
+	model: SessionModelOverride;
 };
 
 export type MessageRequest = MessageBody & {

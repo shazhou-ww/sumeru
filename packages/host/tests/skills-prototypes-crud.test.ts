@@ -17,12 +17,6 @@ function writeV3HostFixture(rootDir: string): void {
 			"maxRunning: 3",
 			"workspaceRoot: /tmp/workspaces",
 			"envFile: /dev/null",
-			"models:",
-			"  anthropic:",
-			"    baseUrl: null",
-			"    apiKey: sk-test",
-			"  openai: null",
-			"  openrouter: null",
 		].join("\n"),
 	);
 }

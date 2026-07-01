@@ -9,8 +9,8 @@ import {
 	extractImageFromCompose,
 	loadPrototypeInitSkills,
 	mergeSessionEnv,
-	resolveModelConfig,
 	resolveProjectPath,
+	resolveSessionModel,
 } from "./config.js";
 import {
 	generateMessageId,
@@ -141,7 +141,11 @@ export function createSessionManager(input: {
 		if (!projectResolution.ok) {
 			throw new Error(`invalid_project:${projectResolution.message}`);
 		}
-		const model = resolveModelConfig(input.hostConfig.config, body.model);
+		const model = resolveSessionModel(
+			input.hostConfig.sqliteStore,
+			prototype.prototype.model,
+			body.model,
+		);
 		const image = await extractImageFromCompose(prototype.composePath);
 		const sessionEnv = mergeSessionEnv(
 			input.hostConfig.config.envFile,
@@ -274,7 +278,13 @@ export function createSessionManager(input: {
 			}
 		}
 		if (body.model !== null) {
-			const nextModel = resolveModelConfig(input.hostConfig.config, body.model);
+			const prototypeInfo = input.hostConfig.prototypes.get(record.prototype);
+			const protoModelId = prototypeInfo?.prototype.model ?? "";
+			const nextModel = resolveSessionModel(
+				input.hostConfig.sqliteStore,
+				protoModelId,
+				body.model,
+			);
 			if (modelConfigChanged(record.model, nextModel)) {
 				record.model = nextModel;
 				const runtime = adapters.get(id);
@@ -698,8 +708,8 @@ export function createSessionManager(input: {
 		if (persona === null) {
 			throw new Error(`persona_not_found:${prototype.prototype.persona}`);
 		}
-		const skills = await loadPrototypeInitSkills(
-			input.hostConfig.skillsDir,
+		const skills = loadPrototypeInitSkills(
+			input.hostConfig.sqliteStore,
 			persona,
 		);
 		return {

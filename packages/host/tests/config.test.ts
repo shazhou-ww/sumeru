@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-	defaultModelFromHostConfig,
 	expandEnvVars,
 	loadHostConfig,
-	resolveModelConfig,
+	resolveSessionModel,
 	validateComposeProjectVolume,
 } from "../src/config.js";
+import { openDatabase, type SqliteStore } from "../src/sqlite-store.js";
 
 function writeV3HostFixture(rootDir: string): void {
 	writeFileSync(
@@ -18,12 +18,6 @@ function writeV3HostFixture(rootDir: string): void {
 			"maxRunning: 3",
 			"workspaceRoot: /tmp/workspaces",
 			"envFile: /dev/null",
-			"models:",
-			"  anthropic:",
-			"    baseUrl: null",
-			"    apiKey: sk-test",
-			"  openai: null",
-			"  openrouter: null",
 		].join("\n"),
 	);
 }
@@ -59,6 +53,9 @@ describe("loadHostConfig — v3 HostConfig", () => {
 		expect(prototype?.prototype.image).toBe("sumeru/worker:latest");
 		expect(prototype?.prototypeHash).toMatch(/^[a-f0-9]{64}$/);
 		expect(loaded.images.size).toBe(0);
+
+		const skill = loaded.sqliteStore.getSkill("demo");
+		expect(skill?.content).toBe("# Demo skill\n");
 	});
 
 	it("loads embedded images from host.yaml", async () => {
@@ -70,12 +67,6 @@ describe("loadHostConfig — v3 HostConfig", () => {
 				"maxRunning: 3",
 				"workspaceRoot: /tmp/workspaces",
 				"envFile: /dev/null",
-				"models:",
-				"  anthropic:",
-				"    baseUrl: null",
-				"    apiKey: sk-test",
-				"  openai: null",
-				"  openrouter: null",
 				"images:",
 				"  worker:",
 				'    description: "Worker"',
@@ -95,6 +86,27 @@ describe("loadHostConfig — v3 HostConfig", () => {
 			builtAt: "2026-06-29T00:00:00.000Z",
 			digest: "sha256:abc",
 		});
+	});
+
+	it("logs deprecation warning for models section (does not error)", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-host-config-"));
+		writeFileSync(
+			join(rootDir, "host.yaml"),
+			[
+				"name: test-host",
+				"maxRunning: 3",
+				"workspaceRoot: /tmp/workspaces",
+				"envFile: /dev/null",
+				"models:",
+				"  anthropic:",
+				"    apiKey: sk-test",
+			].join("\n"),
+		);
+		mkdirSync(join(rootDir, "data", "skills"), { recursive: true });
+		mkdirSync(join(rootDir, "data", "prototypes"), { recursive: true });
+
+		const loaded = await loadHostConfig(rootDir);
+		expect(loaded.config.name).toBe("test-host");
 	});
 });
 
@@ -127,103 +139,118 @@ describe("validateComposeProjectVolume", () => {
 	});
 });
 
-describe("defaultModelFromHostConfig — baseUrl promotion", () => {
-	const baseConfig = {
-		name: "test",
-		maxRunning: 1,
-		workspaceRoot: "/tmp",
-		envFile: "/dev/null",
-		resourceLimits: null,
-		defaults: null,
-	};
+describe("resolveSessionModel", () => {
+	let store: SqliteStore;
 
-	it("returns KnownProvider when baseUrl is null", () => {
-		const model = defaultModelFromHostConfig({
-			...baseConfig,
-			models: {
-				anthropic: { baseUrl: null, apiKey: "sk-test" },
-				openai: null,
-				openrouter: null,
-			},
-		});
-		expect(model.provider).toBe("anthropic");
-		expect(model.apiKey).toBe("sk-test");
+	afterEach(() => {
+		store?.close();
 	});
 
-	it("promotes to CustomProvider when baseUrl is set", () => {
-		const model = defaultModelFromHostConfig({
-			...baseConfig,
-			models: {
-				anthropic: {
-					baseUrl: "http://host.docker.internal:4141",
-					apiKey: "sk-proxy",
-				},
-				openai: null,
-				openrouter: null,
-			},
+	function seedStore(): SqliteStore {
+		store = openDatabase(":memory:");
+		store.createProvider({
+			name: "my-anthropic",
+			apiType: "anthropic",
+			baseUrl: null,
+			apiKey: "sk-real-key-1234",
 		});
-		expect(typeof model.provider).toBe("object");
-		if (typeof model.provider === "object") {
-			expect(model.provider.name).toBe("anthropic");
-			expect(model.provider.endpoint).toBe("http://host.docker.internal:4141");
-			expect(model.provider.apiType).toBe("anthropic");
-		}
-		expect(model.apiKey).toBe("sk-proxy");
-		expect(model.name).toBe("claude-sonnet-4");
-	});
-});
+		store.createProvider({
+			name: "local-proxy",
+			apiType: "openai",
+			baseUrl: "http://localhost:8080",
+			apiKey: "sk-proxy-key",
+		});
+		store.createModel({
+			id: "default-model",
+			provider: "my-anthropic",
+			model: "claude-sonnet-4",
+			contextWindow: null,
+			toolUse: true,
+			streaming: true,
+			metadata: null,
+		});
+		store.createModel({
+			id: "proxy-model",
+			provider: "local-proxy",
+			model: "gpt-4o",
+			contextWindow: 128000,
+			toolUse: true,
+			streaming: true,
+			metadata: null,
+		});
+		return store;
+	}
 
-describe("resolveModelConfig — baseUrl promotion", () => {
-	const hostConfig = {
-		name: "test",
-		maxRunning: 1,
-		workspaceRoot: "/tmp",
-		envFile: "/dev/null",
-		models: {
-			anthropic: {
-				baseUrl: "http://host.docker.internal:4141",
-				apiKey: "sk-proxy",
-			},
-			openai: null,
-			openrouter: null,
-		},
-		resourceLimits: null,
-		defaults: null,
-	};
-
-	it("promotes known provider with baseUrl when using default model", () => {
-		const model = resolveModelConfig(hostConfig, null);
-		expect(typeof model.provider).toBe("object");
-		if (typeof model.provider === "object") {
-			expect(model.provider.endpoint).toBe("http://host.docker.internal:4141");
+	it("uses prototype model when override is null", () => {
+		const s = seedStore();
+		const config = resolveSessionModel(s, "default-model", null);
+		expect(config.name).toBe("claude-sonnet-4");
+		expect(config.apiKey).toBe("sk-real-key-1234");
+		expect(typeof config.provider).toBe("object");
+		if (typeof config.provider === "object") {
+			expect(config.provider.name).toBe("my-anthropic");
+			expect(config.provider.endpoint).toBe("https://api.anthropic.com");
+			expect(config.provider.apiType).toBe("anthropic");
 		}
 	});
 
-	it("promotes known provider with baseUrl when explicitly requested", () => {
-		const model = resolveModelConfig(hostConfig, {
-			provider: "anthropic",
-			name: "claude-opus-4",
-		});
-		expect(typeof model.provider).toBe("object");
-		if (typeof model.provider === "object") {
-			expect(model.provider.endpoint).toBe("http://host.docker.internal:4141");
+	it("uses string override as model id", () => {
+		const s = seedStore();
+		const config = resolveSessionModel(s, "default-model", "proxy-model");
+		expect(config.name).toBe("gpt-4o");
+		expect(config.apiKey).toBe("sk-proxy-key");
+		if (typeof config.provider === "object") {
+			expect(config.provider.endpoint).toBe("http://localhost:8080");
+			expect(config.provider.apiType).toBe("openai");
 		}
-		expect(model.name).toBe("claude-opus-4");
-		expect(model.apiKey).toBe("sk-proxy");
 	});
 
-	it("keeps known provider when baseUrl is null", () => {
-		const noBaseUrl = {
-			...hostConfig,
-			models: {
-				anthropic: { baseUrl: null, apiKey: "sk-real" },
-				openai: null,
-				openrouter: null,
+	it("uses ad-hoc object override directly", () => {
+		const s = seedStore();
+		const config = resolveSessionModel(s, "default-model", {
+			provider: {
+				name: "custom",
+				endpoint: "http://test:9090",
+				apiType: "openai",
 			},
-		};
-		const model = resolveModelConfig(noBaseUrl, null);
-		expect(model.provider).toBe("anthropic");
-		expect(model.apiKey).toBe("sk-real");
+			name: "custom-model",
+		});
+		expect(config.name).toBe("custom-model");
+		expect(config.apiKey).toBeNull();
+		expect(typeof config.provider).toBe("object");
+		if (typeof config.provider === "object") {
+			expect(config.provider.endpoint).toBe("http://test:9090");
+		}
+	});
+
+	it("throws when model id is not found", () => {
+		const s = seedStore();
+		expect(() => resolveSessionModel(s, "missing-model", null)).toThrow(
+			"model_not_found:missing-model",
+		);
+	});
+
+	it("uses default openai endpoint when baseUrl is null", () => {
+		store = openDatabase(":memory:");
+		store.createProvider({
+			name: "openai-default",
+			apiType: "openai",
+			baseUrl: null,
+			apiKey: "sk-oai",
+		});
+		store.createModel({
+			id: "oai-model",
+			provider: "openai-default",
+			model: "gpt-4o-mini",
+			contextWindow: null,
+			toolUse: true,
+			streaming: true,
+			metadata: null,
+		});
+		const config = resolveSessionModel(store, "oai-model", null);
+		if (typeof config.provider === "object") {
+			expect(config.provider.endpoint).toBe("https://api.openai.com/v1");
+		}
 	});
 });
 
@@ -309,7 +336,7 @@ describe("loadHostConfig — env var expansion", () => {
 	}
 
 	it("expands env vars in YAML before parsing", async () => {
-		setEnv("TEST_API_KEY", "sk-expanded");
+		setEnv("TEST_WS_ROOT", "/tmp/workspaces-expanded");
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-host-envvar-"));
 		mkdirSync(join(rootDir, "data", "skills"), { recursive: true });
 		mkdirSync(join(rootDir, "data", "prototypes"), { recursive: true });
@@ -318,23 +345,16 @@ describe("loadHostConfig — env var expansion", () => {
 			[
 				"name: test-host",
 				"maxRunning: 3",
-				"workspaceRoot: /tmp/workspaces",
+				"workspaceRoot: ${TEST_WS_ROOT}",
 				"envFile: /dev/null",
-				"models:",
-				"  anthropic:",
-				"    baseUrl: null",
-				"    apiKey: ${TEST_API_KEY}",
-				"  openai: null",
-				"  openrouter: null",
 			].join("\n"),
 		);
 
 		const loaded = await loadHostConfig(rootDir);
-		expect(loaded.config.models.anthropic?.apiKey).toBe("sk-expanded");
+		expect(loaded.config.workspaceRoot).toBe("/tmp/workspaces-expanded");
 	});
 
 	it("uses default when env var is not set", async () => {
-		// Make sure the var does not exist
 		savedEnv["NONEXISTENT_KEY"] = process.env["NONEXISTENT_KEY"];
 		delete process.env["NONEXISTENT_KEY"];
 
@@ -346,18 +366,48 @@ describe("loadHostConfig — env var expansion", () => {
 			[
 				"name: test-host",
 				"maxRunning: 3",
-				"workspaceRoot: /tmp/workspaces",
+				"workspaceRoot: ${NONEXISTENT_KEY:-/tmp/default-ws}",
 				"envFile: /dev/null",
-				"models:",
-				"  anthropic:",
-				"    baseUrl: null",
-				"    apiKey: ${NONEXISTENT_KEY:-sk-default}",
-				"  openai: null",
-				"  openrouter: null",
 			].join("\n"),
 		);
 
 		const loaded = await loadHostConfig(rootDir);
-		expect(loaded.config.models.anthropic?.apiKey).toBe("sk-default");
+		expect(loaded.config.workspaceRoot).toBe("/tmp/default-ws");
+	});
+});
+
+describe("skill auto-migration from files", () => {
+	it("imports .md files into SQLite on first load", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-skill-migrate-"));
+		writeV3HostFixture(rootDir);
+		const dataDir = join(rootDir, "data");
+		mkdirSync(join(dataDir, "skills"), { recursive: true });
+		mkdirSync(join(dataDir, "prototypes"), { recursive: true });
+		writeFileSync(join(dataDir, "skills", "alpha.md"), "# Alpha\n");
+		writeFileSync(join(dataDir, "skills", "beta.md"), "# Beta\n");
+
+		const loaded = await loadHostConfig(rootDir);
+		const skills = loaded.sqliteStore.listSkills();
+		expect(skills).toHaveLength(2);
+		expect(skills.map((s) => s.name).sort()).toEqual(["alpha", "beta"]);
+		expect(loaded.sqliteStore.getSkill("alpha")?.content).toBe("# Alpha\n");
+	});
+
+	it("does not re-import when skills table already has data", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-skill-noreimport-"));
+		writeV3HostFixture(rootDir);
+		const dataDir = join(rootDir, "data");
+		mkdirSync(join(dataDir, "skills"), { recursive: true });
+		mkdirSync(join(dataDir, "prototypes"), { recursive: true });
+		writeFileSync(join(dataDir, "skills", "old.md"), "# Old\n");
+
+		const first = await loadHostConfig(rootDir);
+		expect(first.sqliteStore.listSkills()).toHaveLength(1);
+		first.sqliteStore.close();
+
+		writeFileSync(join(dataDir, "skills", "new.md"), "# New\n");
+		const second = await loadHostConfig(rootDir);
+		expect(second.sqliteStore.listSkills()).toHaveLength(1);
+		expect(second.sqliteStore.getSkill("new")).toBeNull();
 	});
 });
