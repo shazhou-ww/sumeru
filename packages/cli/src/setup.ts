@@ -95,7 +95,8 @@ export async function runSetup(input: SetupInput): Promise<void> {
 		baseUrl = input.baseUrl;
 	}
 
-	const modelId = deriveModelId(input.model);
+	const modelName = deriveModelId(input.model);
+	const modelRef = `${input.provider}:${modelName}`;
 	const isUpdate = existsSync(join(rootDir, "host.yaml"));
 	const actions: Array<string> = [];
 
@@ -134,7 +135,7 @@ export async function runSetup(input: SetupInput): Promise<void> {
 	if (!existsSync(protoYamlPath)) {
 		writeFileSync(
 			protoYamlPath,
-			`name: sarsapa\npersona: default\nmodel: ${modelId}\nadapter: sarsapa\n`,
+			`name: sarsapa\npersona: default\nmodel: ${modelRef}\nadapter: sarsapa\n`,
 		);
 		actions.push("created data/prototypes/sarsapa.yaml");
 	}
@@ -173,28 +174,27 @@ export async function runSetup(input: SetupInput): Promise<void> {
 		}
 
 		// Model: update if exists, create if not
-		const existingModel = store.getModel(modelId);
+		const existingModel = store.getModel(input.provider, modelName);
 		if (existingModel !== null) {
-			store.updateModel(modelId, {
-				provider: input.provider,
+			store.updateModel(input.provider, modelName, {
 				model: input.model,
 				contextWindow: null,
 				toolUse: true,
 				streaming: true,
 				metadata: null,
 			});
-			actions.push(`updated model "${modelId}"`);
+			actions.push(`updated model "${modelRef}"`);
 		} else {
 			store.createModel({
-				id: modelId,
 				provider: input.provider,
+				name: modelName,
 				model: input.model,
 				contextWindow: null,
 				toolUse: true,
 				streaming: true,
 				metadata: null,
 			});
-			actions.push(`created model "${modelId}"`);
+			actions.push(`created model "${modelRef}"`);
 		}
 
 		// Persona: create only if not exists
@@ -221,7 +221,7 @@ export async function runSetup(input: SetupInput): Promise<void> {
 	if (baseUrl !== null) {
 		process.stdout.write(`  Base URL: ${baseUrl}\n`);
 	}
-	process.stdout.write(`  Model:    ${input.model} → id="${modelId}"\n`);
+	process.stdout.write(`  Model:    ${input.model} → id="${modelRef}"\n`);
 	process.stdout.write(`  Persona:  default\n\n`);
 	process.stdout.write(`Actions:\n`);
 	for (const action of actions) {

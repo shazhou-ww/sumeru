@@ -134,23 +134,12 @@ export type HostClient = {
 	removeProvider(name: string): Promise<void>;
 
 	// Models
-	listModels(): Promise<Envelope<Array<Model>>>;
-	getModel(id: string): Promise<Envelope<Model>>;
-	addModel(
-		id: string,
+	listModels(provider?: string): Promise<Envelope<Array<Model>>>;
+	getModel(provider: string, name: string): Promise<Envelope<Model>>;
+	upsertModel(
+		provider: string,
+		name: string,
 		body: {
-			provider: string;
-			model: string;
-			contextWindow: number | null;
-			toolUse: boolean;
-			streaming: boolean;
-			metadata: Record<string, unknown> | null;
-		},
-	): Promise<Envelope<Model>>;
-	updateModel(
-		id: string,
-		body: {
-			provider?: string;
 			model?: string;
 			contextWindow?: number | null;
 			toolUse?: boolean;
@@ -158,7 +147,7 @@ export type HostClient = {
 			metadata?: Record<string, unknown> | null;
 		},
 	): Promise<Envelope<Model>>;
-	removeModel(id: string): Promise<void>;
+	removeModel(provider: string, name: string): Promise<void>;
 
 	// Personas
 	listPersonas(): Promise<Envelope<Array<Persona>>>;
@@ -390,36 +379,34 @@ export function createHostClient(options: HostClientOptions): HostClient {
 		},
 
 		// Models
-		async listModels() {
-			const { json } = await requestJson<Array<Model>>("GET", "/models", null);
+		async listModels(provider) {
+			const path =
+				provider === undefined
+					? "/models"
+					: `/providers/${encodeURIComponent(provider)}/models`;
+			const { json } = await requestJson<Array<Model>>("GET", path, null);
 			return json;
 		},
-		async getModel(id) {
+		async getModel(provider, name) {
 			const { json } = await requestJson<Model>(
 				"GET",
-				`/models/${encodeURIComponent(id)}`,
+				`/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(name)}`,
 				null,
 			);
 			return json;
 		},
-		async addModel(id, body) {
-			const { json } = await requestJson<Model>(
-				"POST",
-				`/models/${encodeURIComponent(id)}`,
-				body,
-			);
-			return json;
-		},
-		async updateModel(id, body) {
+		async upsertModel(provider, name, body) {
 			const { json } = await requestJson<Model>(
 				"PUT",
-				`/models/${encodeURIComponent(id)}`,
+				`/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(name)}`,
 				body,
 			);
 			return json;
 		},
-		async removeModel(id) {
-			await requestDelete(`/models/${encodeURIComponent(id)}`);
+		async removeModel(provider, name) {
+			await requestDelete(
+				`/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(name)}`,
+			);
 		},
 
 		// Personas

@@ -20,7 +20,7 @@ export type Provider = {
 	updatedAt: string;
 };
 export type Model = {
-	id: string;
+	name: string;
 	provider: string;
 	model: string;
 	contextWindow: number | null;

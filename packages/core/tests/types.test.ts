@@ -44,7 +44,7 @@ describe("@sumeru/core — v3 type set conformance", () => {
 		const prototype: Prototype = {
 			name: "software-engineer",
 			persona: "default",
-			model: "claude-sonnet-4",
+			model: "anthropic:claude-sonnet-4",
 			adapter: "claude-code",
 			defaults: {
 				maxTurns: 40,

@@ -16,64 +16,64 @@ prerequisites:
 
 1. 创建用于冲突测试的 model：
    ```bash
-   curl -s -X POST http://127.0.0.1:7901/models/tc-conflict-model \
+   curl -s -X PUT http://127.0.0.1:7901/providers/tc-provider/models/tc-conflict-model \
      -H 'Content-Type: application/json' \
-     -d '{"provider":"tc-provider","model":"gpt-4o"}'
+     -d '{"model":"gpt-4o"}'
    ```
 
 ## Steps
 
-1. 重复创建（409）：
+1. upsert 已存在 model（200 更新，非 409）：
    ```bash
-   curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:7901/models/tc-conflict-model \
+   curl -s -w '\n%{http_code}' -X PUT http://127.0.0.1:7901/providers/tc-provider/models/tc-conflict-model \
      -H 'Content-Type: application/json' \
-     -d '{"provider":"tc-provider","model":"gpt-4o"}'
+     -d '{"model":"gpt-4o"}'
    ```
 
-2. 引用不存在的 provider（400）：
+2. 引用不存在的 provider（404）：
    ```bash
-   curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:7901/models/tc-bad-provider \
+   curl -s -w '\n%{http_code}' -X PUT http://127.0.0.1:7901/providers/ghost-provider/models/tc-bad-provider \
      -H 'Content-Type: application/json' \
-     -d '{"provider":"ghost-provider","model":"gpt-4o"}'
+     -d '{"model":"gpt-4o"}'
    ```
 
-3. 缺少 model 字段（400）：
+3. 新建时缺少 model 字段（400）：
    ```bash
-   curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:7901/models/tc-no-model \
+   curl -s -w '\n%{http_code}' -X PUT http://127.0.0.1:7901/providers/tc-provider/models/tc-no-model \
      -H 'Content-Type: application/json' \
-     -d '{"provider":"tc-provider"}'
+     -d '{}'
    ```
 
 4. GET 不存在的 model（404）：
    ```bash
-   curl -s -w '\n%{http_code}' http://127.0.0.1:7901/models/tc-ghost-model
+   curl -s -w '\n%{http_code}' http://127.0.0.1:7901/providers/tc-provider/models/tc-ghost-model
    ```
 
-5. PUT 不存在的 model（404）：
+5. PUT 不存在的 provider（404）：
    ```bash
-   curl -s -w '\n%{http_code}' -X PUT http://127.0.0.1:7901/models/tc-ghost-model \
+   curl -s -w '\n%{http_code}' -X PUT http://127.0.0.1:7901/providers/ghost-provider/models/tc-ghost-model \
      -H 'Content-Type: application/json' \
-     -d '{"provider":"tc-provider","model":"gpt-4o"}'
+     -d '{"model":"gpt-4o"}'
    ```
 
 6. DELETE 不存在的 model（404）：
    ```bash
-   curl -s -w '\n%{http_code}' -X DELETE http://127.0.0.1:7901/models/tc-ghost-model
+   curl -s -w '\n%{http_code}' -X DELETE http://127.0.0.1:7901/providers/tc-provider/models/tc-ghost-model
    ```
 
 ## Expected
 
-- [ ] Step 1 返回 409，`error` = `model_exists`
-- [ ] Step 2 返回 400，`error` = `provider_not_found`
+- [ ] Step 1 返回 200（upsert 语义）
+- [ ] Step 2 返回 404，`error` = `provider_not_found`
 - [ ] Step 3 返回 400，`error` = `invalid_body`，message 含 `model`
 - [ ] Step 4 返回 404，`error` = `model_not_found`
-- [ ] Step 5 返回 404，`error` = `model_not_found`
+- [ ] Step 5 返回 404，`error` = `provider_not_found`
 - [ ] Step 6 返回 404，`error` = `model_not_found`
 
 ## Cleanup
 
 ```bash
-curl -s -X DELETE http://127.0.0.1:7901/models/tc-conflict-model
+curl -s -X DELETE http://127.0.0.1:7901/providers/tc-provider/models/tc-conflict-model
 ```
 
 ## Failure Signals

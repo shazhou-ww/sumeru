@@ -30,7 +30,7 @@ function writeHostFixture(rootDir: string, maxRunning = 2): void {
 		[
 			"name: claude-code",
 			"persona: default-persona",
-			"model: default-model",
+			"model: test-provider:default-model",
 			"adapter: claude-code",
 		].join("\n"),
 	);
@@ -190,7 +190,7 @@ describe("session-manager", () => {
 				apiKey: string;
 			}) => unknown;
 			createModel: (input: {
-				id: string;
+				name: string;
 				provider: string;
 				model: string;
 				contextWindow: number | null;
@@ -207,7 +207,7 @@ describe("session-manager", () => {
 			apiKey: "sk-test",
 		});
 		hostConfig.sqliteStore.createModel({
-			id: "default-model",
+			name: "default-model",
 			provider: "test-provider",
 			model: "claude-sonnet-4",
 			contextWindow: null,

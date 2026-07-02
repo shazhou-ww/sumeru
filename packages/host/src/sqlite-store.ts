@@ -94,7 +94,7 @@ export type UpdateProviderInput = {
 };
 
 export type CreateModelInput = {
-	id: string;
+	name: string;
 	provider: string;
 	model: string;
 	contextWindow: number | null;
@@ -104,7 +104,6 @@ export type CreateModelInput = {
 };
 
 export type UpdateModelInput = {
-	provider: string | undefined;
 	model: string | undefined;
 	contextWindow: number | null | undefined;
 	toolUse: boolean | undefined;
@@ -141,10 +140,14 @@ export type SqliteStore = {
 	updateProvider(name: string, input: UpdateProviderInput): Provider | null;
 	deleteProvider(name: string): boolean;
 	createModel(input: CreateModelInput): Model;
-	getModel(id: string): Model | null;
-	listModels(): Array<Model>;
-	updateModel(id: string, input: UpdateModelInput): Model | null;
-	deleteModel(id: string): boolean;
+	getModel(provider: string, name: string): Model | null;
+	listModels(provider?: string): Array<Model>;
+	updateModel(
+		provider: string,
+		name: string,
+		input: UpdateModelInput,
+	): Model | null;
+	deleteModel(provider: string, name: string): boolean;
 	createPersona(input: CreatePersonaInput): Persona;
 	getPersona(name: string): Persona | null;
 	listPersonas(): Array<Persona>;
@@ -329,13 +332,14 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 
 		createModel(input) {
 			const now = new Date().toISOString();
+			const id = modelDbId(input.provider, input.name);
 			const metadataJson = serializeMetadata(input.metadata);
 			db.prepare(
 				`INSERT INTO models
          (id, provider, model, context_window, tool_use, streaming, metadata, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			).run(
-				input.id,
+				id,
 				input.provider,
 				input.model,
 				input.contextWindow,
@@ -346,7 +350,7 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 				now,
 			);
 			return rowToModel({
-				id: input.id,
+				id,
 				provider: input.provider,
 				model: input.model,
 				context_window: input.contextWindow,
@@ -358,28 +362,33 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 			});
 		},
 
-		getModel(id) {
+		getModel(provider, name) {
+			const id = modelDbId(provider, name);
 			const row = db.prepare("SELECT * FROM models WHERE id = ?").get(id) as
 				| ModelRow
 				| undefined;
 			return row === undefined ? null : rowToModel(row);
 		},
 
-		listModels() {
-			const rows = db
-				.prepare("SELECT * FROM models ORDER BY id")
-				.all() as Array<ModelRow>;
+		listModels(provider) {
+			const rows =
+				provider === undefined
+					? (db
+							.prepare("SELECT * FROM models ORDER BY id")
+							.all() as Array<ModelRow>)
+					: (db
+							.prepare("SELECT * FROM models WHERE provider = ? ORDER BY id")
+							.all(provider) as Array<ModelRow>);
 			return rows.map(rowToModel);
 		},
 
-		updateModel(id, input) {
+		updateModel(provider, name, input) {
+			const id = modelDbId(provider, name);
 			const existing = db
 				.prepare("SELECT * FROM models WHERE id = ?")
 				.get(id) as ModelRow | undefined;
 			if (existing === undefined) return null;
 			const now = new Date().toISOString();
-			const provider =
-				input.provider === undefined ? existing.provider : input.provider;
 			const model = input.model === undefined ? existing.model : input.model;
 			const contextWindow =
 				input.contextWindow === undefined
@@ -397,10 +406,9 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 					: serializeMetadata(input.metadata);
 			db.prepare(
 				`UPDATE models
-         SET provider = ?, model = ?, context_window = ?, tool_use = ?, streaming = ?, metadata = ?, updated_at = ?
+         SET model = ?, context_window = ?, tool_use = ?, streaming = ?, metadata = ?, updated_at = ?
          WHERE id = ?`,
 			).run(
-				provider,
 				model,
 				contextWindow,
 				toolUse ? 1 : 0,
@@ -411,7 +419,6 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 			);
 			return rowToModel({
 				...existing,
-				provider,
 				model,
 				context_window: contextWindow,
 				tool_use: toolUse ? 1 : 0,
@@ -421,7 +428,8 @@ function createSqliteStore(db: Database.Database): SqliteStore {
 			});
 		},
 
-		deleteModel(id) {
+		deleteModel(provider, name) {
+			const id = modelDbId(provider, name);
 			const result = db.prepare("DELETE FROM models WHERE id = ?").run(id);
 			return result.changes > 0;
 		},
@@ -573,9 +581,18 @@ function rowToProvider(row: ProviderRow): Provider {
 	};
 }
 
+function modelDbId(provider: string, name: string): string {
+	return `${provider}:${name}`;
+}
+
+function modelNameFromDbId(id: string): string {
+	const colonIdx = id.indexOf(":");
+	return colonIdx === -1 ? id : id.slice(colonIdx + 1);
+}
+
 function rowToModel(row: ModelRow): Model {
 	return {
-		id: row.id,
+		name: modelNameFromDbId(row.id),
 		provider: row.provider,
 		model: row.model,
 		contextWindow: row.context_window,
