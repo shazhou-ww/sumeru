@@ -36,9 +36,10 @@ Provider 是 LLM 接入点配置（SQLite 实体，Phase 1 新增）。
 |--------|------|------|
 | GET | /providers | 列出所有 |
 | GET | /providers/:name | 单个详情 |
-| POST | /providers/:name | 创建（201 / 409） |
-| PUT | /providers/:name | 更新（200 / 404） |
+| PUT | /providers/:name | upsert（201 新建 / 200 替换） |
 | DELETE | /providers/:name | 删除（204 / 404 / 409） |
+
+PUT 使用 merge 语义 — 省略的字段保留现有值。
 
 ### 删除保护
 

@@ -35,66 +35,12 @@ export function createPersonasHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, personaEnvelope(persona));
 		},
 
-		async add(
+		async upsert(
 			req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
 		): Promise<void> {
 			const name = params.name ?? "";
-			if (store.getPersona(name) !== null) {
-				writeJson(
-					res,
-					409,
-					errorEnvelope("persona_exists", `Persona ${name} already exists`),
-				);
-				return;
-			}
-			let body: PersonaBody;
-			try {
-				body = await readPersonaBody(req, "add");
-			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
-				writeJson(res, 400, errorEnvelope("invalid_body", message));
-				return;
-			}
-			const missing = findMissingSkills(store, body.skills);
-			if (missing.length > 0) {
-				writeJson(
-					res,
-					400,
-					errorEnvelope(
-						"skills_not_found",
-						`Missing skills: ${missing.join(", ")}`,
-					),
-				);
-				return;
-			}
-			try {
-				const persona = store.createPersona({
-					name,
-					instructions: body.instructions,
-					skills: body.skills,
-				});
-				writeJson(res, 201, personaEnvelope(persona));
-			} catch (err) {
-				writePersonaError(res, err);
-			}
-		},
-
-		async update(
-			req: IncomingMessage,
-			res: ServerResponse,
-			params: Record<string, string>,
-		): Promise<void> {
-			const name = params.name ?? "";
-			if (store.getPersona(name) === null) {
-				writeJson(
-					res,
-					404,
-					errorEnvelope("persona_not_found", `Persona ${name} not found`),
-				);
-				return;
-			}
 			let body: PersonaUpdateBody;
 			try {
 				body = await readPersonaBody(req, "update");
@@ -103,8 +49,21 @@ export function createPersonasHandler(hostConfig: LoadedHostConfig) {
 				writeJson(res, 400, errorEnvelope("invalid_body", message));
 				return;
 			}
-			if (body.skills !== undefined) {
-				const missing = findMissingSkills(store, body.skills);
+			const existing = store.getPersona(name);
+			if (existing === null) {
+				if (body.instructions === undefined) {
+					writeJson(
+						res,
+						400,
+						errorEnvelope(
+							"invalid_body",
+							'Field "instructions" is required for new persona',
+						),
+					);
+					return;
+				}
+				const skills = body.skills ?? [];
+				const missing = findMissingSkills(store, skills);
 				if (missing.length > 0) {
 					writeJson(
 						res,
@@ -116,20 +75,45 @@ export function createPersonasHandler(hostConfig: LoadedHostConfig) {
 					);
 					return;
 				}
-			}
-			try {
-				const persona = store.updatePersona(name, body);
-				if (persona === null) {
-					writeJson(
-						res,
-						404,
-						errorEnvelope("persona_not_found", `Persona ${name} not found`),
-					);
-					return;
+				try {
+					const persona = store.createPersona({
+						name,
+						instructions: body.instructions,
+						skills,
+					});
+					writeJson(res, 201, personaEnvelope(persona));
+				} catch (err) {
+					writePersonaError(res, err);
 				}
-				writeJson(res, 200, personaEnvelope(persona));
-			} catch (err) {
-				writePersonaError(res, err);
+			} else {
+				if (body.skills !== undefined) {
+					const missing = findMissingSkills(store, body.skills);
+					if (missing.length > 0) {
+						writeJson(
+							res,
+							400,
+							errorEnvelope(
+								"skills_not_found",
+								`Missing skills: ${missing.join(", ")}`,
+							),
+						);
+						return;
+					}
+				}
+				try {
+					const persona = store.updatePersona(name, body);
+					if (persona === null) {
+						writeJson(
+							res,
+							404,
+							errorEnvelope("persona_not_found", `Persona ${name} not found`),
+						);
+						return;
+					}
+					writeJson(res, 200, personaEnvelope(persona));
+				} catch (err) {
+					writePersonaError(res, err);
+				}
 			}
 		},
 

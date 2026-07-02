@@ -50,38 +50,13 @@ export function createPrototypesHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, prototypeEnvelope(prototype));
 		},
 
-		async add(
+		async upsert(
 			req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
 		): Promise<void> {
 			const name = params.name ?? "";
-			if (hostConfig.prototypes.has(name)) {
-				writeJson(
-					res,
-					409,
-					errorEnvelope("prototype_exists", `Prototype ${name} already exists`),
-				);
-				return;
-			}
-			await upsertPrototype(req, res, hostConfig, name, "add");
-		},
-
-		async update(
-			req: IncomingMessage,
-			res: ServerResponse,
-			params: Record<string, string>,
-		): Promise<void> {
-			const name = params.name ?? "";
-			if (!(await prototypeFileExists(hostConfig.prototypesDir, name))) {
-				writeJson(
-					res,
-					404,
-					errorEnvelope("prototype_not_found", `Prototype ${name} not found`),
-				);
-				return;
-			}
-			await upsertPrototype(req, res, hostConfig, name, "update");
+			await upsertPrototype(req, res, hostConfig, name);
 		},
 
 		async remove(
@@ -115,8 +90,9 @@ async function upsertPrototype(
 	res: ServerResponse,
 	hostConfig: LoadedHostConfig,
 	name: string,
-	mode: "add" | "update",
 ): Promise<void> {
+	const existing = hostConfig.prototypes.get(name);
+	const mode = existing === undefined ? "add" : "update";
 	let prototype: Prototype;
 	try {
 		if (mode === "add") {
