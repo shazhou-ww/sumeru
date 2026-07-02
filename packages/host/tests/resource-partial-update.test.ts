@@ -107,7 +107,7 @@ describe("resource partial update routes", () => {
 			(
 				await request(
 					server,
-					"POST",
+					"PUT",
 					"/providers/test-prov",
 					JSON.stringify({
 						apiType: "anthropic",
@@ -170,7 +170,7 @@ describe("resource partial update routes", () => {
 			(
 				await request(
 					server,
-					"POST",
+					"PUT",
 					"/personas/worker-persona",
 					JSON.stringify({
 						instructions: "Original instructions",
@@ -231,7 +231,7 @@ describe("resource partial update routes", () => {
 			(
 				await request(
 					server,
-					"POST",
+					"PUT",
 					"/prototypes/worker",
 					JSON.stringify({
 						name: "worker",

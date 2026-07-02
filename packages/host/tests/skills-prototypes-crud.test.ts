@@ -110,7 +110,7 @@ describe("skills and prototypes CRUD routes", () => {
 
 		const createProvider = await request(
 			server,
-			"POST",
+			"PUT",
 			"/providers/test-prov",
 			JSON.stringify({ apiType: "anthropic", baseUrl: null, apiKey: "sk-x" }),
 		);
@@ -133,7 +133,7 @@ describe("skills and prototypes CRUD routes", () => {
 
 		const createPersona = await request(
 			server,
-			"POST",
+			"PUT",
 			"/personas/worker-persona",
 			JSON.stringify({
 				instructions: "Worker agent",
@@ -158,7 +158,7 @@ describe("skills and prototypes CRUD routes", () => {
 
 		const createPrototype = await request(
 			server,
-			"POST",
+			"PUT",
 			"/prototypes/worker",
 			JSON.stringify({
 				name: "worker",
@@ -172,7 +172,7 @@ describe("skills and prototypes CRUD routes", () => {
 
 		const missingAdapter = await request(
 			server,
-			"POST",
+			"PUT",
 			"/prototypes/bad-adapter",
 			JSON.stringify({
 				name: "bad-adapter",
@@ -189,7 +189,7 @@ describe("skills and prototypes CRUD routes", () => {
 
 		const missingPersona = await request(
 			server,
-			"POST",
+			"PUT",
 			"/prototypes/bad",
 			JSON.stringify({
 				name: "bad",

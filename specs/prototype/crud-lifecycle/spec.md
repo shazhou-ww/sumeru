@@ -36,9 +36,10 @@ defaults:              # 可选
 |--------|------|------|
 | GET | /prototypes | 列出所有 |
 | GET | /prototypes/:name | 单个详情 |
-| POST | /prototypes/:name | 创建（201 / 409） |
-| PUT | /prototypes/:name | 更新（200 / 404） |
+| PUT | /prototypes/:name | upsert（201 新建 / 200 替换） |
 | DELETE | /prototypes/:name | 删除（204 / 404） |
+
+PUT 使用 merge 语义 — 省略的字段保留现有值。
 
 ### 响应信封
 
@@ -101,7 +102,7 @@ defaults:              # 可选
 
 **Given** Persona `general` 和 Model `claude-sonnet` 均已存在于 SQLite
 
-**When** `POST /prototypes/new-agent`
+**When** `PUT /prototypes/new-agent`
 
 ```json
 {
@@ -114,15 +115,15 @@ defaults:              # 可选
 
 **Then** 201，返回 `@sumeru/prototype`
 
-**When** 再次 `POST /prototypes/new-agent`（同名）
+**When** 再次 `PUT /prototypes/new-agent`（同名）
 
-**Then** 409，`prototype_exists`
+**Then** 200，返回 `@sumeru/prototype`（替换已有资源）
 
 ---
 
 ## Scenario: 创建引用不存在 Persona 的 Prototype
 
-**When** `POST /prototypes/bad-persona`
+**When** `PUT /prototypes/bad-persona`
 
 ```json
 {
@@ -139,7 +140,7 @@ defaults:              # 可选
 
 ## Scenario: 创建引用不存在 Model 的 Prototype
 
-**When** `POST /prototypes/bad-model`
+**When** `PUT /prototypes/bad-model`
 
 ```json
 {

@@ -352,7 +352,7 @@ export function createHostClient(options: HostClientOptions): HostClient {
 		},
 		async addPrototype(name, body) {
 			const { json } = await requestJson<PrototypeDetail>(
-				"POST",
+				"PUT",
 				`/prototypes/${encodeURIComponent(name)}`,
 				{ name, ...body },
 			);
@@ -389,7 +389,7 @@ export function createHostClient(options: HostClientOptions): HostClient {
 		},
 		async addProvider(name, body) {
 			const { json } = await requestJson<Provider>(
-				"POST",
+				"PUT",
 				`/providers/${encodeURIComponent(name)}`,
 				body,
 			);
@@ -484,7 +484,7 @@ export function createHostClient(options: HostClientOptions): HostClient {
 		},
 		async addPersona(name, body) {
 			const { json } = await requestJson<Persona>(
-				"POST",
+				"PUT",
 				`/personas/${encodeURIComponent(name)}`,
 				body,
 			);

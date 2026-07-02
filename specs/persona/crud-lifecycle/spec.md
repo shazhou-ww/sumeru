@@ -34,9 +34,10 @@ Persona 是 Agent 角色配置（SQLite 实体，Phase 2 新增）。包含 inst
 |--------|------|------|
 | GET | /personas | 列出所有 |
 | GET | /personas/:name | 单个详情 |
-| POST | /personas/:name | 创建（201 / 400 / 409） |
-| PUT | /personas/:name | 更新（200 / 400 / 404） |
+| PUT | /personas/:name | upsert（201 新建 / 200 替换 / 400） |
 | DELETE | /personas/:name | 删除（204 / 404 / 409） |
+
+PUT 使用 merge 语义 — 省略的字段保留现有值。
 
 ### Skills 引用校验
 

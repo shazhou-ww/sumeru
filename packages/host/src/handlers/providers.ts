@@ -36,55 +36,12 @@ export function createProvidersHandler(hostConfig: LoadedHostConfig) {
 			writeJson(res, 200, providerEnvelope(provider));
 		},
 
-		async add(
+		async upsert(
 			req: IncomingMessage,
 			res: ServerResponse,
 			params: Record<string, string>,
 		): Promise<void> {
 			const name = params.name ?? "";
-			if (store.getProvider(name) !== null) {
-				writeJson(
-					res,
-					409,
-					errorEnvelope("provider_exists", `Provider ${name} already exists`),
-				);
-				return;
-			}
-			let body: ProviderBody;
-			try {
-				body = await readProviderBody(req, "add");
-			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
-				writeJson(res, 400, errorEnvelope("invalid_body", message));
-				return;
-			}
-			try {
-				const provider = store.createProvider({
-					name,
-					apiType: body.apiType,
-					baseUrl: body.baseUrl,
-					apiKey: body.apiKey ?? null,
-				});
-				writeJson(res, 201, providerEnvelope(provider));
-			} catch (err) {
-				writeProviderError(res, err);
-			}
-		},
-
-		async update(
-			req: IncomingMessage,
-			res: ServerResponse,
-			params: Record<string, string>,
-		): Promise<void> {
-			const name = params.name ?? "";
-			if (store.getProvider(name) === null) {
-				writeJson(
-					res,
-					404,
-					errorEnvelope("provider_not_found", `Provider ${name} not found`),
-				);
-				return;
-			}
 			let body: ProviderUpdateBody;
 			try {
 				body = await readProviderBody(req, "update");
@@ -93,19 +50,45 @@ export function createProvidersHandler(hostConfig: LoadedHostConfig) {
 				writeJson(res, 400, errorEnvelope("invalid_body", message));
 				return;
 			}
-			try {
-				const provider = store.updateProvider(name, body);
-				if (provider === null) {
+			const existing = store.getProvider(name);
+			if (existing === null) {
+				if (body.apiType === undefined) {
 					writeJson(
 						res,
-						404,
-						errorEnvelope("provider_not_found", `Provider ${name} not found`),
+						400,
+						errorEnvelope(
+							"invalid_body",
+							'Field "apiType" is required for new provider',
+						),
 					);
 					return;
 				}
-				writeJson(res, 200, providerEnvelope(provider));
-			} catch (err) {
-				writeProviderError(res, err);
+				try {
+					const provider = store.createProvider({
+						name,
+						apiType: body.apiType,
+						baseUrl: body.baseUrl ?? null,
+						apiKey: body.apiKey ?? null,
+					});
+					writeJson(res, 201, providerEnvelope(provider));
+				} catch (err) {
+					writeProviderError(res, err);
+				}
+			} else {
+				try {
+					const provider = store.updateProvider(name, body);
+					if (provider === null) {
+						writeJson(
+							res,
+							404,
+							errorEnvelope("provider_not_found", `Provider ${name} not found`),
+						);
+						return;
+					}
+					writeJson(res, 200, providerEnvelope(provider));
+				} catch (err) {
+					writeProviderError(res, err);
+				}
 			}
 		},
 
