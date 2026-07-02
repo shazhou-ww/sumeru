@@ -153,6 +153,7 @@ export type HostConfig = {
 	workspaceRoot: string;
 	envFile: string;
 	defaults: {
+		model: string | null;
 		timeout: number;
 		maxTurns: number;
 		resources: { cpu: number; memory: string };

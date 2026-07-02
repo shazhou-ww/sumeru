@@ -137,6 +137,7 @@ export function resolveSessionModel(
 	prototypeModelId: string | null,
 	override: SessionModelOverride,
 	providerMode: ProviderMode,
+	defaultModel: string | null = null,
 ): ModelConfig {
 	if (
 		providerMode === "builtin-only" &&
@@ -152,7 +153,10 @@ export function resolveSessionModel(
 	if (override !== null && typeof override !== "string") {
 		return { provider: override.provider, name: override.name, apiKey: null };
 	}
-	const modelId = typeof override === "string" ? override : prototypeModelId;
+	const modelId =
+		typeof override === "string"
+			? override
+			: (prototypeModelId ?? defaultModel);
 	if (modelId === null) {
 		throw new Error("model_required");
 	}
@@ -396,46 +400,71 @@ function parseHostDefaults(
 		throw new Error(`Config ${path} field "defaults" must be a mapping`);
 	}
 	const obj = value as Record<string, unknown>;
-	const timeout = obj.timeout;
-	const maxTurns = obj.maxTurns;
-	const resourcesRaw = obj.resources;
-	if (typeof timeout !== "number" || !Number.isFinite(timeout)) {
-		throw new Error(
-			`Config ${path} field "defaults.timeout" must be a finite number`,
-		);
+
+	let model: string | null = null;
+	if (obj.model !== undefined && obj.model !== null) {
+		if (typeof obj.model !== "string" || obj.model.length === 0) {
+			throw new Error(
+				`Config ${path} field "defaults.model" must be a non-empty string (format: provider:name)`,
+			);
+		}
+		model = obj.model;
 	}
-	if (typeof maxTurns !== "number" || !Number.isFinite(maxTurns)) {
-		throw new Error(
-			`Config ${path} field "defaults.maxTurns" must be a finite number`,
-		);
+
+	let timeout = 300;
+	if (obj.timeout !== undefined) {
+		if (typeof obj.timeout !== "number" || !Number.isFinite(obj.timeout)) {
+			throw new Error(
+				`Config ${path} field "defaults.timeout" must be a finite number`,
+			);
+		}
+		timeout = obj.timeout;
 	}
-	if (
-		resourcesRaw === null ||
-		typeof resourcesRaw !== "object" ||
-		Array.isArray(resourcesRaw)
-	) {
-		throw new Error(
-			`Config ${path} field "defaults.resources" must be a mapping`,
-		);
+
+	let maxTurns = 30;
+	if (obj.maxTurns !== undefined) {
+		if (typeof obj.maxTurns !== "number" || !Number.isFinite(obj.maxTurns)) {
+			throw new Error(
+				`Config ${path} field "defaults.maxTurns" must be a finite number`,
+			);
+		}
+		maxTurns = obj.maxTurns;
 	}
-	const resourcesObj = resourcesRaw as Record<string, unknown>;
-	const cpu = resourcesObj.cpu;
-	const memory = resourcesObj.memory;
-	if (typeof cpu !== "number" || !Number.isFinite(cpu)) {
-		throw new Error(
-			`Config ${path} field "defaults.resources.cpu" must be a finite number`,
-		);
+
+	let cpu = 1;
+	let memory = "2Gi";
+	if (obj.resources !== undefined && obj.resources !== null) {
+		if (typeof obj.resources !== "object" || Array.isArray(obj.resources)) {
+			throw new Error(
+				`Config ${path} field "defaults.resources" must be a mapping`,
+			);
+		}
+		const resourcesObj = obj.resources as Record<string, unknown>;
+		if (resourcesObj.cpu !== undefined) {
+			if (
+				typeof resourcesObj.cpu !== "number" ||
+				!Number.isFinite(resourcesObj.cpu)
+			) {
+				throw new Error(
+					`Config ${path} field "defaults.resources.cpu" must be a finite number`,
+				);
+			}
+			cpu = resourcesObj.cpu;
+		}
+		if (resourcesObj.memory !== undefined) {
+			if (
+				typeof resourcesObj.memory !== "string" ||
+				resourcesObj.memory.length === 0
+			) {
+				throw new Error(
+					`Config ${path} field "defaults.resources.memory" must be a non-empty string`,
+				);
+			}
+			memory = resourcesObj.memory;
+		}
 	}
-	if (typeof memory !== "string" || memory.length === 0) {
-		throw new Error(
-			`Config ${path} field "defaults.resources.memory" must be a non-empty string`,
-		);
-	}
-	return {
-		timeout,
-		maxTurns,
-		resources: { cpu, memory },
-	};
+
+	return { model, timeout, maxTurns, resources: { cpu, memory } };
 }
 
 async function importSkillsFromFiles(

@@ -159,6 +159,7 @@ export function createSessionManager(input: {
 			prototype.prototype.model,
 			body.model,
 			getProviderMode(prototype.prototype.adapter),
+			input.hostConfig.config.defaults?.model ?? null,
 		);
 		const image = await extractImageFromCompose(prototype.composePath);
 		const sessionEnv = await mergeSessionEnv(
@@ -308,6 +309,7 @@ export function createSessionManager(input: {
 				protoModelId,
 				body.model,
 				getProviderMode(adapterName),
+				input.hostConfig.config.defaults?.model ?? null,
 			);
 			if (modelConfigChanged(record.model, nextModel)) {
 				record.model = nextModel;

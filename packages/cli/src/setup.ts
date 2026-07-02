@@ -119,7 +119,7 @@ export async function runSetup(input: SetupInput): Promise<void> {
 	if (!existsSync(hostYamlPath)) {
 		writeFileSync(
 			hostYamlPath,
-			`name: sumeru\nmaxRunning: 3\nworkspaceRoot: ${rootDir}/workspace\nenvFile: ${rootDir}/.env\n`,
+			`name: sumeru\nmaxRunning: 3\nworkspaceRoot: ${rootDir}/workspace\nenvFile: ${rootDir}/.env\ndefaults:\n  model: ${modelRef}\n`,
 		);
 		actions.push("created host.yaml");
 	}
