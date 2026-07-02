@@ -140,7 +140,15 @@ export function resolveSessionModel(
 	if (modelId === null) {
 		throw new Error("model_required");
 	}
-	const model = sqliteStore.getModel(modelId);
+
+	const colonIdx = modelId.indexOf(":");
+	if (colonIdx === -1) {
+		throw new Error(`model_invalid_format:${modelId} (expected provider:name)`);
+	}
+	const providerName = modelId.slice(0, colonIdx);
+	const modelName = modelId.slice(colonIdx + 1);
+
+	const model = sqliteStore.getModel(providerName, modelName);
 	if (model === null) {
 		throw new Error(`model_not_found:${modelId}`);
 	}

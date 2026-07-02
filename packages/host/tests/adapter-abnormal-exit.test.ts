@@ -27,7 +27,7 @@ function writeHostFixture(rootDir: string, maxRunning = 4): void {
 		[
 			"name: claude-code",
 			"persona: default-persona",
-			"model: default-model",
+			"model: test-provider:default-model",
 			"adapter: claude-code",
 		].join("\n"),
 	);
@@ -134,7 +134,7 @@ describe("adapter abnormal exit resilience (#177)", () => {
 				apiKey: string;
 			}) => unknown;
 			createModel: (input: {
-				id: string;
+				name: string;
 				provider: string;
 				model: string;
 				contextWindow: number | null;
@@ -151,7 +151,7 @@ describe("adapter abnormal exit resilience (#177)", () => {
 			apiKey: "sk-test",
 		});
 		hostConfig.sqliteStore.createModel({
-			id: "default-model",
+			name: "default-model",
 			provider: "test-provider",
 			model: "claude-sonnet-4",
 			contextWindow: null,

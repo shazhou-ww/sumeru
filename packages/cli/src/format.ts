@@ -88,7 +88,7 @@ export function formatAdapterModelTable(models: Array<BuiltinModel>): string {
 
 export function formatModelTable(models: Array<Model>): string {
 	return formatTable(models, [
-		{ header: "ID", width: 20, value: (row) => row.id },
+		{ header: "NAME", width: 20, value: (row) => row.name },
 		{ header: "PROVIDER", width: 16, value: (row) => row.provider },
 		{ header: "MODEL", width: 24, value: (row) => row.model },
 		{

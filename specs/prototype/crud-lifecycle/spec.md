@@ -13,7 +13,7 @@ Prototype 是 Worker Agent 的配置模板。Phase 2 重构后 Prototype 引用 
 ```yaml
 name: hermes           # 唯一标识，匹配 URL 路径参数
 persona: general       # 引用 Persona.name（SQLite）
-model: claude-sonnet   # 引用 Model.id（SQLite）
+model: copilot:claude-sonnet   # 引用 Model，格式 provider:name（SQLite）
 adapter: hermes        # Adapter 名称
 defaults:              # 可选
   maxTurns: 30

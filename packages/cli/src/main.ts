@@ -58,6 +58,23 @@ function handleClientError(err: unknown, ctx: CliContext): never {
 	ctx.error(msg);
 }
 
+function parseModelId(id: string): { provider: string; name: string } {
+	const idx = id.indexOf(":");
+	if (idx === -1) {
+		throw new Error(
+			`Invalid model ID "${id}". Expected format: provider:name (e.g., copilot:claude-sonnet-4)`,
+		);
+	}
+	const provider = id.slice(0, idx);
+	const name = id.slice(idx + 1);
+	if (provider.length === 0 || name.length === 0) {
+		throw new Error(
+			`Invalid model ID "${id}". Expected format: provider:name (e.g., copilot:claude-sonnet-4)`,
+		);
+	}
+	return { provider, name };
+}
+
 // ─── CLI definition ──────────────────────────────────────────────────────
 
 const cli = createCLI({ name: "sumeru", version: "0.3.0" });
@@ -410,13 +427,15 @@ cli
 	.command("model")
 	.command("list")
 	.describe("List registered models")
+	.flag("provider", { type: "string" })
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
 	.returns(listSchema, "", { defaultFormat: "text" })
 	.action(async (_args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
-			const envelope = await client.listModels();
+			const provider = flags.provider as string | undefined;
+			const envelope = await client.listModels(provider);
 			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
@@ -426,20 +445,21 @@ cli
 cli
 	.command("model")
 	.command("get")
-	.describe("Get a model by id")
+	.describe("Get a model by provider:name")
 	.arg("id")
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
 	.returns(
-		z.object({ id: z.string(), provider: z.string(), model: z.string() }),
-		"{{id}} {{provider}}/{{model}}",
+		z.object({ name: z.string(), provider: z.string(), model: z.string() }),
+		"{{provider}}:{{name}} {{model}}",
 	)
 	.action(async (args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
-			const envelope = await client.getModel(args.id);
+			const { provider, name } = parseModelId(args.id);
+			const envelope = await client.getModel(provider, name);
 			const v = envelope.value;
-			return { id: v.id, provider: v.provider, model: v.model };
+			return { name: v.name, provider: v.provider, model: v.model };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -450,7 +470,6 @@ cli
 	.command("add")
 	.describe("Register a new model")
 	.arg("id")
-	.flag("provider", { type: "string" })
 	.flag("model", { type: "string" })
 	.flag("context-window", { type: "number" })
 	.flag("no-tool-use", { type: "boolean" })
@@ -459,11 +478,10 @@ cli
 	.flag("port", { type: "string" })
 	.returns(idSchema, "{{id}}")
 	.action(async (args, flags, ctx) => {
-		const provider = flags.provider as string | undefined;
-		const model = flags.model as string | undefined;
-		if (!provider || !model) {
+		const apiModel = flags.model as string | undefined;
+		if (!apiModel) {
 			ctx.error(
-				"Usage: sumeru model add <id> --provider <name> --model <model> [--context-window N] [--no-tool-use] [--no-streaming]",
+				"Usage: sumeru model add <provider:name> --model <api-model> [--context-window N] [--no-tool-use] [--no-streaming]",
 			);
 		}
 		const contextWindow =
@@ -472,15 +490,15 @@ cli
 				: null;
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
-			const envelope = await client.addModel(args.id, {
-				provider: provider!,
-				model: model!,
+			const { provider, name } = parseModelId(args.id);
+			const envelope = await client.upsertModel(provider, name, {
+				model: apiModel!,
 				contextWindow,
 				toolUse: !flags["no-tool-use"],
 				streaming: !flags["no-streaming"],
 				metadata: null,
 			});
-			return { id: envelope.value.id };
+			return { id: `${envelope.value.provider}:${envelope.value.name}` };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -491,7 +509,6 @@ cli
 	.command("update")
 	.describe("Update a model")
 	.arg("id")
-	.flag("provider", { type: "string" })
 	.flag("model", { type: "string" })
 	.flag("context-window", { type: "number" })
 	.flag("no-tool-use", { type: "boolean" })
@@ -501,7 +518,6 @@ cli
 	.returns(idSchema, "{{id}}")
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
-		if (flags.provider !== undefined) body.provider = flags.provider;
 		if (flags.model !== undefined) body.model = flags.model;
 		if (flags["context-window"] !== undefined)
 			body.contextWindow = Number(flags["context-window"]);
@@ -511,11 +527,13 @@ cli
 			body.streaming = !flags["no-streaming"];
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
-			const envelope = await client.updateModel(
-				args.id,
-				body as Parameters<typeof client.updateModel>[1],
+			const { provider, name } = parseModelId(args.id);
+			const envelope = await client.upsertModel(
+				provider,
+				name,
+				body as Parameters<typeof client.upsertModel>[2],
 			);
-			return { id: envelope.value.id };
+			return { id: `${envelope.value.provider}:${envelope.value.name}` };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -532,7 +550,8 @@ cli
 	.action(async (args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
-			await client.removeModel(args.id);
+			const { provider, name } = parseModelId(args.id);
+			await client.removeModel(provider, name);
 			return { message: `removed model ${args.id}` };
 		} catch (err) {
 			handleClientError(err, ctx);
