@@ -210,8 +210,9 @@ dockerfile: |
 description: Rust toolchain (rustc + cargo)
 dockerfile: |
   USER root
-  RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-  ENV PATH="/root/.cargo/bin:\${PATH}"
+  ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo
+  RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
+  ENV PATH="/usr/local/cargo/bin:\${PATH}"
   USER node
 `,
 		docker: `name: docker
@@ -225,7 +226,7 @@ dockerfile: |
 description: Playwright browser automation with Chromium
 dockerfile: |
   USER root
-  RUN npx playwright install --with-deps chromium
+  RUN npx playwright install --with-deps chromium && rm -rf /home/node/.npm
   USER node
 `,
 	};
