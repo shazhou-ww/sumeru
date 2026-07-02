@@ -5,18 +5,6 @@ import type { CliContext, CommandAction, ParsedFlags } from "@ocas/cli-kit";
 import { createCLI } from "@ocas/cli-kit";
 import { z } from "zod";
 import { parseEnvFlagsFromArgv } from "./env-flags.js";
-import {
-	formatAdapterModelTable,
-	formatAdapterTable,
-	formatDockerImagesOutput,
-	formatHostStatus,
-	formatImageTable,
-	formatModelTable,
-	formatPersonaTable,
-	formatPrototypeTable,
-	formatProviderTable,
-	formatSessionTable,
-} from "./format.js";
 import { createHostClient, HostClientError } from "./http-client.js";
 import {
 	runImageBuild as executeImageBuild,
@@ -36,7 +24,7 @@ import { runSetup } from "./setup.js";
 const messageSchema = z.object({ message: z.string() });
 const nameSchema = z.object({ name: z.string() });
 const idSchema = z.object({ id: z.string() });
-const listSchema = z.object({ items: z.array(z.string()) });
+const listSchema = z.array(z.record(z.string(), z.unknown()));
 const statusSchema = z.object({
 	name: z.string(),
 	version: z.string(),
@@ -230,13 +218,12 @@ cli
 	.describe("List registered adapters")
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
-	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "text" })
 	.action(async (_args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
 			const envelope = await client.listAdapters();
-			ctx.stdout(formatAdapterTable(envelope.value) + "\n");
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -279,13 +266,12 @@ cli
 	.arg("name")
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
-	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
 			const envelope = await client.listAdapterModels(args.name);
-			ctx.stdout(formatAdapterModelTable(envelope.value) + "\n");
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -299,13 +285,12 @@ cli
 	.describe("List registered providers")
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
-	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "text" })
 	.action(async (_args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
 			const envelope = await client.listProviders();
-			ctx.stdout(formatProviderTable(envelope.value) + "\n");
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -427,13 +412,12 @@ cli
 	.describe("List registered models")
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
-	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "text" })
 	.action(async (_args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
 			const envelope = await client.listModels();
-			ctx.stdout(formatModelTable(envelope.value) + "\n");
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -563,13 +547,12 @@ cli
 	.describe("List prototypes")
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
-	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "text" })
 	.action(async (_args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
 			const envelope = await client.listPrototypes();
-			ctx.stdout(formatPrototypeTable(envelope.value) + "\n");
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -588,19 +571,21 @@ cli
 			persona: z.string(),
 			model: z.string().nullable(),
 			adapter: z.string(),
+			image: z.string().nullable(),
 		}),
-		"{{name}} persona={{persona}} model={{model}} adapter={{adapter}}",
+		"{{name}} persona={{persona}} model={{model}} adapter={{adapter}} image={{image}}",
 	)
 	.action(async (args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
 			const envelope = await client.getPrototype(args.name);
-			const p = envelope.value.prototype;
+			const p = envelope.value;
 			return {
 				name: p.name,
 				persona: p.persona,
 				model: p.model,
 				adapter: p.adapter,
+				image: p.image,
 			};
 		} catch (err) {
 			handleClientError(err, ctx);
@@ -614,6 +599,7 @@ cli
 	.arg("name")
 	.flag("model", { type: "string" })
 	.flag("adapter", { type: "string" })
+	.flag("image", { type: "string" })
 	.flag("persona", { type: "string", default: "default" })
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
@@ -621,19 +607,29 @@ cli
 	.action(async (args, flags, ctx) => {
 		const model = flags.model as string | undefined;
 		const adapter = flags.adapter as string | undefined;
+		const image = flags.image as string | undefined;
 		const persona = (flags.persona as string) ?? "default";
 		if (!model || !adapter) {
 			ctx.error(
-				"Usage: sumeru prototype add <name> --model <model-id> --adapter <adapter-name> [--persona <name>]",
+				"Usage: sumeru prototype add <name> --model <model-id> --adapter <adapter-name> [--image <image-name>] [--persona <name>]",
 			);
 		}
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
-			const envelope = await client.addPrototype(args.name, {
+			const body: {
+				persona: string;
+				model: string;
+				adapter: string;
+				image?: string;
+			} = {
 				persona,
 				model: model!,
 				adapter: adapter!,
-			});
+			};
+			if (image !== undefined) {
+				body.image = image;
+			}
+			const envelope = await client.addPrototype(args.name, body);
 			return { name: envelope.value.name };
 		} catch (err) {
 			handleClientError(err, ctx);
@@ -694,13 +690,12 @@ cli
 	.describe("List personas")
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
-	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "text" })
 	.action(async (_args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
 			const envelope = await client.listPersonas();
-			ctx.stdout(formatPersonaTable(envelope.value) + "\n");
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -873,13 +868,12 @@ cli
 	.describe("List registered images")
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
-	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "text" })
 	.action(async (_args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
 			const envelope = await client.listImages();
-			ctx.stdout(formatImageTable(envelope.value) + "\n");
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -968,13 +962,12 @@ cli
 	.describe("List sessions")
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
-	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "text" })
 	.action(async (_args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
 			const envelope = await client.listSessions();
-			ctx.stdout(formatSessionTable(envelope.value) + "\n");
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}

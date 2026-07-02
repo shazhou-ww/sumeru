@@ -56,7 +56,7 @@ export function createPrototypesHandler(hostConfig: LoadedHostConfig) {
 			params: Record<string, string>,
 		): Promise<void> {
 			const name = params.name ?? "";
-			if (await prototypeFileExists(hostConfig.prototypesDir, name)) {
+			if (hostConfig.prototypes.has(name)) {
 				writeJson(
 					res,
 					409,
@@ -176,11 +176,26 @@ async function upsertPrototype(
 		);
 		return;
 	}
+	if (prototype.image !== null && !hostConfig.images.has(prototype.image)) {
+		writeJson(
+			res,
+			400,
+			errorEnvelope("image_not_found", `Image ${prototype.image} not found`),
+		);
+		return;
+	}
 	try {
 		await writePrototypeFile(hostConfig.prototypesDir, prototype);
 		const info = await reloadPrototypeInConfig(hostConfig, name);
 		writeJson(res, mode === "add" ? 201 : 200, prototypeEnvelope(info));
 	} catch (err) {
+		if (mode === "add") {
+			try {
+				await deletePrototypeFile(hostConfig.prototypesDir, name);
+			} catch {
+				// best-effort rollback when compose validation fails after yaml write
+			}
+		}
 		writePrototypeError(res, err);
 	}
 }

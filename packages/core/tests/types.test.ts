@@ -46,6 +46,7 @@ describe("@sumeru/core — v3 type set conformance", () => {
 			persona: "default",
 			model: "claude-sonnet-4",
 			adapter: "claude-code",
+			image: null,
 			defaults: {
 				maxTurns: 40,
 				timeout: 7_200_000,

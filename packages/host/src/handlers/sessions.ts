@@ -6,14 +6,14 @@ import {
 	sessionListEnvelope,
 } from "../envelope.js";
 import { readJsonBody, writeJson } from "../http-utils.js";
-import type { SessionManager } from "../session-manager.js";
+import { maskSessionModel, type SessionManager } from "../session-manager.js";
 import type { CreateSessionRequest, ManagedSession } from "../types.js";
 
 function toSessionInfo(record: ManagedSession) {
 	return {
 		id: record.id,
 		prototype: record.prototype,
-		model: record.model,
+		model: maskSessionModel(record.model),
 		image: record.image,
 		project: record.project,
 		task: record.task,

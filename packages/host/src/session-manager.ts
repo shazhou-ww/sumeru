@@ -4,7 +4,13 @@ import type {
 	OutboxFrame,
 	TurnValue,
 } from "@sumeru/adapter-core";
-import type { ExitSignal, SessionInfo, TokenUsage, Turn } from "@sumeru/core";
+import type {
+	ExitSignal,
+	ModelConfig,
+	SessionInfo,
+	TokenUsage,
+	Turn,
+} from "@sumeru/core";
 import { getProviderMode } from "./adapter-registry.js";
 import {
 	extractImageFromCompose,
@@ -20,6 +26,7 @@ import {
 } from "./id.js";
 import { createOcasRecorder, type OcasRecorder } from "./ocas-recorder.js";
 import { parseOutboxLine } from "./outbox.js";
+import { maskApiKey } from "./sqlite-store.js";
 import {
 	createSseBuffer,
 	type SseBuffer,
@@ -878,6 +885,13 @@ function trackTurn(runtime: AdapterRuntime, turn: TurnValue): void {
 	}
 }
 
+export function maskSessionModel(model: ModelConfig): ModelConfig {
+	return {
+		...model,
+		apiKey: maskApiKey(model.apiKey),
+	};
+}
+
 function toSessionInfo(
 	record: ManagedSession,
 	tokenUsage: TokenUsage | null,
@@ -885,7 +899,7 @@ function toSessionInfo(
 	return {
 		id: record.id,
 		prototype: record.prototype,
-		model: record.model,
+		model: maskSessionModel(record.model),
 		image: record.image,
 		project: record.project,
 		task: record.task,

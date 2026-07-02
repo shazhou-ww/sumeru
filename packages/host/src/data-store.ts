@@ -168,6 +168,7 @@ export type PrototypeUpdateBody = {
 	persona: string | undefined;
 	model: string | null | undefined;
 	adapter: string | undefined;
+	image: string | null | undefined;
 	defaults: Prototype["defaults"] | undefined;
 };
 
@@ -180,6 +181,7 @@ export function mergePrototype(
 		persona: update.persona ?? existing.persona,
 		model: update.model !== undefined ? update.model : existing.model,
 		adapter: update.adapter ?? existing.adapter,
+		image: update.image !== undefined ? update.image : existing.image,
 		defaults:
 			update.defaults === undefined ? existing.defaults : update.defaults,
 	};
@@ -239,11 +241,23 @@ export function validatePrototypeUpdate(
 		}
 		adapter = obj.adapter;
 	}
+	let image: string | null | undefined;
+	if (obj.image !== undefined) {
+		if (obj.image === null) {
+			image = null;
+		} else if (typeof obj.image !== "string" || obj.image.length === 0) {
+			throw new Error(
+				`Prototype ${path} field "image" must be a non-empty string or null`,
+			);
+		} else {
+			image = obj.image;
+		}
+	}
 	const defaults =
 		obj.defaults === undefined
 			? undefined
 			: parsePrototypeDefaults(obj.defaults, path);
-	return { persona, model, adapter, defaults };
+	return { persona, model, adapter, image, defaults };
 }
 
 export function validatePrototype(
@@ -291,8 +305,20 @@ export function validatePrototype(
 			`Prototype ${path} field "adapter" must be a non-empty string`,
 		);
 	}
+	let image: string | null = null;
+	if (obj.image !== undefined) {
+		if (obj.image === null) {
+			image = null;
+		} else if (typeof obj.image !== "string" || obj.image.length === 0) {
+			throw new Error(
+				`Prototype ${path} field "image" must be a non-empty string or null`,
+			);
+		} else {
+			image = obj.image;
+		}
+	}
 	const defaults = parsePrototypeDefaults(obj.defaults, path);
-	return { name, persona, model, adapter, defaults };
+	return { name, persona, model, adapter, image, defaults };
 }
 
 function parsePrototypeDefaults(

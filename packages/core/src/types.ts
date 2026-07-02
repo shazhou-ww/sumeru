@@ -67,6 +67,7 @@ export type Prototype = {
 	persona: string;
 	model: string | null;
 	adapter: string;
+	image: string | null;
 	defaults: {
 		maxTurns: number;
 		timeout: number;

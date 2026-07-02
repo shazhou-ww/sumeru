@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { access, cp, mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { openDatabase } from "@sumeru/host/sqlite";
 
 // ── Provider presets ────────────────────────────────────────────────
@@ -256,10 +256,7 @@ export async function runSetup(input: SetupInput): Promise<void> {
 
 	// ── Prototype (file already created above, just update image ref) ─
 	if (imageRegistered) {
-		// Ensure prototype yaml references the correct image name
-		const updatedProto = `name: sarsapa\npersona: default\nmodel: ${modelId}\nadapter: sarsapa\n`;
-		writeFileSync(protoYamlPath, updatedProto);
-		process.stdout.write(`  ✓ Prototype "sarsapa" ready (image: sarsapa)\n`);
+		process.stdout.write(`  ✓ Prototype "sarsapa" ready\n`);
 	}
 
 	// ── Health check (doctor) ────────────────────────────────────────
@@ -299,12 +296,8 @@ async function runImageBuildLocal(
 			: join(options.repoRoot, `packages/adapter-${agent}`);
 
 	const dockerTag = `sumeru/${options.name}:dev`;
-	const dockerfileSource = join(
-		options.repoRoot,
-		"docker",
-		agent,
-		"Dockerfile",
-	);
+	const dockerfileSource = join(adapterPath, "Dockerfile");
+	const dockerfileRef = relative(options.repoRoot, dockerfileSource);
 	const buildDir = join(options.repoRoot, ".build");
 	const packagesDir = join(buildDir, "packages");
 
@@ -324,7 +317,7 @@ async function runImageBuildLocal(
 	await copyPkg(adapterPath, join(packagesDir, adapterDest));
 
 	await cp(dockerfileSource, join(buildDir, "Dockerfile"));
-	const dockerignore = join(options.repoRoot, "docker", ".dockerignore");
+	const dockerignore = join(options.repoRoot, ".dockerignore");
 	try {
 		await cp(dockerignore, join(buildDir, ".dockerignore"));
 	} catch {
@@ -365,7 +358,7 @@ async function runImageBuildLocal(
 	const imageEntry = [
 		`  ${options.name}:`,
 		`    description: "Sumeru ${agent} image (${dockerTag})"`,
-		`    dockerfile: "packages/${agent === "sarsapa" ? "sarsapa" : `adapter-${agent}`}/Dockerfile"`,
+		`    dockerfile: "${dockerfileRef}"`,
 		`    builtAt: "${builtAt}"`,
 		`    digest: "${digest}"`,
 	].join("\n");

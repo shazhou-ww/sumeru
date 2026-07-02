@@ -2,6 +2,7 @@ import type {
 	Image,
 	Model,
 	Persona,
+	Prototype,
 	Provider,
 	SessionInfo,
 	Skill,
@@ -32,20 +33,7 @@ export type PrototypeListItem = {
 	name: string;
 };
 
-export type PrototypeDetail = {
-	name: string;
-	prototype: {
-		name: string;
-		persona: string;
-		model: string | null;
-		adapter: string;
-		defaults: {
-			maxTurns: number;
-			timeout: number;
-			resources: { cpu: number; memory: string };
-		} | null;
-	};
-};
+export type PrototypeDetail = Prototype;
 
 export type CreateSessionBody = {
 	prototype: string;
@@ -109,11 +97,21 @@ export type HostClient = {
 	getPrototype(name: string): Promise<Envelope<PrototypeDetail>>;
 	addPrototype(
 		name: string,
-		body: { persona: string; model: string; adapter: string },
+		body: {
+			persona: string;
+			model: string;
+			adapter: string;
+			image?: string;
+		},
 	): Promise<Envelope<PrototypeDetail>>;
 	updatePrototype(
 		name: string,
-		body: { persona?: string; model?: string; adapter?: string },
+		body: {
+			persona?: string;
+			model?: string;
+			adapter?: string;
+			image?: string | null;
+		},
 	): Promise<Envelope<PrototypeDetail>>;
 	removePrototype(name: string): Promise<void>;
 
