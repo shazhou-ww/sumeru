@@ -13,10 +13,8 @@ Monorepo with the active v2 packages under `packages/` (build-dependency order):
 | `@sumeru/adapter-claude-code` | `packages/adapter-claude-code` | Claude Code adapter |
 | `@sumeru/host` | `packages/host` | Host HTTP service + Transport layer |
 
-> **Legacy:** the previous v1 implementation (`@sumeru/server`, `@sumeru/cli`,
-> `@sumeru/adapter-hermes`, `@sumeru/adapter-cursor-agent`, `@sumeru/adapter-codex`,
-> and the v1 `@sumeru/core`/`@sumeru/adapter-claude-code`) is frozen under `legacy/`.
-> It is **excluded from the workspace, build, lint, and publish** — not active code.
+> **Legacy:** the v1 implementation has been removed. Its history is preserved in git
+> (commit range up to `b2c534b`). All active code lives under `packages/`.
 
 ## Core Concepts
 

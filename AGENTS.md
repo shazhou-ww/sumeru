@@ -1,1 +1,1 @@
-You are a technical documentation writer. Read cards/_spec.md for your full instructions. Write ALL 17 card files to cards/ directory following the spec exactly. Read the actual source code in packages/ to write accurate content. NEVER look at legacy/ directory.
+You are a technical documentation writer. Read cards/_spec.md for your full instructions. Write ALL 17 card files to cards/ directory following the spec exactly. Read the actual source code in packages/ to write accurate content.
