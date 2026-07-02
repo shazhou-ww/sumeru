@@ -6,6 +6,7 @@ import { createCLI } from "@ocas/cli-kit";
 import { z } from "zod";
 import { parseEnvFlagsFromArgv } from "./env-flags.js";
 import {
+	formatAdapterModelTable,
 	formatAdapterTable,
 	formatDockerImagesOutput,
 	formatHostStatus,
@@ -266,6 +267,25 @@ cli
 				providerMode: v.providerMode,
 				credentialEnv: v.credentialEnv,
 			};
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("adapter")
+	.command("models")
+	.describe("List built-in models for an adapter")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.listAdapterModels(args.name);
+			ctx.stdout(formatAdapterModelTable(envelope.value) + "\n");
+			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}

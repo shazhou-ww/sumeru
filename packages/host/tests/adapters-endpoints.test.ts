@@ -85,11 +85,20 @@ describe("adapters endpoints", () => {
 		expect(list.body).toMatchObject({
 			type: "@sumeru/adapter-list",
 		});
-		const body = list.body as { value: Array<{ name: string }> };
+		const body = list.body as {
+			value: Array<{ name: string; listModels: boolean }>;
+		};
 		const names = body.value.map((item) => item.name);
 		expect(names).toContain("cursor-agent");
 		expect(names).toContain("claude-code");
 		expect(names).toContain("sarsapa");
+		for (const item of body.value) {
+			expect(typeof item.listModels).toBe("boolean");
+		}
+		const claudeCode = body.value.find((a) => a.name === "claude-code");
+		expect(claudeCode?.listModels).toBe(true);
+		const sarsapa = body.value.find((a) => a.name === "sarsapa");
+		expect(sarsapa?.listModels).toBe(false);
 	});
 
 	it("GET /adapters/:name returns one adapter", async () => {
@@ -120,6 +129,57 @@ describe("adapters endpoints", () => {
 				error: "adapter_not_found",
 				message: "Adapter nonexistent not found",
 			},
+		});
+	});
+
+	it("GET /adapters/:name/models returns 404 for unsupported adapter", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-adapters-"));
+		writeHostFixture(rootDir);
+		const server = await startTestServer(rootDir);
+
+		const result = await request(server, "GET", "/adapters/sarsapa/models");
+		expect(result.status).toBe(404);
+		expect(result.body).toMatchObject({
+			type: "@sumeru/error",
+			value: { error: "models_not_supported" },
+		});
+	});
+
+	it("GET /adapters/:name/models returns 400 when credential missing", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-adapters-"));
+		writeHostFixture(rootDir);
+		const server = await startTestServer(rootDir);
+
+		const previousKey = process.env.ANTHROPIC_API_KEY;
+		delete process.env.ANTHROPIC_API_KEY;
+		try {
+			const result = await request(
+				server,
+				"GET",
+				"/adapters/claude-code/models",
+			);
+			expect(result.status).toBe(400);
+			expect(result.body).toMatchObject({
+				type: "@sumeru/error",
+				value: { error: "credential_missing" },
+			});
+		} finally {
+			if (previousKey !== undefined) {
+				process.env.ANTHROPIC_API_KEY = previousKey;
+			}
+		}
+	});
+
+	it("GET /adapters/:name/models returns 404 for unknown adapter", async () => {
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-adapters-"));
+		writeHostFixture(rootDir);
+		const server = await startTestServer(rootDir);
+
+		const result = await request(server, "GET", "/adapters/nonexistent/models");
+		expect(result.status).toBe(404);
+		expect(result.body).toMatchObject({
+			type: "@sumeru/error",
+			value: { error: "adapter_not_found" },
 		});
 	});
 });

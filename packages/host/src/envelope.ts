@@ -1,4 +1,4 @@
-import type { AdapterManifest } from "@sumeru/adapter-core";
+import type { BuiltinModel } from "@sumeru/adapter-core";
 import type {
 	Image,
 	Model,
@@ -9,6 +9,7 @@ import type {
 	Turn,
 } from "@sumeru/core";
 import type {
+	AdapterInfo,
 	Envelope,
 	ErrorValue,
 	HostRootValue,
@@ -49,15 +50,19 @@ export function providerEnvelope(provider: Provider): Envelope<Provider> {
 }
 
 export function adapterListEnvelope(
-	adapters: Array<AdapterManifest>,
-): Envelope<Array<AdapterManifest>> {
+	adapters: Array<AdapterInfo>,
+): Envelope<Array<AdapterInfo>> {
 	return envelope("@sumeru/adapter-list", adapters);
 }
 
-export function adapterEnvelope(
-	adapter: AdapterManifest,
-): Envelope<AdapterManifest> {
+export function adapterEnvelope(adapter: AdapterInfo): Envelope<AdapterInfo> {
 	return envelope("@sumeru/adapter", adapter);
+}
+
+export function adapterModelListEnvelope(
+	models: Array<BuiltinModel>,
+): Envelope<Array<BuiltinModel>> {
+	return envelope("@sumeru/adapter-model-list", models);
 }
 
 export function modelListEnvelope(

@@ -7,6 +7,7 @@ import type {
 } from "@sumeru/core";
 import type {
 	AdapterInfo,
+	BuiltinModel,
 	HostRootValue,
 	PrototypeListItem,
 } from "./http-client.js";
@@ -69,6 +70,24 @@ export function formatAdapterTable(adapters: Array<AdapterInfo>): string {
 			header: "CREDENTIAL ENV",
 			width: 20,
 			value: (row) => row.credentialEnv ?? "-",
+		},
+		{
+			header: "MODELS",
+			width: 7,
+			value: (row) => (row.listModels ? "yes" : "no"),
+		},
+	]);
+}
+
+export function formatAdapterModelTable(models: Array<BuiltinModel>): string {
+	return formatTable(models, [
+		{ header: "ID", width: 36, value: (row) => row.id },
+		{ header: "NAME", width: 28, value: (row) => row.name },
+		{
+			header: "CTX",
+			width: 10,
+			value: (row) =>
+				row.contextWindow === null ? "-" : String(row.contextWindow),
 		},
 	]);
 }
