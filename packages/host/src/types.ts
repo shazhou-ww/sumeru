@@ -1,7 +1,6 @@
 import type { AdapterManifest, ProviderMode } from "@sumeru/adapter-core";
 import type {
 	HostConfig,
-	Image,
 	ModelConfig,
 	Prototype,
 	SessionInfo,
@@ -62,7 +61,6 @@ export type LoadedHostConfig = {
 	prototypesDir: string;
 	config: HostConfig;
 	prototypes: Map<string, PrototypeInfo>;
-	images: Map<string, Image>;
 	sqliteStore: SqliteStore;
 };
 

@@ -5,7 +5,6 @@ import type { ProviderMode, SkillContent } from "@sumeru/adapter-core";
 import type {
 	CustomProvider,
 	HostConfig,
-	Image,
 	ModelConfig,
 	Persona,
 	ProviderApiType,
@@ -25,7 +24,6 @@ import type {
 } from "./types.js";
 
 const DEFAULT_HOST_FILE = "host.yaml";
-const DEFAULT_IMAGES_FILE = "images.yaml";
 const DEFAULT_DATA_DIR = "data";
 
 export async function loadHostConfig(
@@ -56,7 +54,6 @@ export async function loadHostConfig(
 			await validateComposeProjectVolume(info.composePath);
 		}
 	}
-	const images = await loadImagesConfig(rootDir, doc, configPath);
 	const sqliteStore = openDatabase(join(dataDir, "sumeru.db"));
 	await importSkillsFromFiles(sqliteStore, skillsDir);
 	return {
@@ -67,7 +64,6 @@ export async function loadHostConfig(
 		prototypesDir,
 		config,
 		prototypes,
-		images,
 		sqliteStore,
 	};
 }
@@ -91,43 +87,6 @@ export async function removePrototypeFromConfig(
 	hostConfig.prototypes.delete(name);
 }
 
-export async function saveImageInConfig(
-	hostConfig: LoadedHostConfig,
-	image: Image,
-): Promise<void> {
-	hostConfig.images.set(image.name, image);
-	await writeImagesFile(hostConfig.rootDir, hostConfig.images);
-}
-
-export async function removeImageFromConfig(
-	hostConfig: LoadedHostConfig,
-	name: string,
-): Promise<void> {
-	hostConfig.images.delete(name);
-	await writeImagesFile(hostConfig.rootDir, hostConfig.images);
-}
-
-async function writeImagesFile(
-	rootDir: string,
-	images: Map<string, Image>,
-): Promise<void> {
-	const imagesPath = join(rootDir, DEFAULT_IMAGES_FILE);
-	const mapping: Record<string, Omit<Image, "name">> = {};
-	const sortedNames = [...images.keys()].sort();
-	for (const name of sortedNames) {
-		const image = images.get(name);
-		if (image === undefined) continue;
-		mapping[name] = {
-			description: image.description,
-			dockerfile: image.dockerfile,
-			builtAt: image.builtAt,
-			digest: image.digest,
-		};
-	}
-	const yaml = stringifyYaml(mapping);
-	await writeFile(imagesPath, yaml, "utf-8");
-}
-
 function toStoreInput(hostConfig: LoadedHostConfig): {
 	rootDir: string;
 	prototypesDir: string;
@@ -138,89 +97,6 @@ function toStoreInput(hostConfig: LoadedHostConfig): {
 		prototypesDir: hostConfig.prototypesDir,
 		skillsDir: hostConfig.skillsDir,
 	};
-}
-
-async function loadImagesConfig(
-	rootDir: string,
-	hostDoc: unknown,
-	hostConfigPath: string,
-): Promise<Map<string, Image>> {
-	if (
-		hostDoc !== null &&
-		typeof hostDoc === "object" &&
-		!Array.isArray(hostDoc)
-	) {
-		const embedded = (hostDoc as Record<string, unknown>).images;
-		if (embedded !== undefined && embedded !== null) {
-			return parseImagesMapping(embedded, hostConfigPath);
-		}
-	}
-	const imagesPath = join(rootDir, DEFAULT_IMAGES_FILE);
-	try {
-		const raw = await readFile(imagesPath, "utf-8");
-		const doc = parseYamlSafely(raw, imagesPath);
-		if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
-			throw new Error(
-				`Config ${imagesPath} must be a YAML mapping at the top level`,
-			);
-		}
-		const obj = doc as Record<string, unknown>;
-		const imagesRaw = obj.images ?? obj;
-		return parseImagesMapping(imagesRaw, imagesPath);
-	} catch (err) {
-		const code =
-			err instanceof Error && "code" in err
-				? (err as { code: unknown }).code
-				: null;
-		if (code === "ENOENT") {
-			return new Map();
-		}
-		throw err;
-	}
-}
-
-function parseImagesMapping(value: unknown, path: string): Map<string, Image> {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error(`Config ${path} field "images" must be a mapping`);
-	}
-	const images = new Map<string, Image>();
-	for (const [name, entry] of Object.entries(
-		value as Record<string, unknown>,
-	)) {
-		if (name.length === 0) {
-			throw new Error(`Config ${path} image name must be a non-empty string`);
-		}
-		images.set(name, validateImageEntry(name, entry, `${path} images.${name}`));
-	}
-	return images;
-}
-
-function validateImageEntry(
-	name: string,
-	value: unknown,
-	label: string,
-): Image {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error(`${label} must be a mapping`);
-	}
-	const obj = value as Record<string, unknown>;
-	const description = obj.description;
-	const dockerfile = obj.dockerfile;
-	const builtAt = obj.builtAt;
-	const digest = obj.digest;
-	if (typeof description !== "string") {
-		throw new Error(`${label}.description must be a string`);
-	}
-	if (typeof dockerfile !== "string" || dockerfile.length === 0) {
-		throw new Error(`${label}.dockerfile must be a non-empty string`);
-	}
-	if (typeof builtAt !== "string" || builtAt.length === 0) {
-		throw new Error(`${label}.builtAt must be a non-empty string`);
-	}
-	if (typeof digest !== "string" || digest.length === 0) {
-		throw new Error(`${label}.digest must be a non-empty string`);
-	}
-	return { name, description, dockerfile, builtAt, digest };
 }
 
 export function loadPrototypeInitSkills(

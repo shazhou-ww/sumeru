@@ -6,7 +6,7 @@ tags: [prototype, crud, lifecycle]
 
 # Prototype 完整 CRUD 生命周期
 
-Prototype 是 Worker Agent 的配置模板。Phase 2 重构后 Prototype 引用 Persona 和 Model（均为 SQLite 实体），不再内联 instructions/skills。
+Prototype 是 Worker Agent 的配置模板。Phase 2 重构后 Prototype 引用 Persona 和 Model（均为 SQLite 实体），不再内联 instructions/skills。Docker 镜像由 `prototypes/<name>/compose.yaml` 指定，不再通过 Prototype 字段引用。
 
 ## Prototype 字段
 
@@ -14,7 +14,7 @@ Prototype 是 Worker Agent 的配置模板。Phase 2 重构后 Prototype 引用 
 name: hermes           # 唯一标识，匹配 URL 路径参数
 persona: general       # 引用 Persona.name（SQLite）
 model: claude-sonnet   # 引用 Model.id（SQLite）
-image: sumeru-worker   # Docker image 名称
+adapter: hermes        # Adapter 名称
 defaults:              # 可选
   maxTurns: 30
   timeout: 300
@@ -28,7 +28,6 @@ defaults:              # 可选
 - `persona` 必须在 SQLite 中存在 → 400 `persona_not_found`
 - `model` 必须在 SQLite 中存在 → 400 `model_not_found`
 - `name` 必须匹配 URL 中的 `:name` → 400 `invalid_body`
-- `image` 必须为非空 string
 
 ### API
 
@@ -54,7 +53,7 @@ PUT 使用 merge 语义 — 省略的字段保留现有值。
         "name": "hermes",
         "persona": "general",
         "model": "claude-sonnet",
-        "image": "sumeru-worker:latest",
+        "adapter": "hermes",
         "defaults": null
       },
       "yamlPath": "/path/to/prototypes/hermes.yaml",
@@ -109,7 +108,7 @@ PUT 使用 merge 语义 — 省略的字段保留现有值。
   "name": "new-agent",
   "persona": "general",
   "model": "claude-sonnet",
-  "image": "sumeru-worker:latest"
+  "adapter": "hermes"
 }
 ```
 
@@ -130,7 +129,7 @@ PUT 使用 merge 语义 — 省略的字段保留现有值。
   "name": "bad-persona",
   "persona": "nonexistent",
   "model": "claude-sonnet",
-  "image": "sumeru-worker:latest"
+  "adapter": "hermes"
 }
 ```
 
@@ -147,7 +146,7 @@ PUT 使用 merge 语义 — 省略的字段保留现有值。
   "name": "bad-model",
   "persona": "general",
   "model": "nonexistent",
-  "image": "sumeru-worker:latest"
+  "adapter": "hermes"
 }
 ```
 
@@ -166,11 +165,11 @@ PUT 使用 merge 语义 — 省略的字段保留现有值。
   "name": "update-target",
   "persona": "general",
   "model": "claude-sonnet",
-  "image": "sumeru-worker:v2"
+  "adapter": "claude-code"
 }
 ```
 
-**Then** 200，`value.prototype.image` = `sumeru-worker:v2`
+**Then** 200，`value.prototype.adapter` = `claude-code`
 
 ---
 

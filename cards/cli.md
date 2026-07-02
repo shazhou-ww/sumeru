@@ -29,7 +29,7 @@ flowchart TB
   C[prototype list|add|remove] --> C1[prototype CRUD via API]
   D[provider list|add|remove] --> D1[provider CRUD via API]
   E[model list|add|remove] --> E1[model CRUD via API]
-  F[image build|list] --> F1[Docker build + image registry]
+  F[image build] --> F1[Docker build for compose.yaml tag]
   G[sessions] --> G1[list sessions]
   H[create/delete/stop/send/logs] --> H1[session lifecycle APIs]
 ```
@@ -46,7 +46,6 @@ Performs one-shot initialization:
 4. Seeds SQLite: Provider → Model → Persona ("default").
 5. Creates `data/prototypes/sarsapa.yaml` and `prototypes/sarsapa/compose.yaml`.
 6. Builds the sarsapa Docker image (best-effort, skipped if not in repo).
-7. Writes `images.yaml` with built image metadata.
 
 Known providers (auto-detect apiType + baseUrl): `anthropic`, `openai`, `openrouter`, `siliconflow`, `deepseek`. Custom providers require `--api-type` and `--base-url`.
 
@@ -59,15 +58,12 @@ Setup is **idempotent** — re-running upserts provider/model/env without breaki
 - Supported agents: `hermes`, `claude-code`, `codex`, `sarsapa`, `cursor-agent`.
 - Copies dist artifacts (core + adapter-core + agent adapter) into `.build/` staging dir.
 - Runs `docker build` with agent-specific Dockerfile from `packages/adapter-<agent>/Dockerfile`.
-- Registers image in host via `POST /images/:name` (or writes `images.yaml` locally during setup).
-- Tag convention: `sumeru/<name>:dev` for local builds.
-
-`sumeru image list` — lists registered images from host API.
+- Tag convention: `sumeru/<name>:dev` for local builds. Reference this tag in `prototypes/<name>/compose.yaml`.
 
 ## Prototype Commands
 
 - `sumeru prototype list` — list prototypes via API.
-- `sumeru prototype add <name> --model <model-id> --image <image-name> [--persona <name>]`
+- `sumeru prototype add <name> --model <model-id> --adapter <adapter-name> [--persona <name>]`
 - `sumeru prototype remove <name>`
 
 ## Provider / Model Commands
@@ -100,7 +96,7 @@ Setup is **idempotent** — re-running upserts provider/model/env without breaki
 |---------|------|--------------|
 | `@sumeru/cli` | `packages/cli/src/main.ts` | Argument parsing and command dispatch. |
 | `@sumeru/cli` | `packages/cli/src/setup.ts` | Offline setup: dir creation, SQLite seeding, image build. |
-| `@sumeru/cli` | `packages/cli/src/image-build.ts` | Docker image build with host API registration. |
+| `@sumeru/cli` | `packages/cli/src/image-build.ts` | Docker image build pipeline. |
 | `@sumeru/cli` | `packages/cli/src/http-client.ts` | Typed HTTP/SSE client for all host API endpoints. |
 | `@sumeru/cli` | `packages/cli/src/pid-file.ts` | PID file management for server start/stop. |
 

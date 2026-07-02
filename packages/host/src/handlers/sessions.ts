@@ -185,6 +185,17 @@ function writeSessionError(res: ServerResponse, err: unknown): void {
 		);
 		return;
 	}
+	if (message.startsWith("image_not_found:")) {
+		writeJson(
+			res,
+			400,
+			errorEnvelope(
+				"image_not_found",
+				message.slice("image_not_found:".length),
+			),
+		);
+		return;
+	}
 	switch (message) {
 		case "prototype_not_found":
 			writeJson(

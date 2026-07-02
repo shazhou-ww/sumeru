@@ -26,7 +26,6 @@ function writePrototypeFixture(
 	options: {
 		persona?: string;
 		model?: string;
-		image?: string;
 		adapter?: string;
 	} = {},
 ): { yamlPath: string; skillsDir: string; composePath: string } {

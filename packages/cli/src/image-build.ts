@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { access, cp, mkdir, rm } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { createHostClient } from "./http-client.js";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 const SUPPORTED_AGENTS = [
 	"hermes",
@@ -17,7 +16,6 @@ export type ImageBuildOptions = {
 	name: string;
 	agent: string;
 	adapter: string | null;
-	baseUrl: string;
 	repoRoot: string;
 };
 
@@ -81,15 +79,6 @@ export async function runImageBuild(
 	}
 
 	const digest = inspectImageDigest(dockerTag);
-	const builtAt = new Date().toISOString();
-	const client = createHostClient({ baseUrl: options.baseUrl });
-	await client.addImage(options.name, {
-		name: options.name,
-		description: `Sumeru ${agent} image (${dockerTag})`,
-		dockerfile: relative(options.repoRoot, dockerfileSource),
-		builtAt,
-		digest,
-	});
 
 	return { tag: dockerTag, digest };
 }
