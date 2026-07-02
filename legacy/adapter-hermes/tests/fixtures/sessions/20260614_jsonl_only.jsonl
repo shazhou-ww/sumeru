@@ -1,5 +1,0 @@
-{"role": "session_meta", "tools": [], "model": "anthropic/claude-haiku-4", "platform": "sumeru", "timestamp": "2026-06-14T05:38:24.123456"}
-{"role": "user", "content": "hi", "timestamp": "2026-06-14T05:38:24.567890"}
-{"role": "assistant", "content": "hello there", "timestamp": "2026-06-14T05:38:25.111111"}
-{"role": "assistant", "content": null, "reasoning": null, "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "terminal", "arguments": "{\"command\": \"echo hi\"}"}}], "timestamp": "2026-06-14T05:38:26.222222"}
-{"role": "tool", "content": "{\"output\": \"hi\\n\", \"exit_code\": 0}", "tool_call_id": "call_1", "timestamp": "2026-06-14T05:38:26.333333"}

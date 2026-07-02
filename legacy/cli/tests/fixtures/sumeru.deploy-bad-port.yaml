@@ -1,8 +1,0 @@
-name: alpha
-deploy:
-  mode: docker
-  port: lots
-gateways:
-  hermes:
-    adapter: hermes
-    capabilities: { resume: true, streaming: true }

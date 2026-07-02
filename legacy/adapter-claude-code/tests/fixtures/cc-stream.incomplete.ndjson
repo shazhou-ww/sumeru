@@ -1,3 +1,0 @@
-{"type":"system","subtype":"init","session_id":"d4e5f6a7-1111-2222-3333-444455556666","model":"claude-sonnet-4-5","cwd":"/tmp/work","tools":[]}
-{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Hello?"}]},"session_id":"d4e5f6a7-1111-2222-3333-444455556666"}
-{"type":"assistant","message":{"id":"msg_p1","role":"assistant","content":[{"type":"text","text":"Partial response, then truncate"}]},"session_id":"d4e5f6a7-1111-2222-3333-444455556666"}

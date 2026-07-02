@@ -1,4 +1,0 @@
-{"type":"system","subtype":"init","session_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","model":"claude-sonnet-4","cwd":"/workspace","permissionMode":"force"}
-{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Say hi."}]}}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello! How can I help you today?"}]}}
-{"type":"result","subtype":"success","result":"Hello! How can I help you today?","duration_ms":2345,"usage":{"inputTokens":150,"outputTokens":25,"cacheReadTokens":0,"cacheWriteTokens":0},"request_id":"req_001"}

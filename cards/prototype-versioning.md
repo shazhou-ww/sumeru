@@ -7,7 +7,7 @@ sources:
   - packages/host/src/types.ts
 tags: [sumeru, prototype]
 created: 2026-06-28
-updated: 2026-07-01
+updated: 2026-07-02
 ---
 
 # Prototype Versioning & Lazy Re-init
@@ -27,7 +27,7 @@ flowchart TB
   A[data/prototypes/name.yaml raw bytes] --> H[SHA-256 prototypeHash]
 ```
 
-`computePrototypeHash(yamlPath)` in `data-store.ts` hashes the raw YAML file content prefixed with `prototype\0`. The hash changes whenever the prototype YAML is modified (persona, model, image, or defaults change).
+`computePrototypeHash(yamlPath)` in `data-store.ts` hashes the raw YAML file content prefixed with `prototype\0`. The hash changes whenever the prototype YAML is modified (persona, model, adapter, extensions, or defaults change).
 
 ## Session Tracking
 

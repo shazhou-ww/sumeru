@@ -7,7 +7,7 @@ sources:
   - packages/host/src/main.ts
 tags: [sumeru, deploy]
 created: 2026-06-28
-updated: 2026-07-01
+updated: 2026-07-02
 ---
 
 # Deployment
@@ -48,9 +48,9 @@ From deployment docs + host loader behavior:
 
 - Root directory must contain `host.yaml`.
 - Prototypes defined in `data/prototypes/*.yaml`.
-- Compose files at `prototypes/<name>/compose.yaml`.
+- Extensions defined in `data/extensions/*.yaml`.
+- Compose files at `prototypes/<name>/compose.yaml` (Docker image tag declared here).
 - SQLite database at `data/sumeru.db`.
-- Images tracked in `images.yaml`.
 - Data directory defaults to `<root>/data`.
 
 ## Operations
@@ -77,7 +77,7 @@ Typical lifecycle commands:
 | `deploy` | `deploy/sumeru.service` | systemd user unit definition for host process. |
 | `deploy` | `deploy/README.md` | Installation and operations guide. |
 | `@sumeru/host` | `packages/host/src/main.ts` | Host process entrypoint used by service ExecStart. |
-| `@sumeru/host` | `packages/host/src/config.ts` | Loads host.yaml, SQLite store, prototypes, and images. |
+| `@sumeru/host` | `packages/host/src/config.ts` | Loads host.yaml, SQLite store, prototypes, and extensions. |
 
 ## See Also
 

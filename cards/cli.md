@@ -9,7 +9,7 @@ sources:
   - packages/cli/src/pid-file.ts
 tags: [sumeru, cli]
 created: 2026-06-28
-updated: 2026-07-01
+updated: 2026-07-02
 ---
 
 # CLI Tool
@@ -24,11 +24,11 @@ The CLI parses a two-token command namespace (`<cmd> [sub]`) plus positional/fla
 
 ```mermaid
 flowchart TB
-  A[setup] --> A1[init ~/.sumeru + SQLite + image + prototype]
+  A[setup] --> A1[init ~/.sumeru + SQLite + Docker image + prototype]
   B[server start|stop|status] --> B1[process + host root]
-  C[prototype list|add|remove] --> C1[prototype CRUD via API]
-  D[provider list|add|remove] --> D1[provider CRUD via API]
-  E[model list|add|remove] --> E1[model CRUD via API]
+  C[prototype list|add|remove] --> C1[prototype upsert via PUT API]
+  D[provider list|add|remove] --> D1[provider upsert via PUT API]
+  E[model list|add|remove] --> E1[model upsert via PUT /providers/:name/models/:model]
   F[image build] --> F1[Docker build for compose.yaml tag]
   G[sessions] --> G1[list sessions]
   H[create/delete/stop/send/logs] --> H1[session lifecycle APIs]
@@ -43,8 +43,8 @@ Performs one-shot initialization:
 1. Creates `~/.sumeru` directory tree (data/, prototypes/, workspace/).
 2. Writes `host.yaml` (create-only, never overwrites).
 3. Upserts `.env` with provider API key.
-4. Seeds SQLite: Provider → Model → Persona ("default").
-5. Creates `data/prototypes/sarsapa.yaml` and `prototypes/sarsapa/compose.yaml`.
+4. Seeds SQLite: Provider → Model (`provider:name`) → Persona ("default").
+5. Creates `data/prototypes/sarsapa.yaml` and `prototypes/sarsapa/compose.yaml` (with `defaults.model` in host.yaml).
 6. Builds the sarsapa Docker image (best-effort, skipped if not in repo).
 
 Known providers (auto-detect apiType + baseUrl): `anthropic`, `openai`, `openrouter`, `siliconflow`, `deepseek`. Custom providers require `--api-type` and `--base-url`.
@@ -58,18 +58,19 @@ Setup is **idempotent** — re-running upserts provider/model/env without breaki
 - Supported agents: `hermes`, `claude-code`, `codex`, `sarsapa`, `cursor-agent`.
 - Copies dist artifacts (core + adapter-core + agent adapter) into `.build/` staging dir.
 - Runs `docker build` with agent-specific Dockerfile from `packages/adapter-<agent>/Dockerfile`.
-- Tag convention: `sumeru/<name>:dev` for local builds. Reference this tag in `prototypes/<name>/compose.yaml`.
+- Tag convention: `sumeru/sarsapa:dev` for sarsapa; `sumeru/adapter-<name>:dev` for other adapters (or `sumeru/<build-name>:dev` when using a custom build name). Reference the tag in `prototypes/<name>/compose.yaml`.
+- Does **not** register the image to any Host entity — compose.yaml is the source of truth.
 
 ## Prototype Commands
 
 - `sumeru prototype list` — list prototypes via API.
-- `sumeru prototype add <name> --model <model-id> --adapter <adapter-name> [--persona <name>]`
+- `sumeru prototype add <name> --model <provider:name> --adapter <adapter-name> [--persona <name>]`
 - `sumeru prototype remove <name>`
 
 ## Provider / Model Commands
 
-- `sumeru provider list|add|remove` — CRUD for providers.
-- `sumeru model list|add|remove` — CRUD for models.
+- `sumeru provider list|add|remove` — upsert/delete for providers (HTTP PUT).
+- `sumeru model list|add|remove` — upsert/delete for models (`provider:name` format).
 
 ## Session Commands
 

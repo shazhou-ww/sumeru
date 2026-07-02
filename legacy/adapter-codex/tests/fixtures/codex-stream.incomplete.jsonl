@@ -1,6 +1,0 @@
-{"type":"thread.started","thread_id":"019eee31-d98e-7dc1-a198-59e59cd58310"}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll create `hello.txt` in the workspace with the exact text `Hello World`, then read it back to confirm the contents."}}
-{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc \"printf 'Hello World\n' > hello.txt && cat hello.txt\"","aggregated_output":"","exit_code":null,"status":"in_progress"}}
-{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc \"printf 'Hello World\n' > hello.txt && cat hello.txt\"","aggregated_output":"Hello World\n","exit_code":0,"status":"completed"}}
-{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"`hello.txt` created and read successfully. Contents:\n\n```text\nHello World\n```"}}

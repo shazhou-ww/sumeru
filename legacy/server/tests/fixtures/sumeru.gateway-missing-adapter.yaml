@@ -1,6 +1,0 @@
-name: sumeru@neko
-gateways:
-  hermes:
-    capabilities:
-      resume: true
-      streaming: true

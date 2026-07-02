@@ -8,7 +8,7 @@ sources:
   - packages/host/src/config.ts
 tags: [sumeru, lifecycle]
 created: 2026-06-28
-updated: 2026-07-01
+updated: 2026-07-02
 ---
 
 # Session Lifecycle
@@ -44,7 +44,7 @@ stateDiagram-v2
 
 1. Validates prototype existence and compose path.
 2. Resolves project path within `workspaceRoot` (path traversal guard).
-3. Resolves model: prototype default or session-level override (via SQLite lookup).
+3. Resolves model: session override > prototype.model > host.yaml `defaults.model` (via SQLite lookup, format `provider:name`).
 4. Waits for a running slot (`maxRunning` concurrency gate).
 5. Calls transport `up` (Docker Compose) and stores container handle.
 6. Initializes adapter session (init frame → ready).
@@ -63,6 +63,8 @@ Sessions support model override at two points:
 2. **Message time**: `POST /sessions/:id/messages` body includes optional `model` field.
 
 When model changes mid-session, the adapter session is invalidated and re-initialized with new model config. This enables hot-switching models between messages without creating a new session.
+
+Model references use `provider:name` format (e.g. `siliconflow:deepseek-v3`) or inline `{ provider, name }` objects.
 
 ## Concurrency Control
 

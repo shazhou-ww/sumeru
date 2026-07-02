@@ -20,7 +20,7 @@ updated: 2026-07-02
 
 V3 supports multiple agent runtimes: **sarsapa** (native), **hermes** (ACP), **claude-code**, and **codex**. Each has a dedicated Dockerfile in `packages/adapter-<agent>/Dockerfile`. The build process is handled by `sumeru image build <name> --agent <type>`, which stages monorepo artifacts into a `.build/` directory and runs `docker build`.
 
-Docker image tags are **not** stored in a separate registry entity. The tag is derived from the adapter name (`sumeru/<adapter>:dev`) and referenced directly in `prototypes/<name>/compose.yaml`.
+Docker image tags are **not** stored in a separate registry entity. Tags follow adapter naming: `sumeru/sarsapa:dev` for sarsapa, `sumeru/adapter-<name>:dev` for other adapters. The tag is referenced directly in `prototypes/<name>/compose.yaml`.
 
 ## Build Pipeline
 
@@ -90,4 +90,4 @@ services:
 
 - [CLI Tool](./cli.md) — `image build` command.
 - [Transport Layer](./transport-layer.md) — how host interacts with running containers.
-- [Architecture Overview](./architecture-overview.md) — image layer in the runtime model.
+- [Architecture Overview](./architecture-overview.md) — prototype and adapter image in the runtime model.

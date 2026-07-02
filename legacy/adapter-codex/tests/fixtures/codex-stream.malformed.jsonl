@@ -1,6 +1,0 @@
-{"type":"thread.started","thread_id":"019eee31-d98e-7dc1-a198-59e59cd58310"}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll create `hello.txt` in the workspace with the exact text `Hello World`, then read it back to confirm the contents."}}
-{"type":"invalid","broken":
-not json at all
-{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":5}}

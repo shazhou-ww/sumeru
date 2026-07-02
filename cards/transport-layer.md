@@ -6,7 +6,7 @@ sources:
   - packages/host/src/types.ts
 tags: [sumeru, transport]
 created: 2026-06-28
-updated: 2026-07-01
+updated: 2026-07-02
 ---
 
 # Transport Layer
@@ -60,7 +60,11 @@ Each agent type has a default entrypoint command used by exec:
 node /opt/sumeru/<adapter>/dist/main.js
 ```
 
-The session manager resolves the command based on prototype image configuration.
+The session manager resolves the command based on prototype adapter configuration.
+
+## Compose Image
+
+Each prototype's `prototypes/<name>/compose.yaml` declares the Docker image tag (e.g. `sumeru/sarsapa:dev`). Extensions referenced by the prototype may modify the effective image at build time. There is no Host API entity for images.
 
 ## Environment Injection
 

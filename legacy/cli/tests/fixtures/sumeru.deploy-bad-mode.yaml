@@ -1,7 +1,0 @@
-name: alpha
-deploy:
-  mode: kubernetes
-gateways:
-  hermes:
-    adapter: hermes
-    capabilities: { resume: true, streaming: true }

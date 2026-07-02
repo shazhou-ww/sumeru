@@ -1,7 +1,7 @@
 {
   "name": "@sumeru/adapter-claude-code",
   "description": "Claude Code adapter for Sumeru",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

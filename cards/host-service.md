@@ -6,7 +6,7 @@ sources:
   - packages/host/src/router.ts
   - packages/host/src/handlers/index.ts
   - packages/host/src/handlers/sessions.ts
-  - packages/host/src/handlers/images.ts
+  - packages/host/src/handlers/extensions.ts
   - packages/host/src/handlers/prototypes.ts
   - packages/host/src/handlers/providers.ts
   - packages/host/src/handlers/models.ts
@@ -15,16 +15,18 @@ sources:
   - packages/host/src/envelope.ts
 tags: [sumeru, host]
 created: 2026-06-28
-updated: 2026-07-01
+updated: 2026-07-02
 ---
 
 # Host HTTP Service
 
-> The host provides a comprehensive HTTP API for discovery, entity CRUD (providers, models, personas, skills, images, prototypes), session lifecycle, message ingress, and event/history egress.
+> The host provides a comprehensive HTTP API for discovery, entity upsert/CRUD (providers, models, personas, skills, extensions, prototypes), session lifecycle, message ingress, and event/history egress.
 
 ## Overview
 
 `createHostHandler()` composes a route table over a segment-based router. Routes are method-scoped, support `:param` placeholders, and return typed envelope responses (`{ type, value }`). Error responses use `@sumeru/error` envelopes with machine code and human message.
+
+Named entities use **PUT upsert** (201 create / 200 update). Session creation remains **POST** with server-generated ID.
 
 ## Route Surface
 
@@ -32,13 +34,14 @@ updated: 2026-07-01
 flowchart TB
   subgraph Discovery
     R1[GET /]
+    R1a[GET /adapters]
   end
-  subgraph "Entity CRUD"
-    R2[GET/POST/PUT/DELETE /images/:name]
-    R3[GET/POST/PUT/DELETE /prototypes/:name]
-    R4[GET/POST/PUT/DELETE /providers/:name]
-    R5[GET/POST/PUT/DELETE /models/:id]
-    R6[GET/POST/PUT/DELETE /personas/:name]
+  subgraph "Entity Upsert"
+    R2[GET/PUT/DELETE /extensions/:name]
+    R3[GET/PUT/DELETE /prototypes/:name]
+    R4[GET/PUT/DELETE /providers/:name]
+    R5[GET/PUT/DELETE /providers/:name/models/:model]
+    R6[GET/PUT/DELETE /personas/:name]
     R7[GET/PUT/DELETE /skills/:name]
   end
   subgraph Sessions
@@ -62,12 +65,16 @@ flowchart TB
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/` | Host info: name, version, status counts, uptime |
-| GET/POST/DELETE | `/images[/:name]` | Image registry CRUD |
-| GET/POST/PUT/DELETE | `/prototypes[/:name]` | Prototype CRUD (backed by YAML files) |
-| GET/POST/PUT/DELETE | `/providers[/:name]` | Provider CRUD (SQLite) |
-| GET/POST/PUT/DELETE | `/models[/:id]` | Model CRUD (SQLite) |
-| GET/POST/PUT/DELETE | `/personas[/:name]` | Persona CRUD (SQLite) |
-| GET/PUT/DELETE | `/skills/:name` | Skill CRUD (SQLite) |
+| GET | `/adapters[/:name]` | Adapter manifest discovery |
+| GET | `/adapters/:name/models` | Live model list from adapter credential |
+| GET/PUT/DELETE | `/extensions[/:name]` | Extension CRUD (YAML-backed) |
+| GET/PUT/DELETE | `/prototypes[/:name]` | Prototype upsert/CRUD (YAML-backed) |
+| GET/PUT/DELETE | `/providers[/:name]` | Provider upsert/CRUD (SQLite) |
+| GET/PUT/DELETE | `/providers/:name/models/:model` | Model upsert/CRUD (SQLite, nested) |
+| GET | `/models` | List all models (flat) |
+| GET | `/providers/:name/models` | List models for one provider |
+| GET/PUT/DELETE | `/personas[/:name]` | Persona upsert/CRUD (SQLite) |
+| GET/PUT/DELETE | `/skills/:name` | Skill upsert/CRUD (SQLite) |
 | GET/POST | `/sessions` | List sessions / Create session |
 | GET | `/sessions/:id` | Session detail |
 | POST | `/sessions/:id/stop` | Stop running session |
@@ -84,15 +91,17 @@ flowchart TB
 `POST /sessions` body:
 ```json
 { "prototype": "sarsapa", "project": "myapp", "task": "fix bug",
-  "model": "claude-sonnet-4-20250514",  // optional model override
-  "env": { "EXTRA_VAR": "value" }   // optional env injection
+  "model": "siliconflow:deepseek-v3",
+  "env": { "EXTRA_VAR": "value" }
 }
 ```
 
 The `model` field supports three forms:
-- `null` — use prototype default model
-- `"model-id"` — string reference to SQLite model entity
+- omitted / `null` — resolve via prototype.model, then host.yaml `defaults.model`
+- `"provider:name"` — string reference to SQLite model (e.g. `"copilot:claude-opus-4.6"`)
 - `{ provider: {...}, name: "..." }` — inline model config override
+
+Resolution priority: **session override > prototype.model > defaults.model**
 
 ## Router Behavior
 
@@ -108,7 +117,7 @@ The `model` field supports three forms:
 | `@sumeru/host` | `packages/host/src/server.ts` | Registers all routes and creates HTTP server. |
 | `@sumeru/host` | `packages/host/src/router.ts` | Segment matcher with param extraction. |
 | `@sumeru/host` | `packages/host/src/handlers/sessions.ts` | Session CRUD handlers. |
-| `@sumeru/host` | `packages/host/src/handlers/images.ts` | Image registry CRUD. |
+| `@sumeru/host` | `packages/host/src/handlers/extensions.ts` | Extension YAML CRUD. |
 | `@sumeru/host` | `packages/host/src/handlers/prototypes.ts` | Prototype CRUD (YAML-backed). |
 | `@sumeru/host` | `packages/host/src/envelope.ts` | Envelope constructors for all response types. |
 

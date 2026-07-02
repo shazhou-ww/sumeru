@@ -1,6 +1,0 @@
-{"type":"system","subtype":"init","session_id":"malformed-session-001","model":"claude-sonnet-4","cwd":"/workspace","permissionMode":"force"}
-not valid json at all {{{
-{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Hello"}]}}
-another broken line
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hi there!"}]}}
-{"type":"result","subtype":"success","result":"Hi there!","duration_ms":1000,"usage":{"inputTokens":50,"outputTokens":10,"cacheReadTokens":0,"cacheWriteTokens":0},"request_id":"req_004"}

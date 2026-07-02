@@ -1,7 +1,7 @@
 {
   "name": "@sumeru/sarsapa",
   "description": "Sarsapa — Sumeru 的芥子 worker agent (单 session 轻量 native agent)",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

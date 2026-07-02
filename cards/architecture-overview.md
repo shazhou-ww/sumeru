@@ -8,7 +8,7 @@ sources:
   - packages/host/src/sqlite-store.ts
 tags: [sumeru, architecture]
 created: 2026-06-28
-updated: 2026-07-01
+updated: 2026-07-02
 ---
 
 # Architecture Overview
@@ -17,15 +17,15 @@ updated: 2026-07-01
 
 ## Overview
 
-Sumeru models runtime concerns in three layers: **Image**, **Prototype**, and **Session**. An image is the runtime environment (Docker container). A prototype is declarative configuration binding a persona, model, and image. A session is the live, addressable runtime object that receives messages and emits turn/exit events.
+Sumeru models runtime concerns in three layers: **Prototype**, **Session**, and **Adapter process**. A prototype is declarative configuration binding a persona, model, adapter, and optional extensions. A session is the live, addressable runtime object that receives messages and emits turn/exit events. Docker images are derived from the adapter name (`sumeru/sarsapa:dev` or `sumeru/adapter-<name>:dev`) and declared in compose files — there is no separate Image entity.
 
-V3 uses a **hybrid data model**: Provider, Model, Persona, and Skill entities live in SQLite (`data/sumeru.db`), while Prototypes remain as YAML files (`data/prototypes/<name>.yaml`) and images are tracked in `images.yaml`. The `@sumeru/host/sqlite` subpath export allows the CLI to share database access with the host.
+V3 uses a **hybrid data model**: Provider, Model, Persona, and Skill entities live in SQLite (`data/sumeru.db`); Prototypes and Extensions are YAML files (`data/prototypes/*.yaml`, `data/extensions/*.yaml`). The `@sumeru/host/sqlite` subpath export allows the CLI to share database access with the host.
 
 ## Layer Model
 
 ```mermaid
 flowchart TB
-  A[Image\nDocker image per agent type] --> B[Prototype\nYAML: persona + model + image ref]
+  A[Adapter Docker image\ncompose.yaml tag] --> B[Prototype\nYAML: persona + model + adapter + extensions]
   B --> C[Session\nses_* runtime record]
   C --> D[Messages\nPOST /sessions/:id/messages]
   D --> E[Adapter process\nstdin/stdout NDJSON]
@@ -37,24 +37,25 @@ flowchart TB
 ```mermaid
 flowchart LR
   subgraph SQLite
-    P[Provider] --> M[Model]
+    P[Provider] --> M[Model\nid = provider:name]
     PS[Persona] --> SK[Skill]
   end
   subgraph YAML
     PR[Prototype\ndata/prototypes/*.yaml]
-    IM[Images\nimages.yaml]
+    EX[Extension\ndata/extensions/*.yaml]
   end
   PR -->|references| M
   PR -->|references| PS
-  PR -->|references| IM
+  PR -->|references| EX
+  PR -->|adapter| AD[Docker image tag\nprototypes/name/compose.yaml]
 ```
 
 - **Provider**: name, apiType (anthropic|openai), baseUrl, apiKey
-- **Model**: id, provider FK, model name, contextWindow, toolUse, streaming
+- **Model**: name (short), provider FK, LLM model string, contextWindow, toolUse, streaming. ID = `provider:name`
 - **Persona**: name, instructions, skills[] references
 - **Skill**: name, content (text blob)
-- **Prototype**: name, persona ref, model ref, image ref, optional defaults
-- **Image**: name, description, dockerfile path, builtAt, digest
+- **Extension**: name, description, dockerfile instructions
+- **Prototype**: name, persona ref, model ref (`provider:name`), adapter, extensions[], optional defaults
 
 ## Runtime Responsibilities
 
@@ -64,6 +65,7 @@ flowchart LR
 - Adapter core enforces a single unified stdin/stdout NDJSON contract across all agent types.
 - SSE buffering adds reconnect/replay behavior for event consumers.
 - Session model override allows any session to use a different model than its prototype default.
+- Model resolution priority: session override > prototype.model > host.yaml `defaults.model`.
 
 ## Message Pipeline
 
@@ -91,9 +93,9 @@ sequenceDiagram
 
 | Package | File | What it does |
 |---------|------|--------------|
-| `@sumeru/core` | `packages/core/src/types.ts` | Defines canonical Provider, Model, Persona, Prototype, Session, Turn, Image types. |
+| `@sumeru/core` | `packages/core/src/types.ts` | Defines canonical Provider, Model, Persona, Prototype, Extension, Session, Turn types. |
 | `@sumeru/host` | `packages/host/src/server.ts` | Builds HTTP handler, wires all routes via segment-based router. |
-| `@sumeru/host` | `packages/host/src/config.ts` | Loads host.yaml + images.yaml + prototypes, opens SQLite store. |
+| `@sumeru/host` | `packages/host/src/config.ts` | Loads host.yaml + prototypes + extensions, opens SQLite store. |
 | `@sumeru/host` | `packages/host/src/sqlite-store.ts` | SQLite CRUD for Provider, Model, Persona, Skill entities. |
 | `@sumeru/host` | `packages/host/src/session-manager.ts` | Owns session lifecycle, adapter readiness, frame ingestion, and SSE broadcast. |
 
