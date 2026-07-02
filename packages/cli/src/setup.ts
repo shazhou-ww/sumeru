@@ -195,39 +195,30 @@ When done, output a clear summary:
 		python: `name: python
 description: Python 3 runtime with pip
 dockerfile: |
-  USER root
   RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv && rm -rf /var/lib/apt/lists/*
-  USER node
 `,
 		node: `name: node
-description: Node.js runtime (already in base image, this adds pnpm)
+description: pnpm package manager (Node.js already in base image)
 dockerfile: |
-  USER root
   RUN corepack enable && corepack prepare pnpm@latest --activate
-  USER node
 `,
 		rust: `name: rust
-description: Rust toolchain (rustc + cargo)
+description: Rust toolchain (rustc + cargo) installed to /usr/local
 dockerfile: |
-  USER root
   ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo
   RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
   ENV PATH="/usr/local/cargo/bin:\${PATH}"
-  USER node
 `,
 		docker: `name: docker
 description: Docker CLI (for Docker-in-Docker or remote daemon)
 dockerfile: |
-  USER root
   RUN apt-get update && apt-get install -y --no-install-recommends docker.io && rm -rf /var/lib/apt/lists/*
-  USER node
 `,
 		playwright: `name: playwright
-description: Playwright browser automation with Chromium
+description: Playwright browser automation with Chromium (installed to /opt/playwright)
 dockerfile: |
-  USER root
-  RUN npx playwright install --with-deps chromium && rm -rf /home/node/.npm
-  USER node
+  ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+  RUN npx playwright install --with-deps chromium
 `,
 	};
 	for (const [name, content] of Object.entries(builtinExtensions)) {
