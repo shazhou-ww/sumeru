@@ -335,12 +335,12 @@ defaults:                   # 可选：session 默认值
 images:
   hermes:
     description: "Sumeru hermes image (sumeru/hermes:dev)"
-    dockerfile: "docker/hermes/Dockerfile"
+    dockerfile: "packages/adapter-hermes/Dockerfile"
     builtAt: "2026-07-01T09:17:24.720Z"
     digest: "sha256:c3428a77732cf..."
   sarsapa:
     description: "Sumeru sarsapa image (sumeru/sarsapa:dev)"
-    dockerfile: "docker/sarsapa/Dockerfile"
+    dockerfile: "packages/sarsapa/Dockerfile"
     builtAt: "2026-07-01T09:07:49.225Z"
     digest: "sha256:14d06f538bc62..."
 ```

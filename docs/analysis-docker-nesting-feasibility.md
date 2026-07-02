@@ -34,7 +34,7 @@
 
 ### B4. 内层 host 调 `docker exec` 的能力 —— ❌ 硬卡点（当前镜像无 docker CLI、无 daemon 访问）
 
-- 四份 v3 镜像（`docker/claude-code|hermes|sarsapa|codex/Dockerfile`）均 `FROM node:24-slim`，只装 `git/curl/ca-certificates/build-essential`（sarsapa 多 `ripgrep`，hermes/codex 多 `uv+python`，claude-code/codex 各装对应 npm 包）。**没有任何一份安装 docker CLI**。
+- 四份 v3 镜像（`packages/adapter-claude-code|adapter-hermes|sarsapa|adapter-codex/Dockerfile`）均 `FROM node:24-slim`，只装 `git/curl/ca-certificates/build-essential`（sarsapa 多 `ripgrep`，hermes/codex 多 `uv+python`，claude-code/codex 各装对应 npm 包）。**没有任何一份安装 docker CLI**。
 - 全仓搜 `privileged|docker\.sock|/var/run/docker|--network|network_mode`：当前 v3 代码 **0 命中**（仅 legacy spec/test 里有 `--network host` 字样）。prototype compose（`prototypes/sarsapa-worker/compose.yaml`、`examples/minimal/prototypes/echo-worker/compose.yaml`）只 bind-mount `${SUMERU_PROJECT_PATH}`，**无 docker.sock 挂载、无 privileged、无 DinD**。
 - `transport.ts:43` 内层 host 会 `spawn("docker",["exec",...])` —— 容器内无 `docker` 二进制 → `ENOENT` 直接失败。
 - 要让内层 host 能管 worker，必须二选一：
@@ -153,9 +153,9 @@
 | native 依赖 | `packages/host/src/sqlite-store.ts:8` | `import Database from "better-sqlite3";` |
 | 强制 bind-mount project | `packages/host/src/config.ts:295-336` | `validateComposeProjectVolume` |
 | compose 无端口/socket | `prototypes/sarsapa-worker/compose.yaml:10-11` | 仅 `volumes: ["${SUMERU_PROJECT_PATH}:${SUMERU_PROJECT_PATH}"]` |
-| 镜像无 docker CLI | `docker/sarsapa/Dockerfile:8-17` | 仅 `git curl ca-certs build-essential ripgrep` |
-| 镜像无 host 包 | `docker/sarsapa/Dockerfile:21-32` | 只 COPY core/adapter-core/adapter-sarsapa |
-| 镜像 sleep infinity | `docker/sarsapa/Dockerfile:44` | `CMD ["sleep", "infinity"]` |
+| 镜像无 docker CLI | `packages/sarsapa/Dockerfile:8-17` | 仅 `git curl ca-certs build-essential ripgrep` |
+| 镜像无 host 包 | `packages/sarsapa/Dockerfile:21-32` | 只 COPY core/adapter-core/adapter-sarsapa |
+| 镜像 sleep infinity | `packages/sarsapa/Dockerfile:44` | `CMD ["sleep", "infinity"]` |
 | v3 无 local transport | `packages/host/src/` 全搜 | 仅 `handlers/sessions.ts:215` 命中（错误提示串） |
 | docker-mode 是 host 容器化 | `legacy/specs/architecture/docker-mode.md:2` | "在一个 Docker 容器内运行 Sumeru + agent" |
 | docker-mode 未考虑嵌套 | `legacy/specs/architecture/docker-mode.md:229-230` | Non-goals: 不做多容器水平扩缩 |

@@ -202,7 +202,7 @@ describe("resource partial update routes", () => {
 					JSON.stringify({
 						name: "worker",
 						description: "Worker image",
-						dockerfile: "docker/sarsapa/Dockerfile",
+						dockerfile: "packages/sarsapa/Dockerfile",
 						builtAt: "2026-06-29T00:00:00.000Z",
 						digest: "sha256:worker",
 					}),
@@ -219,7 +219,7 @@ describe("resource partial update routes", () => {
 					JSON.stringify({
 						name: "worker-v2",
 						description: "Worker image v2",
-						dockerfile: "docker/sarsapa/Dockerfile",
+						dockerfile: "packages/sarsapa/Dockerfile",
 						builtAt: "2026-06-29T00:00:00.000Z",
 						digest: "sha256:worker-v2",
 					}),

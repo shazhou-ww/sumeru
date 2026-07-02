@@ -192,7 +192,7 @@ describe("images endpoints", () => {
 			JSON.stringify({
 				name: "hermes",
 				description: "Hermes worker",
-				dockerfile: "docker/hermes/Dockerfile",
+				dockerfile: "packages/adapter-hermes/Dockerfile",
 				builtAt: "2026-06-29T02:00:00.000Z",
 				digest: "sha256:hermes",
 			}),
@@ -203,7 +203,7 @@ describe("images endpoints", () => {
 			value: {
 				name: "hermes",
 				description: "Hermes worker",
-				dockerfile: "docker/hermes/Dockerfile",
+				dockerfile: "packages/adapter-hermes/Dockerfile",
 				builtAt: "2026-06-29T02:00:00.000Z",
 				digest: "sha256:hermes",
 			},
@@ -216,7 +216,7 @@ describe("images endpoints", () => {
 			JSON.stringify({
 				name: "hermes",
 				description: "Hermes worker v2",
-				dockerfile: "docker/hermes/Dockerfile",
+				dockerfile: "packages/adapter-hermes/Dockerfile",
 				builtAt: "2026-06-29T03:00:00.000Z",
 				digest: "sha256:hermes2",
 			}),
