@@ -1,13 +1,13 @@
-# Sumeru v2 Deployment
+# Sumeru Deployment
 
-Deploy the v2 Host (`@sumeru/host`) as a systemd user service.
+Deploy Sumeru Host (`@sumeru/host`) as a systemd user service.
 
 ## Prerequisites
 
 - Node.js 22 at `/usr/bin/node`
 - Repository cloned to `$HOME/repos/sumeru`
 - Host built: `pnpm run build` (produces `packages/host/dist/main.js`)
-- A Sumeru root directory with `sumeru.yaml` and prototypes
+- A Sumeru root directory with `host.yaml` (created by `sumeru setup`)
 
 ## Install
 
@@ -15,8 +15,7 @@ Deploy the v2 Host (`@sumeru/host`) as a systemd user service.
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cp deploy/sumeru-v2.service ~/.config/systemd/user/sumeru-v2.service
-# or: ln -s "$(pwd)/deploy/sumeru-v2.service" ~/.config/systemd/user/
+cp deploy/sumeru.service ~/.config/systemd/user/sumeru.service
 ```
 
 2. Configure adapter credentials (CLI adapters such as claude-code need this):
@@ -32,20 +31,20 @@ $EDITOR ~/.config/sumeru/env
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now sumeru-v2
+systemctl --user enable --now sumeru
 ```
 
 ## Operations
 
 ```bash
 # Status
-systemctl --user status sumeru-v2
+systemctl --user status sumeru
 
 # Logs
-journalctl --user -u sumeru-v2 -f
+journalctl --user -u sumeru -f
 
 # Restart
-systemctl --user restart sumeru-v2
+systemctl --user restart sumeru
 ```
 
 The service listens on `http://127.0.0.1:7900/` by default (`SUMERU_PORT`).
