@@ -5,7 +5,11 @@ import type {
 	Provider,
 	SessionInfo,
 } from "@sumeru/core";
-import type { HostRootValue, PrototypeListItem } from "./http-client.js";
+import type {
+	AdapterInfo,
+	HostRootValue,
+	PrototypeListItem,
+} from "./http-client.js";
 
 export type TableColumn<T> = {
 	header: string;
@@ -54,6 +58,18 @@ export function formatProviderTable(providers: Array<Provider>): string {
 		{ header: "API TYPE", width: 12, value: (row) => row.apiType },
 		{ header: "BASE URL", width: 32, value: (row) => row.baseUrl ?? "-" },
 		{ header: "API KEY", width: 16, value: (row) => row.apiKey ?? "-" },
+	]);
+}
+
+export function formatAdapterTable(adapters: Array<AdapterInfo>): string {
+	return formatTable(adapters, [
+		{ header: "NAME", width: 20, value: (row) => row.name },
+		{ header: "MODE", width: 14, value: (row) => row.providerMode },
+		{
+			header: "CREDENTIAL ENV",
+			width: 20,
+			value: (row) => row.credentialEnv ?? "-",
+		},
 	]);
 }
 

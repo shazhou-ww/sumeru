@@ -6,6 +6,7 @@ import { createCLI } from "@ocas/cli-kit";
 import { z } from "zod";
 import { parseEnvFlagsFromArgv } from "./env-flags.js";
 import {
+	formatAdapterTable,
 	formatDockerImagesOutput,
 	formatHostStatus,
 	formatImageTable,
@@ -214,6 +215,56 @@ cli
 				queued: v.status.queued,
 				idle: v.status.idle,
 				uptime: v.uptime,
+			};
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+// ─── adapter ─────────────────────────────────────────────────────────────
+
+cli
+	.command("adapter")
+	.command("list")
+	.describe("List registered adapters")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.action(async (_args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.listAdapters();
+			ctx.stdout(formatAdapterTable(envelope.value) + "\n");
+			return undefined;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("adapter")
+	.command("get")
+	.describe("Get an adapter by name")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(
+		z.object({
+			name: z.string(),
+			providerMode: z.string(),
+			credentialEnv: z.string().nullable(),
+		}),
+		"{{name}} ({{providerMode}}) credential={{credentialEnv}}",
+	)
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.getAdapter(args.name);
+			const v = envelope.value;
+			return {
+				name: v.name,
+				providerMode: v.providerMode,
+				credentialEnv: v.credentialEnv,
 			};
 		} catch (err) {
 			handleClientError(err, ctx);

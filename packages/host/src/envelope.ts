@@ -1,3 +1,4 @@
+import type { AdapterManifest } from "@sumeru/adapter-core";
 import type {
 	Image,
 	Model,
@@ -45,6 +46,18 @@ export function providerListEnvelope(
 
 export function providerEnvelope(provider: Provider): Envelope<Provider> {
 	return envelope("@sumeru/provider", provider);
+}
+
+export function adapterListEnvelope(
+	adapters: Array<AdapterManifest>,
+): Envelope<Array<AdapterManifest>> {
+	return envelope("@sumeru/adapter-list", adapters);
+}
+
+export function adapterEnvelope(
+	adapter: AdapterManifest,
+): Envelope<AdapterManifest> {
+	return envelope("@sumeru/adapter", adapter);
 }
 
 export function modelListEnvelope(
