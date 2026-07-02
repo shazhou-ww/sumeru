@@ -4,6 +4,7 @@ import { isAbsolute, join, resolve as pathResolve, sep } from "node:path";
 import type { ProviderMode, SkillContent } from "@sumeru/adapter-core";
 import type {
 	CustomProvider,
+	Extension,
 	HostConfig,
 	ModelConfig,
 	Persona,
@@ -12,8 +13,10 @@ import type {
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
 	ensureDataDirs,
+	loadExtensionsFromDisk,
 	loadPrototypeInfo,
 	loadPrototypesFromDisk,
+	readExtensionFile,
 } from "./data-store.js";
 import { logger, TAG_CFG } from "./logger.js";
 import { openDatabase, type SqliteStore } from "./sqlite-store.js";
@@ -43,12 +46,14 @@ export async function loadHostConfig(
 	const dataDir = join(rootDir, DEFAULT_DATA_DIR);
 	const skillsDir = join(dataDir, "skills");
 	const prototypesDir = join(dataDir, "prototypes");
-	await ensureDataDirs(skillsDir, prototypesDir);
+	const extensionsDir = join(dataDir, "extensions");
+	await ensureDataDirs(skillsDir, prototypesDir, extensionsDir);
 	const prototypes = await loadPrototypesFromDisk({
 		rootDir,
 		prototypesDir,
 		skillsDir,
 	});
+	const extensions = await loadExtensionsFromDisk({ extensionsDir });
 	for (const info of prototypes.values()) {
 		if (info.composePath !== null) {
 			await validateComposeProjectVolume(info.composePath);
@@ -62,10 +67,21 @@ export async function loadHostConfig(
 		dataDir,
 		skillsDir,
 		prototypesDir,
+		extensionsDir,
 		config,
 		prototypes,
+		extensions,
 		sqliteStore,
 	};
+}
+
+export async function reloadExtensionInConfig(
+	hostConfig: LoadedHostConfig,
+	name: string,
+): Promise<Extension> {
+	const extension = await readExtensionFile(hostConfig.extensionsDir, name);
+	hostConfig.extensions.set(name, extension);
+	return extension;
 }
 
 export async function reloadPrototypeInConfig(

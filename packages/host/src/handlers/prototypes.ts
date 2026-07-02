@@ -164,6 +164,21 @@ async function upsertPrototype(
 		);
 		return;
 	}
+	if (prototype.extensions !== null) {
+		for (const extName of prototype.extensions) {
+			if (!hostConfig.extensions.has(extName)) {
+				writeJson(
+					res,
+					400,
+					errorEnvelope(
+						"extension_not_found",
+						`Extension ${extName} not found`,
+					),
+				);
+				return;
+			}
+		}
+	}
 	try {
 		await writePrototypeFile(hostConfig.prototypesDir, prototype);
 		const info = await reloadPrototypeInConfig(hostConfig, name);

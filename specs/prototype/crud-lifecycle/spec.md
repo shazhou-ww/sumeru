@@ -15,6 +15,9 @@ name: hermes           # 唯一标识，匹配 URL 路径参数
 persona: general       # 引用 Persona.name（SQLite）
 model: copilot:claude-sonnet   # 引用 Model，格式 provider:name（SQLite）
 adapter: hermes        # Adapter 名称
+extensions:            # 可选 — 引用的 Extension 名称列表
+  - rust
+  - node
 defaults:              # 可选
   maxTurns: 30
   timeout: 300
@@ -27,6 +30,7 @@ defaults:              # 可选
 
 - `persona` 必须在 SQLite 中存在 → 400 `persona_not_found`
 - `model` 必须在 SQLite 中存在 → 400 `model_not_found`
+- `extensions` 中每个名称必须在 extensions 目录中存在 → 400 `extension_not_found`
 - `name` 必须匹配 URL 中的 `:name` → 400 `invalid_body`
 
 ### API
@@ -151,6 +155,26 @@ PUT 使用 merge 语义 — 省略的字段保留现有值。
 ```
 
 **Then** 400，`model_not_found`
+
+---
+
+## Scenario: 创建引用不存在 Extension 的 Prototype
+
+**Given** Extension `rust` 不存在
+
+**When** `PUT /prototypes/bad-extension`
+
+```json
+{
+  "name": "bad-extension",
+  "persona": "general",
+  "model": "claude-sonnet",
+  "adapter": "hermes",
+  "extensions": ["nonexistent"]
+}
+```
+
+**Then** 400，`extension_not_found`
 
 ---
 

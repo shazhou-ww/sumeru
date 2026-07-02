@@ -2,6 +2,7 @@ import type { Model, Persona, Provider, SessionInfo } from "@sumeru/core";
 import type {
 	AdapterInfo,
 	BuiltinModel,
+	ExtensionInfo,
 	HostRootValue,
 	PrototypeListItem,
 } from "./http-client.js";
@@ -140,6 +141,13 @@ export function formatPersonaTable(personas: Array<Persona>): string {
 			value: (row) => row.skills.join(", ") || "(none)",
 		},
 		{ header: "UPDATED", width: 24, value: (row) => row.updatedAt },
+	]);
+}
+
+export function formatExtensionTable(extensions: Array<ExtensionInfo>): string {
+	return formatTable(extensions, [
+		{ header: "NAME", width: 20, value: (row) => row.name },
+		{ header: "DESCRIPTION", width: 40, value: (row) => row.description },
 	]);
 }
 

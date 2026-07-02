@@ -1,5 +1,6 @@
 import type { BuiltinModel } from "@sumeru/adapter-core";
 import type {
+	Extension,
 	Model,
 	Persona,
 	Prototype,
@@ -36,6 +37,16 @@ export function prototypeListEnvelope(
 
 export function prototypeEnvelope(info: PrototypeInfo): Envelope<Prototype> {
 	return envelope("@sumeru/prototype", info.prototype);
+}
+
+export function extensionListEnvelope(
+	extensions: Array<Extension>,
+): Envelope<Array<Extension>> {
+	return envelope("@sumeru/extension-list", extensions);
+}
+
+export function extensionEnvelope(extension: Extension): Envelope<Extension> {
+	return envelope("@sumeru/extension", extension);
 }
 
 export function providerListEnvelope(
