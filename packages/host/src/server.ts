@@ -6,7 +6,6 @@ import {
 	createEventsHandler,
 	createExportHandler,
 	createHistoryHandler,
-	createImagesHandler,
 	createMessagesHandler,
 	createModelsHandler,
 	createPersonasHandler,
@@ -55,7 +54,6 @@ export function createHostHandler(input: {
 	const models = createModelsHandler(input.hostConfig);
 	const personas = createPersonasHandler(input.hostConfig);
 	const skills = createSkillsHandler(input.hostConfig);
-	const images = createImagesHandler(input.hostConfig);
 	const sessions = createSessionsHandler(input.manager);
 	const router = createRouter({
 		methodNotAllowed: writeMethodNotAllowed,
@@ -65,10 +63,6 @@ export function createHostHandler(input: {
 		.route("GET", "/adapters", adapters.list)
 		.route("GET", "/adapters/:name", adapters.get)
 		.route("GET", "/adapters/:name/models", adapters.models)
-		.route("GET", "/images", images.list)
-		.route("GET", "/images/:name", images.get)
-		.route("POST", "/images/:name", images.add)
-		.route("DELETE", "/images/:name", images.remove)
 		.route("GET", "/prototypes", prototypes.list)
 		.route("GET", "/prototypes/:name", prototypes.get)
 		.route("PUT", "/prototypes/:name", prototypes.upsert)

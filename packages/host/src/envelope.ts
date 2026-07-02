@@ -1,6 +1,5 @@
 import type { BuiltinModel } from "@sumeru/adapter-core";
 import type {
-	Image,
 	Model,
 	Persona,
 	Prototype,
@@ -101,16 +100,6 @@ export function sessionEnvelope(info: SessionInfo): Envelope<SessionInfo> {
 
 export function turnListEnvelope(turns: Array<Turn>): Envelope<Array<Turn>> {
 	return envelope("@sumeru/turn-list", turns);
-}
-
-export function imageListEnvelope(
-	images: Array<Image>,
-): Envelope<Array<Image>> {
-	return envelope("@sumeru/image-list", images);
-}
-
-export function imageEnvelope(image: Image): Envelope<Image> {
-	return envelope("@sumeru/image", image);
 }
 
 export function messageAcceptedEnvelope(

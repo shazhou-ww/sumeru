@@ -95,40 +95,9 @@ describe("loadHostConfig — v3 HostConfig", () => {
 		expect(prototype?.prototype.model).toBe("worker-model");
 		expect(prototype?.prototype.adapter).toBe("sarsapa");
 		expect(prototype?.prototypeHash).toMatch(/^[a-f0-9]{64}$/);
-		expect(loaded.images.size).toBe(0);
 
 		const skill = loaded.sqliteStore.getSkill("demo");
 		expect(skill?.content).toBe("# Demo skill\n");
-	});
-
-	it("loads embedded images from host.yaml", async () => {
-		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-host-config-"));
-		writeFileSync(
-			join(rootDir, "host.yaml"),
-			[
-				"name: test-host",
-				"maxRunning: 3",
-				"workspaceRoot: /tmp/workspaces",
-				"envFile: /dev/null",
-				"images:",
-				"  worker:",
-				'    description: "Worker"',
-				'    dockerfile: "CAS001"',
-				'    builtAt: "2026-06-29T00:00:00.000Z"',
-				'    digest: "sha256:abc"',
-			].join("\n"),
-		);
-		mkdirSync(join(rootDir, "data", "skills"), { recursive: true });
-		mkdirSync(join(rootDir, "data", "prototypes"), { recursive: true });
-
-		const loaded = await loadHostConfig(rootDir);
-		expect(loaded.images.get("worker")).toEqual({
-			name: "worker",
-			description: "Worker",
-			dockerfile: "CAS001",
-			builtAt: "2026-06-29T00:00:00.000Z",
-			digest: "sha256:abc",
-		});
 	});
 
 	it("logs deprecation warning for models section (does not error)", async () => {

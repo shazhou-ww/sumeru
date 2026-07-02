@@ -1,5 +1,4 @@
 import type {
-	Image,
 	Model,
 	Persona,
 	Prototype,
@@ -101,7 +100,6 @@ export type HostClient = {
 			persona: string;
 			model: string;
 			adapter: string;
-			image?: string;
 		},
 	): Promise<Envelope<PrototypeDetail>>;
 	updatePrototype(
@@ -110,7 +108,6 @@ export type HostClient = {
 			persona?: string;
 			model?: string;
 			adapter?: string;
-			image?: string | null;
 		},
 	): Promise<Envelope<PrototypeDetail>>;
 	removePrototype(name: string): Promise<void>;
@@ -162,21 +159,6 @@ export type HostClient = {
 		},
 	): Promise<Envelope<Model>>;
 	removeModel(id: string): Promise<void>;
-
-	// Images
-	listImages(): Promise<Envelope<Array<Image>>>;
-	getImage(name: string): Promise<Envelope<Image>>;
-	addImage(
-		name: string,
-		body: {
-			name: string;
-			description: string;
-			dockerfile: string;
-			builtAt: string;
-			digest: string;
-		},
-	): Promise<Envelope<Image>>;
-	removeImage(name: string): Promise<void>;
 
 	// Personas
 	listPersonas(): Promise<Envelope<Array<Persona>>>;
@@ -438,31 +420,6 @@ export function createHostClient(options: HostClientOptions): HostClient {
 		},
 		async removeModel(id) {
 			await requestDelete(`/models/${encodeURIComponent(id)}`);
-		},
-
-		// Images
-		async listImages() {
-			const { json } = await requestJson<Array<Image>>("GET", "/images", null);
-			return json;
-		},
-		async getImage(name) {
-			const { json } = await requestJson<Image>(
-				"GET",
-				`/images/${encodeURIComponent(name)}`,
-				null,
-			);
-			return json;
-		},
-		async addImage(name, body) {
-			const { json } = await requestJson<Image>(
-				"POST",
-				`/images/${encodeURIComponent(name)}`,
-				body,
-			);
-			return json;
-		},
-		async removeImage(name) {
-			await requestDelete(`/images/${encodeURIComponent(name)}`);
 		},
 
 		// Personas

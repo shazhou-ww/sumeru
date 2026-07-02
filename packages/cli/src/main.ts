@@ -571,9 +571,8 @@ cli
 			persona: z.string(),
 			model: z.string().nullable(),
 			adapter: z.string(),
-			image: z.string().nullable(),
 		}),
-		"{{name}} persona={{persona}} model={{model}} adapter={{adapter}} image={{image}}",
+		"{{name}} persona={{persona}} model={{model}} adapter={{adapter}}",
 	)
 	.action(async (args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
@@ -585,7 +584,6 @@ cli
 				persona: p.persona,
 				model: p.model,
 				adapter: p.adapter,
-				image: p.image,
 			};
 		} catch (err) {
 			handleClientError(err, ctx);
@@ -599,7 +597,6 @@ cli
 	.arg("name")
 	.flag("model", { type: "string" })
 	.flag("adapter", { type: "string" })
-	.flag("image", { type: "string" })
 	.flag("persona", { type: "string", default: "default" })
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
@@ -607,29 +604,19 @@ cli
 	.action(async (args, flags, ctx) => {
 		const model = flags.model as string | undefined;
 		const adapter = flags.adapter as string | undefined;
-		const image = flags.image as string | undefined;
 		const persona = (flags.persona as string) ?? "default";
 		if (!model || !adapter) {
 			ctx.error(
-				"Usage: sumeru prototype add <name> --model <model-id> --adapter <adapter-name> [--image <image-name>] [--persona <name>]",
+				"Usage: sumeru prototype add <name> --model <model-id> --adapter <adapter-name> [--persona <name>]",
 			);
 		}
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
-			const body: {
-				persona: string;
-				model: string;
-				adapter: string;
-				image?: string;
-			} = {
+			const envelope = await client.addPrototype(args.name, {
 				persona,
 				model: model!,
 				adapter: adapter!,
-			};
-			if (image !== undefined) {
-				body.image = image;
-			}
-			const envelope = await client.addPrototype(args.name, body);
+			});
 			return { name: envelope.value.name };
 		} catch (err) {
 			handleClientError(err, ctx);
@@ -864,47 +851,8 @@ cli
 
 cli
 	.command("image")
-	.command("list")
-	.describe("List registered images")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(listSchema, "", { defaultFormat: "text" })
-	.action(async (_args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-		try {
-			const envelope = await client.listImages();
-			return envelope.value;
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("image")
-	.command("get")
-	.describe("Get an image by name")
-	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(
-		z.object({ name: z.string(), description: z.string(), digest: z.string() }),
-		"{{name}} {{description}} ({{digest}})",
-	)
-	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-		try {
-			const envelope = await client.getImage(args.name);
-			const v = envelope.value;
-			return { name: v.name, description: v.description, digest: v.digest };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("image")
 	.command("build")
-	.describe("Build a Docker image and register it")
+	.describe("Build a Docker image for an adapter")
 	.arg("name")
 	.flag("agent", { type: "string" })
 	.flag("adapter", { type: "string" })
@@ -924,33 +872,14 @@ cli
 				name: args.name,
 				agent: agent!,
 				adapter: (flags.adapter as string) ?? null,
-				baseUrl: resolveBaseUrl(flags),
 				repoRoot,
 			});
 			return {
-				message: `built ${result.tag} (${result.digest})\nregistered image ${args.name}`,
+				message: `built ${result.tag} (${result.digest})`,
 			};
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			ctx.error(msg);
-		}
-	});
-
-cli
-	.command("image")
-	.command("remove")
-	.describe("Remove a registered image")
-	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(messageSchema, "{{message}}")
-	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
-		try {
-			await client.removeImage(args.name);
-			return { message: `removed image ${args.name}` };
-		} catch (err) {
-			handleClientError(err, ctx);
 		}
 	});
 

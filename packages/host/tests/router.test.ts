@@ -63,18 +63,6 @@ describe("router — host routes", () => {
 		}
 	});
 
-	it("matches GET /images and GET /images/:name", () => {
-		const router = createTestRouter();
-		router.route("GET", "/images", () => {});
-		router.route("GET", "/images/:name", () => {});
-		expect(router.match("GET", "/images").type).toBe("match");
-		const detail = router.match("GET", "/images/worker");
-		expect(detail.type).toBe("match");
-		if (detail.type === "match") {
-			expect(detail.params).toEqual({ name: "worker" });
-		}
-	});
-
 	it("returns method_not_allowed for wrong verb on messages", () => {
 		const router = createTestRouter();
 		router.route("POST", "/sessions/:id/messages", () => {});

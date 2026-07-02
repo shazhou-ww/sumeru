@@ -9,7 +9,7 @@ sources:
   - packages/cli/src/image-build.ts
 tags: [sumeru, docker]
 created: 2026-06-28
-updated: 2026-07-01
+updated: 2026-07-02
 ---
 
 # Docker Image Build
@@ -20,6 +20,8 @@ updated: 2026-07-01
 
 V3 supports multiple agent runtimes: **sarsapa** (native), **hermes** (ACP), **claude-code**, and **codex**. Each has a dedicated Dockerfile in `packages/adapter-<agent>/Dockerfile`. The build process is handled by `sumeru image build <name> --agent <type>`, which stages monorepo artifacts into a `.build/` directory and runs `docker build`.
 
+Docker image tags are **not** stored in a separate registry entity. The tag is derived from the adapter name (`sumeru/<adapter>:dev`) and referenced directly in `prototypes/<name>/compose.yaml`.
+
 ## Build Pipeline
 
 ```mermaid
@@ -27,7 +29,7 @@ flowchart TB
   A[sumeru image build sarsapa --agent sarsapa] --> B[stage .build/]
   B --> C[copy core + adapter-core + agent adapter dist/]
   C --> D[docker build -t sumeru/sarsapa:dev]
-  D --> E[register in images.yaml via host API]
+  D --> E[compose.yaml references sumeru/sarsapa:dev]
 ```
 
 Artifacts staged into `.build/packages/`:
@@ -60,17 +62,19 @@ All images use `CMD ["sleep", "infinity"]` — the container stays warm and the 
 - Runs as `node` user in `/workspace`.
 - Entrypoint: `node /opt/sumeru/adapter-sarsapa/dist/main.js`
 
-## Image Registry
+## Compose Integration
 
-Built images are registered in `images.yaml` (or via `POST /images/:name` on the host API). Each entry records:
+Each prototype's `prototypes/<name>/compose.yaml` declares the Docker image tag:
 
 ```yaml
-sarsapa:
-  description: "Sumeru sarsapa image (sumeru/sarsapa:dev)"
-  dockerfile: "packages/sarsapa/Dockerfile"
-  builtAt: "2026-07-01T..."
-  digest: "sha256:..."
+services:
+  agent:
+    image: sumeru/sarsapa:dev
+    volumes:
+      - "${SUMERU_PROJECT_PATH}:${SUMERU_PROJECT_PATH}"
 ```
+
+`sumeru image build` builds the image locally but does **not** register it anywhere — the compose file is the source of truth for which tag to use.
 
 ## Code Pointers
 
@@ -80,10 +84,10 @@ sarsapa:
 | adapter package | `packages/adapter-hermes/Dockerfile` | Hermes ACP agent runtime image. |
 | adapter package | `packages/adapter-claude-code/Dockerfile` | Claude Code CLI runtime image. |
 | adapter package | `packages/adapter-codex/Dockerfile` | Codex CLI runtime image. |
-| `@sumeru/cli` | `packages/cli/src/image-build.ts` | Build pipeline: staging, docker build, API registration. |
+| `@sumeru/cli` | `packages/cli/src/image-build.ts` | Build pipeline: staging and docker build. |
 
 ## See Also
 
-- [CLI Tool](./cli.md) — `image build` and `image list` commands.
+- [CLI Tool](./cli.md) — `image build` command.
 - [Transport Layer](./transport-layer.md) — how host interacts with running containers.
 - [Architecture Overview](./architecture-overview.md) — image layer in the runtime model.

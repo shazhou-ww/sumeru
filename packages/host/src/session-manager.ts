@@ -220,6 +220,12 @@ export function createSessionManager(input: {
 				sessions.delete(id);
 			}
 			releaseRunningSlot();
+			if (isDockerImageMissingError(err)) {
+				const adapter = prototype.prototype.adapter;
+				throw new Error(
+					`image_not_found:Image ${image} not found.\nRun: sumeru image build ${adapter} --agent ${adapter}`,
+				);
+			}
 			throw err;
 		}
 	}
@@ -922,4 +928,16 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => {
 		setTimeout(resolve, ms);
 	});
+}
+
+function isDockerImageMissingError(err: unknown): boolean {
+	const message = err instanceof Error ? err.message : String(err);
+	const lower = message.toLowerCase();
+	return (
+		lower.includes("no such image") ||
+		lower.includes("pull access denied") ||
+		lower.includes("manifest unknown") ||
+		lower.includes("unable to get image") ||
+		lower.includes("image not found")
+	);
 }

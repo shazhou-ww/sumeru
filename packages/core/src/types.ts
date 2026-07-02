@@ -67,7 +67,6 @@ export type Prototype = {
 	persona: string;
 	model: string | null;
 	adapter: string;
-	image: string | null;
 	defaults: {
 		maxTurns: number;
 		timeout: number;
@@ -136,15 +135,6 @@ export type ToolTurn = {
 	timestamp: string;
 };
 export type Turn = AssistantTurn | ToolTurn;
-
-// === Image ===
-export type Image = {
-	name: string;
-	description: string;
-	dockerfile: string;
-	builtAt: string;
-	digest: string;
-};
 
 // === Host 配置 ===
 export type HostConfig = {

@@ -233,7 +233,7 @@ export async function runSetup(input: SetupInput): Promise<void> {
 	}
 
 	// ── Image build (best-effort) ────────────────────────────────────
-	let imageRegistered = false;
+	let imageBuilt = false;
 	try {
 		const repoRoot = await findRepoRoot(process.cwd());
 		process.stdout.write(`\nBuilding sarsapa image...\n`);
@@ -242,11 +242,10 @@ export async function runSetup(input: SetupInput): Promise<void> {
 			agent: "sarsapa",
 			adapter: null,
 			repoRoot,
-			rootDir,
 		});
 		actions.push(`built image "sarsapa" (${result.tag})`);
 		process.stdout.write(`  ✓ Image built: ${result.tag}\n`);
-		imageRegistered = true;
+		imageBuilt = true;
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
 		process.stdout.write(
@@ -254,13 +253,12 @@ export async function runSetup(input: SetupInput): Promise<void> {
 		);
 	}
 
-	// ── Prototype (file already created above, just update image ref) ─
-	if (imageRegistered) {
+	if (imageBuilt) {
 		process.stdout.write(`  ✓ Prototype "sarsapa" ready\n`);
 	}
 
 	// ── Health check (doctor) ────────────────────────────────────────
-	if (imageRegistered) {
+	if (imageBuilt) {
 		await runHealthCheck({
 			composePath,
 			rootDir,
@@ -280,7 +278,6 @@ type LocalBuildOptions = {
 	agent: string;
 	adapter: string | null;
 	repoRoot: string;
-	rootDir: string;
 };
 
 async function runImageBuildLocal(
@@ -297,7 +294,6 @@ async function runImageBuildLocal(
 
 	const dockerTag = `sumeru/${options.name}:dev`;
 	const dockerfileSource = join(adapterPath, "Dockerfile");
-	const dockerfileRef = relative(options.repoRoot, dockerfileSource);
 	const buildDir = join(options.repoRoot, ".build");
 	const packagesDir = join(buildDir, "packages");
 
@@ -346,34 +342,6 @@ async function runImageBuildLocal(
 	);
 	const digest =
 		inspectResult.status === 0 ? inspectResult.stdout.trim() : "unknown";
-
-	// Write images.yaml directly (no host API needed)
-	const imagesPath = join(options.rootDir, "images.yaml");
-	const builtAt = new Date().toISOString();
-	let imagesContent = "";
-	if (existsSync(imagesPath)) {
-		imagesContent = readFileSync(imagesPath, "utf-8");
-	}
-	// Simple append/replace — just rewrite the whole file
-	const imageEntry = [
-		`  ${options.name}:`,
-		`    description: "Sumeru ${agent} image (${dockerTag})"`,
-		`    dockerfile: "${dockerfileRef}"`,
-		`    builtAt: "${builtAt}"`,
-		`    digest: "${digest}"`,
-	].join("\n");
-
-	if (imagesContent.includes(`  ${options.name}:`)) {
-		// Replace existing entry (simple regex for our known format)
-		const re = new RegExp(`  ${options.name}:\\n(    [^\\n]+\\n)*`, "m");
-		imagesContent = imagesContent.replace(re, imageEntry + "\n");
-	} else {
-		if (!imagesContent.startsWith("images:")) {
-			imagesContent = "images:\n";
-		}
-		imagesContent += imageEntry + "\n";
-	}
-	writeFileSync(imagesPath, imagesContent);
 
 	return { tag: dockerTag, digest };
 }

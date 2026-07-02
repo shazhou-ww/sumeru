@@ -142,20 +142,6 @@ describe("skills and prototypes CRUD routes", () => {
 		);
 		expect(createPersona.status).toBe(201);
 
-		const createImage = await request(
-			server,
-			"POST",
-			"/images/worker",
-			JSON.stringify({
-				name: "worker",
-				description: "Worker image",
-				dockerfile: "packages/sarsapa/Dockerfile",
-				builtAt: "2026-06-29T00:00:00.000Z",
-				digest: "sha256:worker",
-			}),
-		);
-		expect(createImage.status).toBe(201);
-
 		const createPrototype = await request(
 			server,
 			"PUT",
