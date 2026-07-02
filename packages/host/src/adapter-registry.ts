@@ -13,6 +13,10 @@ const manifests = new Map<string, AdapterManifest>([
 	[sarsapaManifest.name, sarsapaManifest],
 ]);
 
+export function listAdapters(): AdapterManifest[] {
+	return [...manifests.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function getAdapterManifest(name: string): AdapterManifest | null {
 	return manifests.get(name) ?? null;
 }

@@ -1,3 +1,4 @@
+export { createAdaptersHandler } from "./adapters.js";
 export { createEventsHandler } from "./events.js";
 export { createExportHandler } from "./export.js";
 export { createHistoryHandler, historyEnvelope } from "./history.js";

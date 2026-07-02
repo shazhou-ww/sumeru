@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer as createHttpServer } from "node:http";
 import { loadHostConfig } from "./config.js";
 import {
+	createAdaptersHandler,
 	createEventsHandler,
 	createExportHandler,
 	createHistoryHandler,
@@ -48,6 +49,7 @@ export function createHostHandler(input: {
 	manager: ReturnType<typeof createSessionManager>;
 	version: string;
 }): (req: IncomingMessage, res: ServerResponse) => void {
+	const adapters = createAdaptersHandler(input.hostConfig);
 	const prototypes = createPrototypesHandler(input.hostConfig);
 	const providers = createProvidersHandler(input.hostConfig);
 	const models = createModelsHandler(input.hostConfig);
@@ -60,6 +62,8 @@ export function createHostHandler(input: {
 		notFound: writeRouteNotFound,
 	})
 		.route("GET", "/", createRootHandler(input))
+		.route("GET", "/adapters", adapters.list)
+		.route("GET", "/adapters/:name", adapters.get)
 		.route("GET", "/images", images.list)
 		.route("GET", "/images/:name", images.get)
 		.route("POST", "/images/:name", images.add)

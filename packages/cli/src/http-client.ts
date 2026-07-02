@@ -82,9 +82,19 @@ export type SearchValue = {
 	hits: Array<SearchHit>;
 };
 
+export type AdapterInfo = {
+	name: string;
+	providerMode: "custom-only" | "both" | "builtin-only";
+	credentialEnv: string | null;
+};
+
 export type HostClient = {
 	// Root
 	getRoot(): Promise<Envelope<HostRootValue>>;
+
+	// Adapters
+	listAdapters(): Promise<Envelope<Array<AdapterInfo>>>;
+	getAdapter(name: string): Promise<Envelope<AdapterInfo>>;
 
 	// Prototypes
 	listPrototypes(): Promise<Envelope<Array<PrototypeListItem>>>;
@@ -288,6 +298,24 @@ export function createHostClient(options: HostClientOptions): HostClient {
 		// Root
 		async getRoot() {
 			const { json } = await requestJson<HostRootValue>("GET", "/", null);
+			return json;
+		},
+
+		// Adapters
+		async listAdapters() {
+			const { json } = await requestJson<Array<AdapterInfo>>(
+				"GET",
+				"/adapters",
+				null,
+			);
+			return json;
+		},
+		async getAdapter(name) {
+			const { json } = await requestJson<AdapterInfo>(
+				"GET",
+				`/adapters/${encodeURIComponent(name)}`,
+				null,
+			);
 			return json;
 		},
 
