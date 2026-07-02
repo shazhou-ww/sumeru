@@ -1,3 +1,4 @@
+import type { AdapterManifest, ProviderMode } from "@sumeru/adapter-core";
 import type {
 	HostConfig,
 	Image,
@@ -36,6 +37,22 @@ export type PrototypeInfo = {
 	prototypeHash: string;
 	composePath: string | null;
 };
+
+export type AdapterInfo = {
+	name: string;
+	providerMode: ProviderMode;
+	credentialEnv: string | null;
+	listModels: boolean;
+};
+
+export function toAdapterInfo(manifest: AdapterManifest): AdapterInfo {
+	return {
+		name: manifest.name,
+		providerMode: manifest.providerMode,
+		credentialEnv: manifest.credentialEnv,
+		listModels: manifest.listModels !== null,
+	};
+}
 
 export type LoadedHostConfig = {
 	rootDir: string;

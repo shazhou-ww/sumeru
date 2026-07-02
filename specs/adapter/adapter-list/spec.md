@@ -14,7 +14,7 @@ Adapter 是 Sumeru 支持的 agent 运行时类型。每个 adapter 在构建时
 name: cursor-agent          # 唯一标识，匹配 URL 路径参数
 providerMode: builtin-only  # custom-only | both | builtin-only
 credentialEnv: CURSOR_API_KEY  # 平台凭证环境变量名，custom-only 时为 null
-listModels: null            # Phase 4 预留：是否支持列出内置模型
+listModels: false           # 是否支持列出内置模型（API 响应为 boolean）
 ```
 
 ### providerMode 说明
@@ -29,6 +29,7 @@ listModels: null            # Phase 4 预留：是否支持列出内置模型
 |--------|------|------|
 | GET | /adapters | 列出所有已注册 adapter |
 | GET | /adapters/:name | 单个 adapter 详情 |
+| GET | /adapters/:name/models | 列出 adapter 平台内置模型 |
 
 ### 响应信封
 
@@ -41,13 +42,13 @@ listModels: null            # Phase 4 预留：是否支持列出内置模型
       "name": "cursor-agent",
       "providerMode": "builtin-only",
       "credentialEnv": "CURSOR_API_KEY",
-      "listModels": null
+      "listModels": false
     },
     {
       "name": "claude-code",
       "providerMode": "both",
       "credentialEnv": "ANTHROPIC_API_KEY",
-      "listModels": null
+      "listModels": true
     }
   ]
 }
@@ -61,10 +62,32 @@ listModels: null            # Phase 4 预留：是否支持列出内置模型
     "name": "cursor-agent",
     "providerMode": "builtin-only",
     "credentialEnv": "CURSOR_API_KEY",
-    "listModels": null
+    "listModels": false
   }
 }
 ```
+
+模型列表：
+```json
+{
+  "type": "@sumeru/adapter-model-list",
+  "value": [
+    {
+      "id": "claude-sonnet-4-20250514",
+      "name": "Claude Sonnet 4",
+      "contextWindow": 200000
+    }
+  ]
+}
+```
+
+### 模型列表错误
+
+| HTTP | error | 说明 |
+|------|-------|------|
+| 404 | `models_not_supported` | adapter 未实现 listModels |
+| 400 | `credential_missing` | credentialEnv 未设置或环境变量为空 |
+| 502 | `model_list_failed` | 平台 API 调用失败 |
 
 注意：Adapter 在 Host 启动时从 adapter registry 加载，无 POST/PUT/DELETE 端点。
 
@@ -78,6 +101,8 @@ listModels: null            # Phase 4 预留：是否支持列出内置模型
 
 **Then** 列表包含已知 adapter（如 `cursor-agent`、`claude-code`、`sarsapa`）
 
+**Then** 每项 `listModels` 为 boolean
+
 ---
 
 ## Scenario: 获取单个 Adapter 详情
@@ -89,3 +114,23 @@ listModels: null            # Phase 4 预留：是否支持列出内置模型
 **When** `GET /adapters/nonexistent`
 
 **Then** 404，`adapter_not_found`
+
+---
+
+## Scenario: 列出 Adapter 内置模型
+
+**When** `GET /adapters/claude-code/models`（`ANTHROPIC_API_KEY` 已设置）
+
+**Then** 200，返回 `@sumeru/adapter-model-list`
+
+**When** `GET /adapters/sarsapa/models`
+
+**Then** 404，`models_not_supported`
+
+**When** `GET /adapters/claude-code/models`（凭证未设置）
+
+**Then** 400，`credential_missing`
+
+**When** 平台 API 失败
+
+**Then** 502，`model_list_failed`

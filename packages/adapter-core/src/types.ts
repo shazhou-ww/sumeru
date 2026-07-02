@@ -71,6 +71,18 @@ export type AdapterImpl = {
 //                  entities are not needed (e.g. cursor-agent, hermes).
 export type ProviderMode = "custom-only" | "both" | "builtin-only";
 
+// Result of listing built-in models from a platform API.
+export type BuiltinModel = {
+	id: string;
+	name: string;
+	contextWindow: number | null;
+};
+
+// Function that an adapter implements to list its platform's available models.
+// Called with the platform credential (from credentialEnv).
+// Throws on API error; host catches and returns 502.
+export type ListModelsFn = (credential: string) => Promise<Array<BuiltinModel>>;
+
 // Static manifest exported by each adapter package. Declares the adapter's
 // capabilities so the Host can validate prototype configs and skip
 // unnecessary Provider/Model lookups for builtin-only adapters.
@@ -80,8 +92,8 @@ export type AdapterManifest = {
 	// Env var that carries the platform credential (e.g. "CURSOR_API_KEY").
 	// Required for builtin-only and both; omitted for custom-only.
 	credentialEnv: string | null;
-	// Whether the adapter supports listing built-in models (Phase 4).
-	listModels: boolean | null;
+	// Function to list built-in models, or null if not supported.
+	listModels: ListModelsFn | null;
 };
 
 // === NDJSON wire frames ===

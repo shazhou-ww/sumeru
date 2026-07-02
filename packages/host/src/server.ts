@@ -64,6 +64,7 @@ export function createHostHandler(input: {
 		.route("GET", "/", createRootHandler(input))
 		.route("GET", "/adapters", adapters.list)
 		.route("GET", "/adapters/:name", adapters.get)
+		.route("GET", "/adapters/:name/models", adapters.models)
 		.route("GET", "/images", images.list)
 		.route("GET", "/images/:name", images.get)
 		.route("POST", "/images/:name", images.add)

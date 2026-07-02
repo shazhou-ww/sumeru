@@ -86,6 +86,13 @@ export type AdapterInfo = {
 	name: string;
 	providerMode: "custom-only" | "both" | "builtin-only";
 	credentialEnv: string | null;
+	listModels: boolean;
+};
+
+export type BuiltinModel = {
+	id: string;
+	name: string;
+	contextWindow: number | null;
 };
 
 export type HostClient = {
@@ -95,6 +102,7 @@ export type HostClient = {
 	// Adapters
 	listAdapters(): Promise<Envelope<Array<AdapterInfo>>>;
 	getAdapter(name: string): Promise<Envelope<AdapterInfo>>;
+	listAdapterModels(name: string): Promise<Envelope<Array<BuiltinModel>>>;
 
 	// Prototypes
 	listPrototypes(): Promise<Envelope<Array<PrototypeListItem>>>;
@@ -314,6 +322,14 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			const { json } = await requestJson<AdapterInfo>(
 				"GET",
 				`/adapters/${encodeURIComponent(name)}`,
+				null,
+			);
+			return json;
+		},
+		async listAdapterModels(name) {
+			const { json } = await requestJson<Array<BuiltinModel>>(
+				"GET",
+				`/adapters/${encodeURIComponent(name)}/models`,
 				null,
 			);
 			return json;

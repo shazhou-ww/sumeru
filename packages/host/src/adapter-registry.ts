@@ -4,6 +4,7 @@ import type { AdapterManifest, ProviderMode } from "@sumeru/adapter-core";
 import { manifest as cursorAgentManifest } from "@sumeru/adapter-cursor-agent";
 import { manifest as hermesManifest } from "@sumeru/adapter-hermes";
 import { manifest as sarsapaManifest } from "@sumeru/sarsapa";
+import { type AdapterInfo, toAdapterInfo } from "./types.js";
 
 const manifests = new Map<string, AdapterManifest>([
 	[claudeCodeManifest.name, claudeCodeManifest],
@@ -13,12 +14,20 @@ const manifests = new Map<string, AdapterManifest>([
 	[sarsapaManifest.name, sarsapaManifest],
 ]);
 
-export function listAdapters(): AdapterManifest[] {
-	return [...manifests.values()].sort((a, b) => a.name.localeCompare(b.name));
+export function listAdapters(): AdapterInfo[] {
+	return [...manifests.values()]
+		.map(toAdapterInfo)
+		.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function getAdapterManifest(name: string): AdapterManifest | null {
 	return manifests.get(name) ?? null;
+}
+
+export function getAdapterListModels(
+	name: string,
+): AdapterManifest["listModels"] {
+	return manifests.get(name)?.listModels ?? null;
 }
 
 export function getProviderMode(name: string): ProviderMode {
