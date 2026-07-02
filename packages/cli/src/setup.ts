@@ -106,6 +106,7 @@ export async function runSetup(input: SetupInput): Promise<void> {
 		join(rootDir, "data"),
 		join(rootDir, "data", "prototypes"),
 		join(rootDir, "data", "skills"),
+		join(rootDir, "data", "extensions"),
 		join(rootDir, "prototypes"),
 		join(rootDir, "prototypes", "sarsapa"),
 		join(rootDir, "workspace"),
@@ -148,6 +149,82 @@ export async function runSetup(input: SetupInput): Promise<void> {
 			`services:\n  agent:\n    image: sumeru/sarsapa:dev\n    mem_limit: 4g\n    cpus: 2\n    volumes:\n      - "\${SUMERU_PROJECT_PATH}:\${SUMERU_PROJECT_PATH}"\n    environment:\n      - ${envKey}=\${${envKey}}\n`,
 		);
 		actions.push("created prototypes/sarsapa/compose.yaml");
+	}
+
+	// ── Seed builtin skills ──────────────────────────────────────────
+	const skillsDir = join(rootDir, "data", "skills");
+	mkdirSync(skillsDir, { recursive: true });
+	const sumeruSkillPath = join(skillsDir, "sumeru.md");
+	if (!existsSync(sumeruSkillPath)) {
+		writeFileSync(
+			sumeruSkillPath,
+			`# Sumeru
+
+You are running inside Sumeru — an agent runtime that manages your lifecycle.
+
+## Key facts
+
+- You communicate via NDJSON stdin/stdout protocol (adapter-core handles this)
+- Your working directory is the project path passed with each message
+- You have tools: read_file, write_file, patch, terminal, search_files
+- Terminal commands run in your container (Docker)
+- npm install may be slow — use \`--registry=https://registry.npmmirror.com\` and \`timeout: 180000\`
+
+## Task completion
+
+When done, output a clear summary:
+- What was accomplished
+- Test results (pass/fail counts)
+- Any files created or modified
+
+## Conventions
+
+- TypeScript: strict mode, .js extensions in imports, function over class
+- Tests: vitest, write tests first (TDD)
+- Formatting: biome (no prettier/eslint)
+- Package manager: pnpm
+`,
+		);
+		actions.push("created data/skills/sumeru.md");
+	}
+
+	// ── Seed builtin extensions ──────────────────────────────────────
+	const extensionsDir = join(rootDir, "data", "extensions");
+	mkdirSync(extensionsDir, { recursive: true });
+	const builtinExtensions: Record<string, string> = {
+		python: `name: python
+description: Python 3 runtime with pip
+dockerfile: |
+  RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv && rm -rf /var/lib/apt/lists/*
+`,
+		node: `name: node
+description: Node.js runtime (already in base image, this adds pnpm)
+dockerfile: |
+  RUN corepack enable && corepack prepare pnpm@latest --activate
+`,
+		rust: `name: rust
+description: Rust toolchain (rustc + cargo)
+dockerfile: |
+  RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  ENV PATH="/root/.cargo/bin:\${PATH}"
+`,
+		docker: `name: docker
+description: Docker CLI (for Docker-in-Docker or remote daemon)
+dockerfile: |
+  RUN apt-get update && apt-get install -y --no-install-recommends docker.io && rm -rf /var/lib/apt/lists/*
+`,
+		playwright: `name: playwright
+description: Playwright browser automation with Chromium
+dockerfile: |
+  RUN npx playwright install --with-deps chromium
+`,
+	};
+	for (const [name, content] of Object.entries(builtinExtensions)) {
+		const extPath = join(extensionsDir, `${name}.yaml`);
+		if (!existsSync(extPath)) {
+			writeFileSync(extPath, content);
+			actions.push(`created data/extensions/${name}.yaml`);
+		}
 	}
 
 	// ── SQLite: upsert Provider → Model → Persona ───────────────────
@@ -202,8 +279,9 @@ export async function runSetup(input: SetupInput): Promise<void> {
 		if (existingPersona === null) {
 			store.createPersona({
 				name: "default",
-				instructions: "You are a helpful coding assistant.",
-				skills: [],
+				instructions:
+					"You are a senior software engineer. Write clean, well-tested code following best practices. Use strict TypeScript types, prefer functions over classes, write tests before implementation (TDD). Report results with test pass count and key outputs.",
+				skills: ["sumeru"],
 			});
 			actions.push('created persona "default"');
 		}
