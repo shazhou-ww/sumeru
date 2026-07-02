@@ -365,7 +365,7 @@ async function runImageBuildLocal(
 	const imageEntry = [
 		`  ${options.name}:`,
 		`    description: "Sumeru ${agent} image (${dockerTag})"`,
-		`    dockerfile: "docker/${agent}/Dockerfile"`,
+		`    dockerfile: "packages/${agent === "sarsapa" ? "sarsapa" : `adapter-${agent}`}/Dockerfile"`,
 		`    builtAt: "${builtAt}"`,
 		`    digest: "${digest}"`,
 	].join("\n");

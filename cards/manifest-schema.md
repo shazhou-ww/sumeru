@@ -70,7 +70,7 @@ Each prototype references:
 ```yaml
 sarsapa:
   description: "Sumeru sarsapa image (sumeru/sarsapa:dev)"
-  dockerfile: "docker/sarsapa/Dockerfile"
+  dockerfile: "packages/sarsapa/Dockerfile"
   builtAt: "2026-07-01T00:00:00.000Z"
   digest: "sha256:..."
 ```

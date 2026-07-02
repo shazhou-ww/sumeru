@@ -67,7 +67,7 @@ prerequisites:
 - [ ] Step 1 输出 `built sumeru/tc-sarsapa:dev` + `registered image tc-sarsapa`，exit 0
 - [ ] Step 2 输出 `sumeru/tc-sarsapa:dev`
 - [ ] Step 3 返回 `"tc-sarsapa"`
-- [ ] Step 4 返回 `{name: "tc-sarsapa", dockerfile: "docker/sarsapa/Dockerfile", has_digest: true, has_builtAt: true}`
+- [ ] Step 4 返回 `{name: "tc-sarsapa", dockerfile: "packages/sarsapa/Dockerfile", has_digest: true, has_builtAt: true}`
 - [ ] Step 5 exit 非 0，message 含 `Unsupported agent type`
 - [ ] Step 6 exit 非 0，报错含 path 相关信息
 

@@ -58,7 +58,7 @@ Setup is **idempotent** — re-running upserts provider/model/env without breaki
 
 - Supported agents: `hermes`, `claude-code`, `codex`, `sarsapa`, `cursor-agent`.
 - Copies dist artifacts (core + adapter-core + agent adapter) into `.build/` staging dir.
-- Runs `docker build` with agent-specific Dockerfile from `docker/<agent>/Dockerfile`.
+- Runs `docker build` with agent-specific Dockerfile from `packages/adapter-<agent>/Dockerfile`.
 - Registers image in host via `POST /images/:name` (or writes `images.yaml` locally during setup).
 - Tag convention: `sumeru/<name>:dev` for local builds.
 

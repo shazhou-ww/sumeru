@@ -14,7 +14,7 @@ tags: [e2e, setup]
 pnpm run build
 
 # 2. 构建 Docker 镜像（首次或代码变更后）
-bash scripts/build-image.sh sarsapa
+sumeru image build sarsapa --agent sarsapa
 
 # 3. 初始化测试环境（用真实 API Key）
 sumeru setup \

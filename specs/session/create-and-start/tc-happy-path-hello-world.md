@@ -64,4 +64,4 @@ prerequisites:
 - 404 prototype_not_found → `sumeru setup` 未执行或 prototype YAML 文件缺失
 - 500 model_not_found → SQLite 中 Model 未创建（检查 `sumeru setup` 输出）
 - 500 provider_not_found → SQLite 中 Provider 未创建
-- adapter 超时 → Docker image 未构建（`bash scripts/build-image.sh sarsapa`）
+- adapter 超时 → Docker image 未构建（`sumeru image build sarsapa --agent sarsapa`）

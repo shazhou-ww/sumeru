@@ -149,7 +149,7 @@ describe("skills and prototypes CRUD routes", () => {
 			JSON.stringify({
 				name: "worker",
 				description: "Worker image",
-				dockerfile: "docker/sarsapa/Dockerfile",
+				dockerfile: "packages/sarsapa/Dockerfile",
 				builtAt: "2026-06-29T00:00:00.000Z",
 				digest: "sha256:worker",
 			}),

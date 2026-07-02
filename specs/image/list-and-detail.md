@@ -28,7 +28,7 @@ curl -s http://127.0.0.1:$SUMERU_PORT/images
     {
       "name": "hermes",
       "description": "Sumeru hermes image (sumeru/hermes:dev)",
-      "dockerfile": "docker/hermes/Dockerfile",
+      "dockerfile": "packages/adapter-hermes/Dockerfile",
       "builtAt": "2026-07-01T09:17:24.720Z",
       "digest": "sha256:c3428a77732cf..."
     }
@@ -61,7 +61,7 @@ curl -s http://127.0.0.1:$SUMERU_PORT/images/hermes
   "value": {
     "name": "hermes",
     "description": "Sumeru hermes image (sumeru/hermes:dev)",
-    "dockerfile": "docker/hermes/Dockerfile",
+    "dockerfile": "packages/adapter-hermes/Dockerfile",
     "builtAt": "2026-07-01T09:17:24.720Z",
     "digest": "sha256:c3428a77732cf..."
   }

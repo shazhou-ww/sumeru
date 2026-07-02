@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { access, cp, mkdir, rm } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { createHostClient } from "./http-client.js";
 
 const SUPPORTED_AGENTS = [
@@ -36,12 +36,7 @@ export async function runImageBuild(
 		options.adapter,
 	);
 	const dockerTag = deriveDockerTag(options.name, options.adapter);
-	const dockerfileSource = join(
-		options.repoRoot,
-		"docker",
-		agent,
-		"Dockerfile",
-	);
+	const dockerfileSource = join(adapterPath, "Dockerfile");
 	const buildDir = join(options.repoRoot, ".build");
 	const packagesDir = join(buildDir, "packages");
 
@@ -60,7 +55,7 @@ export async function runImageBuild(
 	await copyPackageDist(adapterPath, join(packagesDir, adapterDest));
 
 	await cp(dockerfileSource, join(buildDir, "Dockerfile"));
-	const dockerignore = join(options.repoRoot, "docker", ".dockerignore");
+	const dockerignore = join(options.repoRoot, ".dockerignore");
 	try {
 		await cp(dockerignore, join(buildDir, ".dockerignore"));
 	} catch {
@@ -91,7 +86,7 @@ export async function runImageBuild(
 	await client.addImage(options.name, {
 		name: options.name,
 		description: `Sumeru ${agent} image (${dockerTag})`,
-		dockerfile: `docker/${agent}/Dockerfile`,
+		dockerfile: relative(options.repoRoot, dockerfileSource),
 		builtAt,
 		digest,
 	});

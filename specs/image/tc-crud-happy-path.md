@@ -29,7 +29,7 @@ prerequisites:
    ```bash
    curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:$SUMERU_PORT/images/tc-test-image \
      -H 'Content-Type: application/json' \
-     -d '{"name":"tc-test-image","description":"Test image for e2e","dockerfile":"docker/hermes/Dockerfile","builtAt":"2026-07-01T12:00:00.000Z","digest":"sha256:abc123"}'
+     -d '{"name":"tc-test-image","description":"Test image for e2e","dockerfile":"packages/adapter-hermes/Dockerfile","builtAt":"2026-07-01T12:00:00.000Z","digest":"sha256:abc123"}'
    ```
 
 2. 查询单个 image（GET /images/:name）：
@@ -46,7 +46,7 @@ prerequisites:
    ```bash
    curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:$SUMERU_PORT/images/tc-test-image \
      -H 'Content-Type: application/json' \
-     -d '{"name":"tc-test-image","description":"Updated description","dockerfile":"docker/hermes/Dockerfile","builtAt":"2026-07-01T13:00:00.000Z","digest":"sha256:def456"}'
+     -d '{"name":"tc-test-image","description":"Updated description","dockerfile":"packages/adapter-hermes/Dockerfile","builtAt":"2026-07-01T13:00:00.000Z","digest":"sha256:def456"}'
    ```
 
 5. 确认更新生效：
