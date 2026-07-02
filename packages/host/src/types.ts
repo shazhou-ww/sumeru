@@ -1,5 +1,6 @@
 import type { AdapterManifest, ProviderMode } from "@sumeru/adapter-core";
 import type {
+	Extension,
 	HostConfig,
 	ModelConfig,
 	Prototype,
@@ -59,8 +60,10 @@ export type LoadedHostConfig = {
 	dataDir: string;
 	skillsDir: string;
 	prototypesDir: string;
+	extensionsDir: string;
 	config: HostConfig;
 	prototypes: Map<string, PrototypeInfo>;
+	extensions: Map<string, Extension>;
 	sqliteStore: SqliteStore;
 };
 

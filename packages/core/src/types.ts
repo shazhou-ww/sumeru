@@ -67,6 +67,7 @@ export type Prototype = {
 	persona: string;
 	model: string | null;
 	adapter: string;
+	extensions: Array<string> | null;
 	defaults: {
 		maxTurns: number;
 		timeout: number;
@@ -75,6 +76,15 @@ export type Prototype = {
 			memory: string;
 		};
 	} | null;
+};
+
+// === Extension ===
+export type Extension = {
+	name: string;
+	description: string;
+	dockerfile: string;
+	createdAt: string;
+	updatedAt: string;
 };
 
 // === Session ===

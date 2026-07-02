@@ -5,6 +5,7 @@ import {
 	createAdaptersHandler,
 	createEventsHandler,
 	createExportHandler,
+	createExtensionsHandler,
 	createHistoryHandler,
 	createMessagesHandler,
 	createModelsHandler,
@@ -50,6 +51,7 @@ export function createHostHandler(input: {
 }): (req: IncomingMessage, res: ServerResponse) => void {
 	const adapters = createAdaptersHandler(input.hostConfig);
 	const prototypes = createPrototypesHandler(input.hostConfig);
+	const extensions = createExtensionsHandler(input.hostConfig);
 	const providers = createProvidersHandler(input.hostConfig);
 	const models = createModelsHandler(input.hostConfig);
 	const personas = createPersonasHandler(input.hostConfig);
@@ -67,6 +69,10 @@ export function createHostHandler(input: {
 		.route("GET", "/prototypes/:name", prototypes.get)
 		.route("PUT", "/prototypes/:name", prototypes.upsert)
 		.route("DELETE", "/prototypes/:name", prototypes.remove)
+		.route("GET", "/extensions", extensions.list)
+		.route("GET", "/extensions/:name", extensions.get)
+		.route("PUT", "/extensions/:name", extensions.upsert)
+		.route("DELETE", "/extensions/:name", extensions.remove)
 		.route("GET", "/providers", providers.list)
 		.route("GET", "/providers/:name", providers.get)
 		.route("PUT", "/providers/:name", providers.upsert)

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { Dirent } from "node:fs";
 import {
 	access,
 	mkdir,
@@ -9,7 +10,7 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-import type { Prototype } from "@sumeru/core";
+import type { Extension, Prototype } from "@sumeru/core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { PrototypeInfo } from "./types.js";
 
@@ -29,9 +30,11 @@ export function validateResourceName(name: string, label: string): void {
 export async function ensureDataDirs(
 	skillsDir: string,
 	prototypesDir: string,
+	extensionsDir: string,
 ): Promise<void> {
 	await mkdir(skillsDir, { recursive: true });
 	await mkdir(prototypesDir, { recursive: true });
+	await mkdir(extensionsDir, { recursive: true });
 }
 
 export async function findPrototypeReferencesToPersona(
@@ -168,6 +171,7 @@ export type PrototypeUpdateBody = {
 	persona: string | undefined;
 	model: string | null | undefined;
 	adapter: string | undefined;
+	extensions: Array<string> | null | undefined;
 	defaults: Prototype["defaults"] | undefined;
 };
 
@@ -180,6 +184,8 @@ export function mergePrototype(
 		persona: update.persona ?? existing.persona,
 		model: update.model !== undefined ? update.model : existing.model,
 		adapter: update.adapter ?? existing.adapter,
+		extensions:
+			update.extensions !== undefined ? update.extensions : existing.extensions,
 		defaults:
 			update.defaults === undefined ? existing.defaults : update.defaults,
 	};
@@ -243,7 +249,8 @@ export function validatePrototypeUpdate(
 		obj.defaults === undefined
 			? undefined
 			: parsePrototypeDefaults(obj.defaults, path);
-	return { persona, model, adapter, defaults };
+	const extensions = parsePrototypeExtensions(obj.extensions, path, true);
+	return { persona, model, adapter, extensions, defaults };
 }
 
 export function validatePrototype(
@@ -292,7 +299,9 @@ export function validatePrototype(
 		);
 	}
 	const defaults = parsePrototypeDefaults(obj.defaults, path);
-	return { name, persona, model, adapter, defaults };
+	const extensions =
+		parsePrototypeExtensions(obj.extensions, path, false) ?? null;
+	return { name, persona, model, adapter, extensions, defaults };
 }
 
 function parsePrototypeDefaults(
@@ -346,6 +355,119 @@ function parsePrototypeDefaults(
 		timeout,
 		resources: { cpu, memory },
 	};
+}
+
+function parsePrototypeExtensions(
+	value: unknown,
+	path: string,
+	optional: boolean,
+): Array<string> | null | undefined {
+	if (value === undefined) {
+		return optional ? undefined : null;
+	}
+	if (value === null) {
+		return null;
+	}
+	if (!Array.isArray(value)) {
+		throw new Error(
+			`Prototype ${path} field "extensions" must be an array of strings or null`,
+		);
+	}
+	for (const item of value) {
+		if (typeof item !== "string" || item.length === 0) {
+			throw new Error(
+				`Prototype ${path} field "extensions" must contain only non-empty strings`,
+			);
+		}
+	}
+	return value;
+}
+
+function extensionPath(extensionsDir: string, name: string): string {
+	return join(extensionsDir, `${name}.yaml`);
+}
+
+export async function readExtensionFile(
+	extensionsDir: string,
+	name: string,
+): Promise<Extension> {
+	const yamlPath = extensionPath(extensionsDir, name);
+	const content = await readFile(yamlPath, "utf-8");
+	const obj = parseYamlSafely(content, yamlPath);
+	return parseExtension(obj, yamlPath, name);
+}
+
+export async function writeExtensionFile(
+	extensionsDir: string,
+	extension: Extension,
+): Promise<void> {
+	validateResourceName(extension.name, "extension name");
+	await mkdir(extensionsDir, { recursive: true });
+	const yamlPath = extensionPath(extensionsDir, extension.name);
+	const temp = `${yamlPath}.tmp`;
+	await writeFile(temp, stringifyYaml(extension), "utf-8");
+	await rename(temp, yamlPath);
+}
+
+export async function deleteExtensionFile(
+	extensionsDir: string,
+	name: string,
+): Promise<void> {
+	validateResourceName(name, "extension name");
+	await unlink(extensionPath(extensionsDir, name));
+}
+
+export async function extensionFileExists(
+	extensionsDir: string,
+	name: string,
+): Promise<boolean> {
+	try {
+		await access(extensionPath(extensionsDir, name));
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+export async function loadExtensionsFromDisk(input: {
+	extensionsDir: string;
+}): Promise<Map<string, Extension>> {
+	const extensions = new Map<string, Extension>();
+	let entries: Array<Dirent>;
+	try {
+		entries = await readdir(input.extensionsDir, { withFileTypes: true });
+	} catch {
+		return extensions;
+	}
+	for (const entry of entries) {
+		if (!entry.isFile() || !entry.name.endsWith(".yaml")) continue;
+		const name = entry.name.slice(0, -5);
+		try {
+			const ext = await readExtensionFile(input.extensionsDir, name);
+			extensions.set(name, ext);
+		} catch {
+			// skip invalid files
+		}
+	}
+	return extensions;
+}
+
+function parseExtension(obj: unknown, path: string, name: string): Extension {
+	if (obj === null || typeof obj !== "object" || Array.isArray(obj)) {
+		throw new Error(`Extension ${path} must be a YAML mapping`);
+	}
+	const o = obj as Record<string, unknown>;
+	const description = typeof o.description === "string" ? o.description : "";
+	const dockerfile = o.dockerfile;
+	if (typeof dockerfile !== "string" || dockerfile.length === 0) {
+		throw new Error(
+			`Extension ${path} field "dockerfile" must be a non-empty string`,
+		);
+	}
+	const createdAt =
+		typeof o.createdAt === "string" ? o.createdAt : new Date().toISOString();
+	const updatedAt = typeof o.updatedAt === "string" ? o.updatedAt : createdAt;
+	return { name, description, dockerfile, createdAt, updatedAt };
 }
 
 function parseYamlSafely(raw: string, path: string): unknown {

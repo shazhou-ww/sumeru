@@ -5,6 +5,7 @@ import type { CliContext, CommandAction, ParsedFlags } from "@ocas/cli-kit";
 import { createCLI } from "@ocas/cli-kit";
 import { z } from "zod";
 import { parseEnvFlagsFromArgv } from "./env-flags.js";
+import { formatExtensionTable } from "./format.js";
 import { createHostClient, HostClientError } from "./http-client.js";
 import {
 	runImageBuild as executeImageBuild,
@@ -683,6 +684,103 @@ cli
 		try {
 			await client.removePrototype(args.name);
 			return { message: `removed prototype ${args.name}` };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+// ─── extension ───────────────────────────────────────────────────────────
+
+cli
+	.command("extension")
+	.command("list")
+	.describe("List extensions")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.action(async (_args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.listExtensions();
+			ctx.stdout(formatExtensionTable(envelope.value) + "\n");
+			return undefined;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("extension")
+	.command("get")
+	.describe("Get an extension by name")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(
+		z.object({
+			name: z.string(),
+			description: z.string(),
+			dockerfile: z.string(),
+		}),
+		"{{name}} — {{description}}",
+	)
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.getExtension(args.name);
+			const v = envelope.value;
+			return {
+				name: v.name,
+				description: v.description,
+				dockerfile: v.dockerfile,
+			};
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("extension")
+	.command("put")
+	.describe("Create or update an extension")
+	.arg("name")
+	.flag("description", { type: "string" })
+	.flag("dockerfile", { type: "string" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(nameSchema, "{{name}}")
+	.action(async (args, flags, ctx) => {
+		const dockerfile = flags.dockerfile as string | undefined;
+		if (!dockerfile) {
+			ctx.error(
+				"Usage: sumeru extension put <name> --dockerfile <instructions> [--description <desc>]",
+			);
+		}
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.upsertExtension(args.name, {
+				description: (flags.description as string) ?? "",
+				dockerfile: dockerfile!,
+			});
+			return { name: envelope.value.name };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("extension")
+	.command("remove")
+	.describe("Remove an extension")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			await client.removeExtension(args.name);
+			return { message: `removed extension ${args.name}` };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}

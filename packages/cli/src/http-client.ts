@@ -28,6 +28,12 @@ export type HostRootValue = {
 	uptime: number;
 };
 
+export type ExtensionInfo = {
+	name: string;
+	description: string;
+	dockerfile: string;
+};
+
 export type PrototypeListItem = {
 	name: string;
 };
@@ -111,6 +117,15 @@ export type HostClient = {
 		},
 	): Promise<Envelope<PrototypeDetail>>;
 	removePrototype(name: string): Promise<void>;
+
+	// Extensions
+	listExtensions(): Promise<Envelope<Array<ExtensionInfo>>>;
+	getExtension(name: string): Promise<Envelope<ExtensionInfo>>;
+	upsertExtension(
+		name: string,
+		body: { description?: string; dockerfile: string },
+	): Promise<Envelope<ExtensionInfo>>;
+	removeExtension(name: string): Promise<void>;
 
 	// Providers
 	listProviders(): Promise<Envelope<Array<Provider>>>;
@@ -339,6 +354,35 @@ export function createHostClient(options: HostClientOptions): HostClient {
 		},
 		async removePrototype(name) {
 			await requestDelete(`/prototypes/${encodeURIComponent(name)}`);
+		},
+
+		// Extensions
+		async listExtensions() {
+			const { json } = await requestJson<Array<ExtensionInfo>>(
+				"GET",
+				"/extensions",
+				null,
+			);
+			return json;
+		},
+		async getExtension(name) {
+			const { json } = await requestJson<ExtensionInfo>(
+				"GET",
+				`/extensions/${encodeURIComponent(name)}`,
+				null,
+			);
+			return json;
+		},
+		async upsertExtension(name, body) {
+			const { json } = await requestJson<ExtensionInfo>(
+				"PUT",
+				`/extensions/${encodeURIComponent(name)}`,
+				body,
+			);
+			return json;
+		},
+		async removeExtension(name) {
+			await requestDelete(`/extensions/${encodeURIComponent(name)}`);
 		},
 
 		// Providers

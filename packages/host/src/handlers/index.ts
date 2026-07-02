@@ -1,6 +1,7 @@
 export { createAdaptersHandler } from "./adapters.js";
 export { createEventsHandler } from "./events.js";
 export { createExportHandler } from "./export.js";
+export { createExtensionsHandler } from "./extensions.js";
 export { createHistoryHandler, historyEnvelope } from "./history.js";
 export { createMessagesHandler } from "./messages.js";
 export { createModelsHandler } from "./models.js";
