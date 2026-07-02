@@ -1,5 +1,6 @@
 export { createAcpClient, defaultAcpSpawn } from "./acp-client.js";
 export { createHermesAdapter } from "./adapter.js";
+export { manifest } from "./manifest.js";
 export type {
 	AcpClient,
 	AcpClientCreateOptions,

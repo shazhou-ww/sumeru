@@ -29,12 +29,9 @@ describe("mergeSessionEnv", () => {
 		const envFile = join(rootDir, ".env");
 		writeFileSync(
 			envFile,
-			[
-				"# host defaults",
-				"HOST_KEY=from-file",
-				"SHARED=from-file",
-				"",
-			].join("\n"),
+			["# host defaults", "HOST_KEY=from-file", "SHARED=from-file", ""].join(
+				"\n",
+			),
 		);
 
 		await expect(mergeSessionEnv(envFile, null)).resolves.toEqual({
@@ -82,7 +79,7 @@ describe("loadHostConfig — v3 HostConfig", () => {
 				"name: worker",
 				"persona: worker-persona",
 				"model: worker-model",
-				"image: sumeru/worker:latest",
+				"adapter: sarsapa",
 			].join("\n"),
 		);
 
@@ -96,7 +93,7 @@ describe("loadHostConfig — v3 HostConfig", () => {
 		const prototype = loaded.prototypes.get("worker");
 		expect(prototype?.prototype.persona).toBe("worker-persona");
 		expect(prototype?.prototype.model).toBe("worker-model");
-		expect(prototype?.prototype.image).toBe("sumeru/worker:latest");
+		expect(prototype?.prototype.adapter).toBe("sarsapa");
 		expect(prototype?.prototypeHash).toMatch(/^[a-f0-9]{64}$/);
 		expect(loaded.images.size).toBe(0);
 
@@ -229,7 +226,7 @@ describe("resolveSessionModel", () => {
 
 	it("uses prototype model when override is null", () => {
 		const s = seedStore();
-		const config = resolveSessionModel(s, "default-model", null);
+		const config = resolveSessionModel(s, "default-model", null, "custom-only");
 		expect(config.name).toBe("claude-sonnet-4");
 		expect(config.apiKey).toBe("sk-real-key-1234");
 		expect(typeof config.provider).toBe("object");
@@ -242,7 +239,12 @@ describe("resolveSessionModel", () => {
 
 	it("uses string override as model id", () => {
 		const s = seedStore();
-		const config = resolveSessionModel(s, "default-model", "proxy-model");
+		const config = resolveSessionModel(
+			s,
+			"default-model",
+			"proxy-model",
+			"custom-only",
+		);
 		expect(config.name).toBe("gpt-4o");
 		expect(config.apiKey).toBe("sk-proxy-key");
 		if (typeof config.provider === "object") {
@@ -253,14 +255,19 @@ describe("resolveSessionModel", () => {
 
 	it("uses ad-hoc object override directly", () => {
 		const s = seedStore();
-		const config = resolveSessionModel(s, "default-model", {
-			provider: {
-				name: "custom",
-				endpoint: "http://test:9090",
-				apiType: "openai",
+		const config = resolveSessionModel(
+			s,
+			"default-model",
+			{
+				provider: {
+					name: "custom",
+					endpoint: "http://test:9090",
+					apiType: "openai",
+				},
+				name: "custom-model",
 			},
-			name: "custom-model",
-		});
+			"custom-only",
+		);
 		expect(config.name).toBe("custom-model");
 		expect(config.apiKey).toBeNull();
 		expect(typeof config.provider).toBe("object");
@@ -269,11 +276,21 @@ describe("resolveSessionModel", () => {
 		}
 	});
 
+	it("returns synthetic model config for builtin-only with null model", () => {
+		const s = seedStore();
+		const config = resolveSessionModel(s, null, null, "builtin-only");
+		expect(config.name).toBe("auto");
+		expect(config.apiKey).toBeNull();
+		if (typeof config.provider === "object") {
+			expect(config.provider.name).toBe("builtin");
+		}
+	});
+
 	it("throws when model id is not found", () => {
 		const s = seedStore();
-		expect(() => resolveSessionModel(s, "missing-model", null)).toThrow(
-			"model_not_found:missing-model",
-		);
+		expect(() =>
+			resolveSessionModel(s, "missing-model", null, "custom-only"),
+		).toThrow("model_not_found:missing-model");
 	});
 
 	it("uses default openai endpoint when baseUrl is null", () => {
@@ -293,7 +310,7 @@ describe("resolveSessionModel", () => {
 			streaming: true,
 			metadata: null,
 		});
-		const config = resolveSessionModel(store, "oai-model", null);
+		const config = resolveSessionModel(store, "oai-model", null, "custom-only");
 		if (typeof config.provider === "object") {
 			expect(config.provider.endpoint).toBe("https://api.openai.com/v1");
 		}

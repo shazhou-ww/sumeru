@@ -91,12 +91,27 @@ importers:
       '@ocas/fs':
         specifier: ^0.4.1
         version: 0.4.1
+      '@sumeru/adapter-claude-code':
+        specifier: workspace:*
+        version: link:../adapter-claude-code
+      '@sumeru/adapter-codex':
+        specifier: workspace:*
+        version: link:../adapter-codex
       '@sumeru/adapter-core':
         specifier: workspace:*
         version: link:../adapter-core
+      '@sumeru/adapter-cursor-agent':
+        specifier: workspace:*
+        version: link:../adapter-cursor-agent
+      '@sumeru/adapter-hermes':
+        specifier: workspace:*
+        version: link:../adapter-hermes
       '@sumeru/core':
         specifier: workspace:*
         version: link:../core
+      '@sumeru/sarsapa':
+        specifier: workspace:*
+        version: link:../sarsapa
       better-sqlite3:
         specifier: ^11.10.0
         version: 11.10.0

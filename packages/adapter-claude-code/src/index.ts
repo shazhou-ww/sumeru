@@ -1,4 +1,5 @@
 export { createClaudeCodeAdapter } from "./adapter.js";
+export { manifest } from "./manifest.js";
 export { defaultStreamingSpawn } from "./spawn.js";
 export {
 	doneValueFromResultLine,

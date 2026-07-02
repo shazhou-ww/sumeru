@@ -31,7 +31,7 @@ function writeHostFixture(rootDir: string, maxRunning = 2): void {
 			"name: claude-code",
 			"persona: default-persona",
 			"model: default-model",
-			"image: sumeru/claude-code:dev",
+			"adapter: claude-code",
 		].join("\n"),
 	);
 	const prototypeDir = join(rootDir, "prototypes", "claude-code");

@@ -65,8 +65,8 @@ export type Persona = {
 export type Prototype = {
 	name: string;
 	persona: string;
-	model: string;
-	image: string;
+	model: string | null;
+	adapter: string;
 	defaults: {
 		maxTurns: number;
 		timeout: number;

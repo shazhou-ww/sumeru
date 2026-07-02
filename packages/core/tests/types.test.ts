@@ -43,8 +43,9 @@ describe("@sumeru/core — v3 type set conformance", () => {
 
 		const prototype: Prototype = {
 			name: "software-engineer",
-			instructions: "You are a TypeScript engineer.",
-			skills: ["test-driven-development"],
+			persona: "default",
+			model: "claude-sonnet-4",
+			adapter: "claude-code",
 			defaults: {
 				maxTurns: 40,
 				timeout: 7_200_000,
@@ -109,15 +110,6 @@ describe("@sumeru/core — v3 type set conformance", () => {
 			maxRunning: 3,
 			workspaceRoot: "/home/azureuser/repos",
 			envFile: "~/.config/sumeru/.env",
-			models: {
-				anthropic: {
-					baseUrl: "https://api.anthropic.com",
-					apiKey: "sk-ant-test",
-				},
-				openai: null,
-				openrouter: null,
-			},
-			resourceLimits: { maxCpu: 4, maxMemory: "16G" },
 			defaults: {
 				timeout: 7_200_000,
 				maxTurns: 40,
@@ -130,7 +122,7 @@ describe("@sumeru/core — v3 type set conformance", () => {
 		expect(customProvider.apiType).toBe("openai");
 		expect(modelConfig.apiKey).toBeNull();
 		expect(modelWithCustom.provider).toEqual(customProvider);
-		expect(prototype.skills).toEqual(["test-driven-development"]);
+		expect(prototype.adapter).toBe("claude-code");
 		expect(sessionStatus).toBe("running");
 		expect(exitComplete.type).toBe("complete");
 		expect(exitTimeout.type).toBe("timeout");

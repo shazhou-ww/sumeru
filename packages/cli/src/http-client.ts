@@ -37,8 +37,8 @@ export type PrototypeDetail = {
 	prototype: {
 		name: string;
 		persona: string;
-		model: string;
-		image: string;
+		model: string | null;
+		adapter: string;
 		defaults: {
 			maxTurns: number;
 			timeout: number;
@@ -91,11 +91,11 @@ export type HostClient = {
 	getPrototype(name: string): Promise<Envelope<PrototypeDetail>>;
 	addPrototype(
 		name: string,
-		body: { persona: string; model: string; image: string },
+		body: { persona: string; model: string; adapter: string },
 	): Promise<Envelope<PrototypeDetail>>;
 	updatePrototype(
 		name: string,
-		body: { persona?: string; model?: string; image?: string },
+		body: { persona?: string; model?: string; adapter?: string },
 	): Promise<Envelope<PrototypeDetail>>;
 	removePrototype(name: string): Promise<void>;
 

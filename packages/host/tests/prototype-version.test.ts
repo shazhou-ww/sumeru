@@ -27,6 +27,7 @@ function writePrototypeFixture(
 		persona?: string;
 		model?: string;
 		image?: string;
+		adapter?: string;
 	} = {},
 ): { yamlPath: string; skillsDir: string; composePath: string } {
 	const dataDir = join(rootDir, "data");
@@ -42,7 +43,7 @@ function writePrototypeFixture(
 			"name: claude-code",
 			`persona: ${options.persona ?? "default-persona"}`,
 			`model: ${options.model ?? "default-model"}`,
-			`image: ${options.image ?? "sumeru/claude-code:dev"}`,
+			`adapter: ${options.adapter ?? "claude-code"}`,
 		].join("\n"),
 	);
 	const legacyPrototypeDir = join(rootDir, "prototypes", "claude-code");
@@ -136,7 +137,7 @@ describe("computePrototypeHash", () => {
 				"name: claude-code",
 				"persona: persona-v2",
 				"model: default-model",
-				"image: sumeru/claude-code:dev",
+				"adapter: claude-code",
 			].join("\n"),
 		);
 		prototype.prototype.persona = "persona-v2";
@@ -170,7 +171,7 @@ describe("computePrototypeHash", () => {
 				"name: claude-code",
 				"persona: default-persona",
 				"model: model-v2",
-				"image: sumeru/claude-code:dev",
+				"adapter: claude-code",
 			].join("\n"),
 		);
 		prototype.prototype.model = "model-v2";
@@ -253,7 +254,7 @@ describe("prototype lazy re-init", () => {
 				"name: claude-code",
 				"persona: persona-v2",
 				"model: default-model",
-				"image: sumeru/claude-code:dev",
+				"adapter: claude-code",
 			].join("\n"),
 		);
 		hostConfig.sqliteStore.createPersona({

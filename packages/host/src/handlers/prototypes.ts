@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Prototype } from "@sumeru/core";
+import { getAdapterManifest } from "../adapter-registry.js";
 import {
 	reloadPrototypeInConfig,
 	removePrototypeFromConfig,
@@ -142,20 +143,36 @@ async function upsertPrototype(
 		);
 		return;
 	}
-	const model = hostConfig.sqliteStore.getModel(prototype.model);
-	if (model === null) {
+	const manifest = getAdapterManifest(prototype.adapter);
+	if (manifest === null) {
 		writeJson(
 			res,
 			400,
-			errorEnvelope("model_not_found", `Model ${prototype.model} not found`),
+			errorEnvelope(
+				"adapter_not_found",
+				`Adapter ${prototype.adapter} not found`,
+			),
 		);
 		return;
 	}
-	if (!hostConfig.images.has(prototype.image)) {
+	if (prototype.model !== null) {
+		const model = hostConfig.sqliteStore.getModel(prototype.model);
+		if (model === null) {
+			writeJson(
+				res,
+				400,
+				errorEnvelope("model_not_found", `Model ${prototype.model} not found`),
+			);
+			return;
+		}
+	} else if (manifest.providerMode !== "builtin-only") {
 		writeJson(
 			res,
 			400,
-			errorEnvelope("image_not_found", `Image ${prototype.image} not found`),
+			errorEnvelope(
+				"model_required",
+				`Prototype ${prototype.name} requires a model for adapter ${prototype.adapter}`,
+			),
 		);
 		return;
 	}

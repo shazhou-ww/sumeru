@@ -164,28 +164,28 @@ describe("skills and prototypes CRUD routes", () => {
 				name: "worker",
 				persona: "worker-persona",
 				model: "test-model",
-				image: "worker",
+				adapter: "sarsapa",
 				defaults: null,
 			}),
 		);
 		expect(createPrototype.status).toBe(201);
 
-		const missingImage = await request(
+		const missingAdapter = await request(
 			server,
 			"POST",
-			"/prototypes/bad-image",
+			"/prototypes/bad-adapter",
 			JSON.stringify({
-				name: "bad-image",
+				name: "bad-adapter",
 				persona: "worker-persona",
 				model: "test-model",
-				image: "missing-image",
+				adapter: "missing-adapter",
 				defaults: null,
 			}),
 		);
-		expect(missingImage.status).toBe(400);
+		expect(missingAdapter.status).toBe(400);
 		expect(
-			(missingImage.body as { value: { error: string } }).value.error,
-		).toBe("image_not_found");
+			(missingAdapter.body as { value: { error: string } }).value.error,
+		).toBe("adapter_not_found");
 
 		const missingPersona = await request(
 			server,
@@ -195,7 +195,7 @@ describe("skills and prototypes CRUD routes", () => {
 				name: "bad",
 				persona: "missing",
 				model: "test-model",
-				image: "worker",
+				adapter: "sarsapa",
 				defaults: null,
 			}),
 		);

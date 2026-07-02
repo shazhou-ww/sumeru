@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve as pathResolve, sep } from "node:path";
-import type { SkillContent } from "@sumeru/adapter-core";
+import type { ProviderMode, SkillContent } from "@sumeru/adapter-core";
 import type {
 	CustomProvider,
 	HostConfig,
@@ -242,13 +242,28 @@ const DEFAULT_ENDPOINTS: Record<ProviderApiType, string> = {
 
 export function resolveSessionModel(
 	sqliteStore: SqliteStore,
-	prototypeModelId: string,
+	prototypeModelId: string | null,
 	override: SessionModelOverride,
+	providerMode: ProviderMode,
 ): ModelConfig {
+	if (
+		providerMode === "builtin-only" &&
+		prototypeModelId === null &&
+		override === null
+	) {
+		return {
+			provider: { name: "builtin", endpoint: "", apiType: "openai" },
+			name: "auto",
+			apiKey: null,
+		};
+	}
 	if (override !== null && typeof override !== "string") {
 		return { provider: override.provider, name: override.name, apiKey: null };
 	}
 	const modelId = typeof override === "string" ? override : prototypeModelId;
+	if (modelId === null) {
+		throw new Error("model_required");
+	}
 	const model = sqliteStore.getModel(modelId);
 	if (model === null) {
 		throw new Error(`model_not_found:${modelId}`);
@@ -393,7 +408,9 @@ export function parseDotenvContent(raw: string): Record<string, string> {
 	return result;
 }
 
-async function loadEnvFile(envFilePath: string): Promise<Record<string, string>> {
+async function loadEnvFile(
+	envFilePath: string,
+): Promise<Record<string, string>> {
 	const expanded = expandHome(envFilePath);
 	try {
 		const raw = await readFile(expanded, "utf-8");

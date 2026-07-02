@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import type { CliContext, CommandAction, ParsedFlags } from "@ocas/cli-kit";
 import { createCLI } from "@ocas/cli-kit";
 import { z } from "zod";
+import { parseEnvFlagsFromArgv } from "./env-flags.js";
 import {
 	formatDockerImagesOutput,
 	formatHostStatus,
@@ -26,7 +27,6 @@ import {
 	resolvePidFilePath,
 	writePidFile,
 } from "./pid-file.js";
-import { parseEnvFlagsFromArgv } from "./env-flags.js";
 import { runSetup } from "./setup.js";
 
 // ─── Shared schemas ─────────────────────────────────────────────────────
@@ -515,10 +515,10 @@ cli
 		z.object({
 			name: z.string(),
 			persona: z.string(),
-			model: z.string(),
-			image: z.string(),
+			model: z.string().nullable(),
+			adapter: z.string(),
 		}),
-		"{{name}} persona={{persona}} model={{model}} image={{image}}",
+		"{{name}} persona={{persona}} model={{model}} adapter={{adapter}}",
 	)
 	.action(async (args, flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
@@ -529,7 +529,7 @@ cli
 				name: p.name,
 				persona: p.persona,
 				model: p.model,
-				image: p.image,
+				adapter: p.adapter,
 			};
 		} catch (err) {
 			handleClientError(err, ctx);
@@ -542,18 +542,18 @@ cli
 	.describe("Register a new prototype")
 	.arg("name")
 	.flag("model", { type: "string" })
-	.flag("image", { type: "string" })
+	.flag("adapter", { type: "string" })
 	.flag("persona", { type: "string", default: "default" })
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
 	.returns(nameSchema, "{{name}}")
 	.action(async (args, flags, ctx) => {
 		const model = flags.model as string | undefined;
-		const image = flags.image as string | undefined;
+		const adapter = flags.adapter as string | undefined;
 		const persona = (flags.persona as string) ?? "default";
-		if (!model || !image) {
+		if (!model || !adapter) {
 			ctx.error(
-				"Usage: sumeru prototype add <name> --model <model-id> --image <image-name> [--persona <name>]",
+				"Usage: sumeru prototype add <name> --model <model-id> --adapter <adapter-name> [--persona <name>]",
 			);
 		}
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
@@ -561,7 +561,7 @@ cli
 			const envelope = await client.addPrototype(args.name, {
 				persona,
 				model: model!,
-				image: image!,
+				adapter: adapter!,
 			});
 			return { name: envelope.value.name };
 		} catch (err) {
@@ -575,7 +575,7 @@ cli
 	.describe("Update a prototype")
 	.arg("name")
 	.flag("model", { type: "string" })
-	.flag("image", { type: "string" })
+	.flag("adapter", { type: "string" })
 	.flag("persona", { type: "string" })
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
@@ -583,7 +583,7 @@ cli
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
 		if (flags.model !== undefined) body.model = flags.model;
-		if (flags.image !== undefined) body.image = flags.image;
+		if (flags.adapter !== undefined) body.adapter = flags.adapter;
 		if (flags.persona !== undefined) body.persona = flags.persona;
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {

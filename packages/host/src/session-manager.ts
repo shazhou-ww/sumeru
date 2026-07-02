@@ -5,6 +5,7 @@ import type {
 	TurnValue,
 } from "@sumeru/adapter-core";
 import type { ExitSignal, SessionInfo, TokenUsage, Turn } from "@sumeru/core";
+import { getProviderMode } from "./adapter-registry.js";
 import {
 	extractImageFromCompose,
 	loadPrototypeInitSkills,
@@ -150,6 +151,7 @@ export function createSessionManager(input: {
 			input.hostConfig.sqliteStore,
 			prototype.prototype.model,
 			body.model,
+			getProviderMode(prototype.prototype.adapter),
 		);
 		const image = await extractImageFromCompose(prototype.composePath);
 		const sessionEnv = await mergeSessionEnv(
@@ -286,11 +288,13 @@ export function createSessionManager(input: {
 		}
 		if (body.model !== null) {
 			const prototypeInfo = input.hostConfig.prototypes.get(record.prototype);
-			const protoModelId = prototypeInfo?.prototype.model ?? "";
+			const protoModelId = prototypeInfo?.prototype.model ?? null;
+			const adapterName = prototypeInfo?.prototype.adapter ?? record.prototype;
 			const nextModel = resolveSessionModel(
 				input.hostConfig.sqliteStore,
 				protoModelId,
 				body.model,
+				getProviderMode(adapterName),
 			);
 			if (modelConfigChanged(record.model, nextModel)) {
 				record.model = nextModel;

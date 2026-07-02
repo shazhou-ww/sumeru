@@ -1,4 +1,5 @@
 export { createSarsapaAdapter } from "./agent.js";
+export { manifest } from "./manifest.js";
 export type {
 	LlmMessage,
 	LlmRole,

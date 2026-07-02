@@ -60,6 +60,30 @@ export type AdapterImpl = {
 	getNativeId?: () => string | null;
 };
 
+// === Adapter manifest (static capability declaration) ===
+
+// How an adapter obtains LLM access.
+//   custom-only  — no built-in provider; user must configure Provider + Model
+//                  entities (e.g. sarsapa).
+//   both         — has a built-in provider but can also point to a custom one
+//                  (e.g. claude-code, codex).
+//   builtin-only — only uses the platform's built-in provider; Provider/Model
+//                  entities are not needed (e.g. cursor-agent, hermes).
+export type ProviderMode = "custom-only" | "both" | "builtin-only";
+
+// Static manifest exported by each adapter package. Declares the adapter's
+// capabilities so the Host can validate prototype configs and skip
+// unnecessary Provider/Model lookups for builtin-only adapters.
+export type AdapterManifest = {
+	name: string;
+	providerMode: ProviderMode;
+	// Env var that carries the platform credential (e.g. "CURSOR_API_KEY").
+	// Required for builtin-only and both; omitted for custom-only.
+	credentialEnv: string | null;
+	// Whether the adapter supports listing built-in models (Phase 4).
+	listModels: boolean | null;
+};
+
 // === NDJSON wire frames ===
 
 // Inbound frames read from stdin (discriminated union on `type`).

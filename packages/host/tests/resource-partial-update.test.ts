@@ -237,7 +237,7 @@ describe("resource partial update routes", () => {
 						name: "worker",
 						persona: "worker-persona",
 						model: "test-model",
-						image: "worker",
+						adapter: "sarsapa",
 						defaults: null,
 					}),
 				)
@@ -248,14 +248,14 @@ describe("resource partial update routes", () => {
 			server,
 			"PUT",
 			"/prototypes/worker",
-			JSON.stringify({ image: "worker-v2" }),
+			JSON.stringify({ adapter: "claude-code" }),
 		);
 		expect(partialPrototype.status).toBe(200);
 		expect(envelopeValue(partialPrototype.body)).toMatchObject({
 			name: "worker",
 			persona: "worker-persona",
 			model: "test-model",
-			image: "worker-v2",
+			adapter: "claude-code",
 			defaults: null,
 		});
 	});

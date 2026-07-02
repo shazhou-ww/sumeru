@@ -134,7 +134,7 @@ export async function runSetup(input: SetupInput): Promise<void> {
 	if (!existsSync(protoYamlPath)) {
 		writeFileSync(
 			protoYamlPath,
-			`name: sarsapa\npersona: default\nmodel: ${modelId}\nimage: sarsapa\n`,
+			`name: sarsapa\npersona: default\nmodel: ${modelId}\nadapter: sarsapa\n`,
 		);
 		actions.push("created data/prototypes/sarsapa.yaml");
 	}
@@ -257,7 +257,7 @@ export async function runSetup(input: SetupInput): Promise<void> {
 	// ── Prototype (file already created above, just update image ref) ─
 	if (imageRegistered) {
 		// Ensure prototype yaml references the correct image name
-		const updatedProto = `name: sarsapa\npersona: default\nmodel: ${modelId}\nimage: sarsapa\n`;
+		const updatedProto = `name: sarsapa\npersona: default\nmodel: ${modelId}\nadapter: sarsapa\n`;
 		writeFileSync(protoYamlPath, updatedProto);
 		process.stdout.write(`  ✓ Prototype "sarsapa" ready (image: sarsapa)\n`);
 	}
