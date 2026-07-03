@@ -38,6 +38,9 @@ export async function runImageBuild(
 	const buildDir = join(options.repoRoot, ".build");
 	const packagesDir = join(buildDir, "packages");
 
+	// Ensure base image exists (all adapters depend on it)
+	await ensureBaseImage(options.repoRoot);
+
 	await rm(buildDir, { recursive: true, force: true });
 	await mkdir(packagesDir, { recursive: true });
 
@@ -184,4 +187,45 @@ function inspectImageDigest(tag: string): string {
 		throw new Error(`docker inspect returned empty digest for ${tag}`);
 	}
 	return digest;
+}
+
+const BASE_IMAGE_TAG = "sumeru/base:dev";
+
+async function ensureBaseImage(repoRoot: string): Promise<void> {
+	// Check if base image already exists
+	const check = spawnSync("docker", ["image", "inspect", BASE_IMAGE_TAG], {
+		encoding: "utf-8",
+		stdio: "pipe",
+	});
+	if (check.status === 0) {
+		return; // base image already exists
+	}
+
+	// Build base image
+	const baseDockerfile = join(repoRoot, "packages/base/Dockerfile");
+	try {
+		await access(baseDockerfile);
+	} catch {
+		throw new Error(
+			`Base Dockerfile not found at ${baseDockerfile}. Cannot build adapter images without base.`,
+		);
+	}
+
+	const buildResult = spawnSync(
+		"docker",
+		["build", "-t", BASE_IMAGE_TAG, "-f", baseDockerfile, "."],
+		{
+			cwd: repoRoot,
+			encoding: "utf-8",
+			stdio: "inherit",
+		},
+	);
+	if (buildResult.error !== undefined) {
+		throw new Error(`base image build failed: ${buildResult.error.message}`);
+	}
+	if (buildResult.status !== 0) {
+		throw new Error(
+			`base image build exited with code ${String(buildResult.status)}`,
+		);
+	}
 }
