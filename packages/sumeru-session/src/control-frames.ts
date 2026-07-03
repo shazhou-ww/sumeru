@@ -8,6 +8,7 @@ export type ModelControlValue = {
 	baseUrl: string;
 	apiKey: string | null;
 	model: string;
+	provider: string | null;
 };
 
 export type InstallSkillControlValue = {
@@ -51,10 +52,19 @@ function parseModelValue(value: unknown): ModelControlValue | null {
 	if (typeof value.model !== "string") return null;
 	const apiKey = value.apiKey;
 	if (apiKey !== null && typeof apiKey !== "string") return null;
+	const provider = value.provider;
+	if (
+		provider !== null &&
+		provider !== undefined &&
+		typeof provider !== "string"
+	) {
+		return null;
+	}
 	return {
 		baseUrl: value.baseUrl,
 		apiKey: apiKey as string | null,
 		model: value.model,
+		provider: typeof provider === "string" ? provider : null,
 	};
 }
 
@@ -90,7 +100,7 @@ async function resetHarnessState(
 	}
 }
 
-async function writeModelConfig(
+async function writeDefaultModelConfig(
 	harness: HarnessConfig,
 	value: ModelControlValue,
 ): Promise<void> {
@@ -101,6 +111,7 @@ async function writeModelConfig(
 		baseUrl: value.baseUrl,
 		apiKey: value.apiKey,
 		model: value.model,
+		provider: value.provider,
 	};
 	await writeFile(
 		harness.modelConfigPath,
@@ -109,7 +120,18 @@ async function writeModelConfig(
 	);
 }
 
-async function installSkill(
+async function writeModelConfig(
+	harness: HarnessConfig,
+	value: ModelControlValue,
+): Promise<void> {
+	if (harness.writeModelConfig !== null) {
+		await harness.writeModelConfig(value);
+		return;
+	}
+	await writeDefaultModelConfig(harness, value);
+}
+
+async function installDefaultSkill(
 	harness: HarnessConfig,
 	value: InstallSkillControlValue,
 ): Promise<void> {
@@ -124,6 +146,17 @@ async function installSkill(
 		await mkdir(dirname(filePath), { recursive: true });
 		await writeFile(filePath, file.content, "utf8");
 	}
+}
+
+async function installSkill(
+	harness: HarnessConfig,
+	value: InstallSkillControlValue,
+): Promise<void> {
+	if (harness.installSkill !== null) {
+		await harness.installSkill(value);
+		return;
+	}
+	await installDefaultSkill(harness, value);
 }
 
 export async function handleControlFrame(

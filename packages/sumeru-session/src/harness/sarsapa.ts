@@ -5,4 +5,6 @@ export const sarsapaHarness: HarnessConfig = {
 	modelConfigPath: null,
 	personaPath: null,
 	skillsDir: null,
+	writeModelConfig: null,
+	installSkill: null,
 };

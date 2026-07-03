@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DetectedAdapter } from "../detect.js";
+import { codexHarness } from "./codex.js";
 import { sarsapaHarness } from "./sarsapa.js";
 import type { HarnessConfig } from "./types.js";
 
@@ -19,6 +20,8 @@ function homeHarness(options: {
 			options.modelConfigPath === null
 				? null
 				: join(home, options.modelConfigPath),
+		writeModelConfig: null,
+		installSkill: null,
 	};
 }
 
@@ -42,12 +45,7 @@ const HARNESS_BY_ADAPTER: Record<DetectedAdapter, HarnessConfig> = {
 		skillsSubdir: ".cursor/skills",
 		modelConfigPath: null,
 	}),
-	codex: homeHarness({
-		resetPaths: [".codex"],
-		personaFile: "AGENTS.md",
-		skillsSubdir: ".codex/skills",
-		modelConfigPath: null,
-	}),
+	codex: codexHarness,
 };
 
 export function getHarnessConfig(adapter: DetectedAdapter): HarnessConfig {

@@ -15,6 +15,7 @@ import {
 	isControlFrameType,
 } from "../src/control-frames.js";
 import { runSessionEntry } from "../src/entrypoint.js";
+import { codexHarness, formatCodexModelConfig } from "../src/harness/codex.js";
 import { getHarnessConfig } from "../src/harness/index.js";
 import { sarsapaHarness } from "../src/harness/sarsapa.js";
 
@@ -148,6 +149,8 @@ describe("handleControlFrame — hermes paths", () => {
 			modelConfigPath: null,
 			personaPath: join(root, "SOUL.md"),
 			skillsDir: null,
+			writeModelConfig: null,
+			installSkill: null,
 		};
 		const stateFile = join(root, "state", "session.json");
 		mkdirSync(join(root, "state"), { recursive: true });
@@ -170,7 +173,113 @@ describe("handleControlFrame — hermes paths", () => {
 			modelConfigPath: null,
 			personaPath: null,
 			skillsDir: join(root, "skills"),
+			writeModelConfig: null,
+			installSkill: null,
 		};
+
+		await handleControlFrame(harness, {
+			type: "install-skill",
+			value: {
+				name: "tdd",
+				content: "Write tests first.",
+				files: [{ path: "refs/guide.md", content: "Guide body" }],
+			},
+		});
+
+		expect(readFileSync(join(root, "skills", "tdd", "SKILL.md"), "utf8")).toBe(
+			"Write tests first.",
+		);
+		expect(
+			readFileSync(join(root, "skills", "tdd", "refs", "guide.md"), "utf8"),
+		).toBe("Guide body");
+	});
+});
+
+describe("handleControlFrame — codex paths", () => {
+	const tempDirs: Array<string> = [];
+
+	afterEach(() => {
+		for (const dir of tempDirs) {
+			rmSync(dir, { recursive: true, force: true });
+		}
+		tempDirs.length = 0;
+	});
+
+	function makeCodexHarness(root: string) {
+		return {
+			resetPaths: [join(root, "sessions")],
+			modelConfigPath: join(root, "config.toml"),
+			personaPath: join(root, "instructions.md"),
+			skillsDir: join(root, "skills"),
+			writeModelConfig: async (value: {
+				baseUrl: string;
+				apiKey: string | null;
+				model: string;
+				provider: string | null;
+			}) => {
+				mkdirSync(root, { recursive: true });
+				writeFileSync(
+					join(root, "config.toml"),
+					formatCodexModelConfig(value),
+					"utf8",
+				);
+			},
+			installSkill: null,
+		};
+	}
+
+	it("clears sessions and writes instructions.md on reset", async () => {
+		const root = mkdtempSync(join(tmpdir(), "sumeru-session-codex-reset-"));
+		tempDirs.push(root);
+		const harness = makeCodexHarness(root);
+		const sessionFile = join(root, "sessions", "thread.json");
+		mkdirSync(join(root, "sessions"), { recursive: true });
+		writeFileSync(sessionFile, "{}", "utf8");
+		writeFileSync(join(root, "config.toml"), 'model = "old"\n', "utf8");
+
+		await handleControlFrame(harness, {
+			type: "reset",
+			value: { persona: "You are Codex." },
+		});
+
+		expect(readFileSync(join(root, "instructions.md"), "utf8")).toBe(
+			"You are Codex.",
+		);
+		expect(() => readFileSync(sessionFile, "utf8")).toThrow();
+		expect(readFileSync(join(root, "config.toml"), "utf8")).toBe(
+			'model = "old"\n',
+		);
+	});
+
+	it("writes TOML model config with bridge provider defaults", async () => {
+		const root = mkdtempSync(join(tmpdir(), "sumeru-session-codex-model-"));
+		tempDirs.push(root);
+		const harness = makeCodexHarness(root);
+
+		await handleControlFrame(harness, {
+			type: "model",
+			value: {
+				baseUrl: "http://127.0.0.1:4142/v1",
+				apiKey: "sk-test",
+				model: "claude-sonnet-4.6",
+				provider: "bridge",
+			},
+		});
+
+		expect(readFileSync(join(root, "config.toml"), "utf8")).toBe(
+			formatCodexModelConfig({
+				baseUrl: "http://127.0.0.1:4142/v1",
+				apiKey: "sk-test",
+				model: "claude-sonnet-4.6",
+				provider: "bridge",
+			}),
+		);
+	});
+
+	it("installs skills under .codex/skills/<name>/SKILL.md", async () => {
+		const root = mkdtempSync(join(tmpdir(), "sumeru-session-codex-skill-"));
+		tempDirs.push(root);
+		const harness = makeCodexHarness(root);
 
 		await handleControlFrame(harness, {
 			type: "install-skill",
@@ -306,5 +415,19 @@ describe("runSessionEntry", () => {
 describe("getHarnessConfig", () => {
 	it("returns sarsapa no-op paths", () => {
 		expect(getHarnessConfig("sarsapa")).toEqual(sarsapaHarness);
+	});
+
+	it("returns codex harness with TOML writer and session reset path", () => {
+		expect(getHarnessConfig("codex")).toEqual(codexHarness);
+		expect(getHarnessConfig("codex").writeModelConfig).not.toBeNull();
+		expect(getHarnessConfig("codex").resetPaths).toEqual(
+			codexHarness.resetPaths,
+		);
+		expect(getHarnessConfig("codex").personaPath).toBe(
+			codexHarness.personaPath,
+		);
+		expect(getHarnessConfig("codex").modelConfigPath).toBe(
+			codexHarness.modelConfigPath,
+		);
 	});
 });
