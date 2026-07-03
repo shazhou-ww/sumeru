@@ -3,7 +3,7 @@
  * via Hermes ACP (`hermes acp --accept-hooks`) JSON-RPC over stdin/stdout.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -79,11 +79,17 @@ export function createHermesAdapter(
 			await mkdir(skillDir, { recursive: true });
 			await writeFile(join(skillDir, "SKILL.md"), skill.content, "utf8");
 		}
-		await writeFile(
-			join(hermesDir, "config.yaml"),
-			buildHermesConfig(config.model),
-			"utf8",
-		);
+		// Only write config.yaml if it doesn't already exist.
+		// sumeru-session's model/reset commands manage this file when present;
+		// adapter should not overwrite their configuration.
+		const configPath = join(hermesDir, "config.yaml");
+		try {
+			await access(configPath);
+			// config.yaml exists (written by sumeru-session) — skip
+		} catch {
+			// config.yaml missing — write initial config from init frame
+			await writeFile(configPath, buildHermesConfig(config.model), "utf8");
+		}
 	}
 
 	async function init(config: AdapterInitConfig): Promise<void> {
