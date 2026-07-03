@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DetectedAdapter } from "../detect.js";
 import { codexHarness } from "./codex.js";
+import { hermesHarness } from "./hermes.js";
 import { sarsapaHarness } from "./sarsapa.js";
 import type { HarnessConfig } from "./types.js";
 
@@ -27,12 +28,7 @@ function homeHarness(options: {
 
 const HARNESS_BY_ADAPTER: Record<DetectedAdapter, HarnessConfig> = {
 	sarsapa: sarsapaHarness,
-	hermes: homeHarness({
-		resetPaths: [".hermes"],
-		personaFile: ".hermes/SOUL.md",
-		skillsSubdir: ".hermes/skills",
-		modelConfigPath: ".hermes/config.yaml",
-	}),
+	hermes: hermesHarness,
 	"claude-code": homeHarness({
 		resetPaths: [".claude"],
 		personaFile: "CLAUDE.md",

@@ -16,6 +16,10 @@ import {
 } from "../src/control-frames.js";
 import { runSessionEntry } from "../src/entrypoint.js";
 import { codexHarness, formatCodexModelConfig } from "../src/harness/codex.js";
+import {
+	formatHermesModelConfig,
+	hermesHarness,
+} from "../src/harness/hermes.js";
 import { getHarnessConfig } from "../src/harness/index.js";
 import { sarsapaHarness } from "../src/harness/sarsapa.js";
 
@@ -131,6 +135,114 @@ describe("handleControlFrame — sarsapa", () => {
 	});
 });
 
+describe("formatHermesModelConfig", () => {
+	it("writes simple format for a known provider", () => {
+		expect(
+			formatHermesModelConfig({
+				baseUrl: "https://api.anthropic.com",
+				apiKey: "sk-test",
+				model: "claude-sonnet-4.6",
+				provider: "anthropic",
+			}),
+		).toBe(
+			[
+				"model:",
+				"  provider: anthropic",
+				"  default: claude-sonnet-4.6",
+				"  api_key: sk-test",
+				"",
+			].join("\n"),
+		);
+	});
+
+	it("omits api_key for a known provider when apiKey is null", () => {
+		expect(
+			formatHermesModelConfig({
+				baseUrl: "https://openrouter.ai/api/v1",
+				apiKey: null,
+				model: "anthropic/claude-sonnet-4",
+				provider: "openrouter",
+			}),
+		).toBe(
+			[
+				"model:",
+				"  provider: openrouter",
+				"  default: anthropic/claude-sonnet-4",
+				"",
+			].join("\n"),
+		);
+	});
+
+	it("writes custom_providers for bridge-style proxy config", () => {
+		expect(
+			formatHermesModelConfig({
+				baseUrl: "http://127.0.0.1:4142/v1",
+				apiKey: "sk-test",
+				model: "claude-sonnet-4.6",
+				provider: "copilot-bridge",
+			}),
+		).toBe(
+			[
+				"custom_providers:",
+				"  - name: copilot-bridge",
+				'    base_url: "http://127.0.0.1:4142/v1"',
+				"    api_mode: chat_completions",
+				"    api_key: sk-test",
+				"model:",
+				"  provider: custom:copilot-bridge",
+				"  default: claude-sonnet-4.6",
+				"",
+			].join("\n"),
+		);
+	});
+
+	it("auto-appends /v1 to custom provider base_url when missing", () => {
+		expect(
+			formatHermesModelConfig({
+				baseUrl: "http://host.docker.internal:4141",
+				apiKey: "sk-test",
+				model: "claude-opus-4.6",
+				provider: "proxy",
+			}),
+		).toBe(
+			[
+				"custom_providers:",
+				"  - name: proxy",
+				'    base_url: "http://host.docker.internal:4141/v1"',
+				"    api_mode: chat_completions",
+				"    api_key: sk-test",
+				"model:",
+				"  provider: custom:proxy",
+				"  default: claude-opus-4.6",
+				"",
+			].join("\n"),
+		);
+	});
+
+	it("defaults custom provider name to bridge when provider is null", () => {
+		expect(
+			formatHermesModelConfig({
+				baseUrl: "http://127.0.0.1:4142/v1",
+				apiKey: "sk-test",
+				model: "claude-sonnet-4.6",
+				provider: null,
+			}),
+		).toBe(
+			[
+				"custom_providers:",
+				"  - name: bridge",
+				'    base_url: "http://127.0.0.1:4142/v1"',
+				"    api_mode: chat_completions",
+				"    api_key: sk-test",
+				"model:",
+				"  provider: custom:bridge",
+				"  default: claude-sonnet-4.6",
+				"",
+			].join("\n"),
+		);
+	});
+});
+
 describe("handleControlFrame — hermes paths", () => {
 	const tempDirs: Array<string> = [];
 
@@ -176,6 +288,112 @@ describe("handleControlFrame — hermes paths", () => {
 			writeModelConfig: null,
 			installSkill: null,
 		};
+
+		await handleControlFrame(harness, {
+			type: "install-skill",
+			value: {
+				name: "tdd",
+				content: "Write tests first.",
+				files: [{ path: "refs/guide.md", content: "Guide body" }],
+			},
+		});
+
+		expect(readFileSync(join(root, "skills", "tdd", "SKILL.md"), "utf8")).toBe(
+			"Write tests first.",
+		);
+		expect(
+			readFileSync(join(root, "skills", "tdd", "refs", "guide.md"), "utf8"),
+		).toBe("Guide body");
+	});
+});
+
+describe("handleControlFrame — hermes harness", () => {
+	const tempDirs: Array<string> = [];
+
+	afterEach(() => {
+		for (const dir of tempDirs) {
+			rmSync(dir, { recursive: true, force: true });
+		}
+		tempDirs.length = 0;
+	});
+
+	function makeHermesHarness(root: string) {
+		return {
+			resetPaths: [join(root, "sessions")],
+			modelConfigPath: join(root, "config.yaml"),
+			personaPath: join(root, "SOUL.md"),
+			skillsDir: join(root, "skills"),
+			writeModelConfig: async (value: {
+				baseUrl: string;
+				apiKey: string | null;
+				model: string;
+				provider: string | null;
+			}) => {
+				mkdirSync(root, { recursive: true });
+				writeFileSync(
+					join(root, "config.yaml"),
+					formatHermesModelConfig(value),
+					"utf8",
+				);
+			},
+			installSkill: null,
+		};
+	}
+
+	it("clears sessions and writes SOUL.md on reset", async () => {
+		const root = mkdtempSync(join(tmpdir(), "sumeru-session-hermes-reset-"));
+		tempDirs.push(root);
+		const harness = makeHermesHarness(root);
+		const sessionFile = join(root, "sessions", "thread.json");
+		mkdirSync(join(root, "sessions"), { recursive: true });
+		writeFileSync(sessionFile, "{}", "utf8");
+		writeFileSync(
+			join(root, "config.yaml"),
+			"model:\n  provider: old\n",
+			"utf8",
+		);
+
+		await handleControlFrame(harness, {
+			type: "reset",
+			value: { persona: "You are Hermes." },
+		});
+
+		expect(readFileSync(join(root, "SOUL.md"), "utf8")).toBe("You are Hermes.");
+		expect(() => readFileSync(sessionFile, "utf8")).toThrow();
+		expect(readFileSync(join(root, "config.yaml"), "utf8")).toBe(
+			"model:\n  provider: old\n",
+		);
+	});
+
+	it("writes YAML model config for custom bridge provider", async () => {
+		const root = mkdtempSync(join(tmpdir(), "sumeru-session-hermes-model-"));
+		tempDirs.push(root);
+		const harness = makeHermesHarness(root);
+
+		await handleControlFrame(harness, {
+			type: "model",
+			value: {
+				baseUrl: "http://127.0.0.1:4142/v1",
+				apiKey: "sk-test",
+				model: "claude-sonnet-4.6",
+				provider: "copilot-bridge",
+			},
+		});
+
+		expect(readFileSync(join(root, "config.yaml"), "utf8")).toBe(
+			formatHermesModelConfig({
+				baseUrl: "http://127.0.0.1:4142/v1",
+				apiKey: "sk-test",
+				model: "claude-sonnet-4.6",
+				provider: "copilot-bridge",
+			}),
+		);
+	});
+
+	it("installs skills under .hermes/skills/<name>/SKILL.md", async () => {
+		const root = mkdtempSync(join(tmpdir(), "sumeru-session-hermes-skill-"));
+		tempDirs.push(root);
+		const harness = makeHermesHarness(root);
 
 		await handleControlFrame(harness, {
 			type: "install-skill",
@@ -429,5 +647,20 @@ describe("getHarnessConfig", () => {
 		expect(getHarnessConfig("codex").modelConfigPath).toBe(
 			codexHarness.modelConfigPath,
 		);
+	});
+
+	it("returns hermes harness with YAML writer and sessions reset path", () => {
+		expect(getHarnessConfig("hermes")).toEqual(hermesHarness);
+		expect(getHarnessConfig("hermes").writeModelConfig).not.toBeNull();
+		expect(getHarnessConfig("hermes").resetPaths).toEqual(
+			hermesHarness.resetPaths,
+		);
+		expect(getHarnessConfig("hermes").personaPath).toBe(
+			hermesHarness.personaPath,
+		);
+		expect(getHarnessConfig("hermes").modelConfigPath).toBe(
+			hermesHarness.modelConfigPath,
+		);
+		expect(getHarnessConfig("hermes").skillsDir).toBe(hermesHarness.skillsDir);
 	});
 });
