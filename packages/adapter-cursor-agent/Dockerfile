@@ -17,4 +17,5 @@ RUN cd /opt/sumeru && mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/adapter-cursor-agent node_modules/@sumeru/adapter-cursor-agent
 USER node
 WORKDIR /workspace
+LABEL sumeru.harness="cursor-agent"
 CMD ["sleep", "infinity"]

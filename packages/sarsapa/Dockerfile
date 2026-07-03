@@ -11,4 +11,5 @@ RUN cd /opt/sumeru && mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/sarsapa node_modules/@sumeru/sarsapa
 USER node
 WORKDIR /workspace
+LABEL sumeru.harness="sarsapa"
 CMD ["sleep", "infinity"]

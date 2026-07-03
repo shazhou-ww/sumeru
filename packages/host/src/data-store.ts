@@ -135,7 +135,14 @@ export async function loadPrototypeInfo(
 		prototype,
 	);
 	const composePath = await resolveLegacyComposePath(input.rootDir, name);
-	return { name, prototype, yamlPath, prototypeHash, composePath };
+	return {
+		name,
+		prototype,
+		yamlPath,
+		prototypeHash,
+		composePath,
+		imageTag: null,
+	};
 }
 
 async function resolveLegacyComposePath(

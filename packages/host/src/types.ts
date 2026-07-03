@@ -36,6 +36,7 @@ export type PrototypeInfo = {
 	yamlPath: string;
 	prototypeHash: string;
 	composePath: string | null;
+	imageTag: string | null;
 };
 
 export type AdapterInfo = {
@@ -70,7 +71,8 @@ export type LoadedHostConfig = {
 export type ManagedSession = SessionInfo & {
 	containerId: string | null;
 	projectName: string;
-	composePath: string;
+	composePath: string | null;
+	imageTag: string | null;
 	initVersion: string | null;
 	projectPath: string;
 	sessionEnv: Record<string, string>;
@@ -165,6 +167,14 @@ export type Transport = {
 		projectPath: string;
 		env: Record<string, string> | null;
 	}): Promise<TransportUpResult>;
+	upFromImage(input: {
+		containerName: string;
+		imageTag: string;
+		workDir: string;
+		projectPath: string;
+		cacheDir: string;
+		env: Record<string, string> | null;
+	}): Promise<TransportUpResult>;
 	down(input: {
 		projectName: string;
 		composePath: string;
@@ -175,6 +185,7 @@ export type Transport = {
 		composePath: string;
 		workDir: string;
 	}): Promise<void>;
+	rmContainer(containerId: string): Promise<void>;
 	/** Stop container without removing it (preserves writable layer). */
 	stop(containerId: string): Promise<void>;
 	/** Start a previously stopped container. */
@@ -192,6 +203,7 @@ export type Transport = {
 	commit(input: {
 		containerId: string;
 		tag: string;
+		labels: Record<string, string> | null;
 	}): Promise<{ imageId: string }>;
 	inspectStatus(containerId: string): Promise<"running" | "stopped">;
 };

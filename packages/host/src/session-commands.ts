@@ -8,6 +8,7 @@ import {
 	validateResourceName,
 	writePrototypeFile,
 } from "./data-store.js";
+import { snapshotImageLabels } from "./docker-prototypes.js";
 import { generateCommandId } from "./id.js";
 import { defaultAdapterCommand } from "./transport.js";
 import type {
@@ -137,9 +138,15 @@ export async function runSessionCommand(input: {
 			if (record.containerId === null) {
 				throw new Error("session_not_running");
 			}
+			const source = input.hostConfig.prototypes.get(record.prototype);
+			if (source === undefined) {
+				throw new Error("prototype_not_found");
+			}
+			const prototype = { ...source.prototype, name: input.command.name };
 			await input.transport.commit({
 				containerId: record.containerId,
 				tag: imageTag,
+				labels: snapshotImageLabels(prototype),
 			});
 			await registerSnapshotPrototype(
 				input.hostConfig,

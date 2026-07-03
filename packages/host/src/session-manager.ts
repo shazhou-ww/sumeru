@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type {
 	AdapterInitConfig,
 	InboxMessage,
@@ -150,8 +151,8 @@ export function createSessionManager(input: {
 		if (prototype === undefined) {
 			throw new Error("prototype_not_found");
 		}
-		if (prototype.composePath === null) {
-			throw new Error("prototype_no_compose");
+		if (prototype.composePath === null && prototype.imageTag === null) {
+			throw new Error("prototype_no_image");
 		}
 		const projectResolution = resolveProjectPath(
 			input.hostConfig.config.workspaceRoot,
@@ -167,7 +168,11 @@ export function createSessionManager(input: {
 			getProviderMode(prototype.prototype.adapter),
 			input.hostConfig.config.defaults?.model ?? null,
 		);
-		const image = await extractImageFromCompose(prototype.composePath);
+		const image =
+			prototype.imageTag ??
+			(prototype.composePath !== null
+				? await extractImageFromCompose(prototype.composePath)
+				: "unknown");
 		const sessionEnv = await mergeSessionEnv(
 			input.hostConfig.config.envFile,
 			body.env,
@@ -177,13 +182,23 @@ export function createSessionManager(input: {
 		const id = generateSessionId();
 		const projectName = projectNameFromSessionId(id);
 		try {
-			const up = await input.transport.up({
-				projectName,
-				composePath: prototype.composePath,
-				workDir: input.hostConfig.rootDir,
-				projectPath: projectResolution.projectPath,
-				env: sessionEnv,
-			});
+			const up =
+				prototype.composePath !== null
+					? await input.transport.up({
+							projectName,
+							composePath: prototype.composePath,
+							workDir: input.hostConfig.rootDir,
+							projectPath: projectResolution.projectPath,
+							env: sessionEnv,
+						})
+					: await input.transport.upFromImage({
+							containerName: projectName,
+							imageTag: prototype.imageTag as string,
+							workDir: input.hostConfig.rootDir,
+							projectPath: projectResolution.projectPath,
+							cacheDir: join(input.hostConfig.rootDir, "cache"),
+							env: sessionEnv,
+						});
 			const record: ManagedSession = {
 				id,
 				prototype: body.prototype,
@@ -198,6 +213,7 @@ export function createSessionManager(input: {
 				containerId: up.containerId,
 				projectName,
 				composePath: prototype.composePath,
+				imageTag: prototype.imageTag,
 				initVersion: null,
 				projectPath: projectResolution.projectPath,
 				sessionEnv,
@@ -211,16 +227,7 @@ export function createSessionManager(input: {
 			if (record !== undefined) {
 				stopAdapter(id);
 				try {
-					await input.transport.down({
-						projectName: record.projectName,
-						composePath: record.composePath,
-						workDir: input.hostConfig.rootDir,
-					});
-					await input.transport.rm({
-						projectName: record.projectName,
-						composePath: record.composePath,
-						workDir: input.hostConfig.rootDir,
-					});
+					await destroyContainer(record);
 				} catch {
 					// best-effort cleanup
 				}
@@ -268,21 +275,36 @@ export function createSessionManager(input: {
 		if (wasRunning) {
 			stopAdapter(id);
 		}
-		await input.transport.down({
-			projectName: record.projectName,
-			composePath: record.composePath,
-			workDir: input.hostConfig.rootDir,
-		});
-		await input.transport.rm({
-			projectName: record.projectName,
-			composePath: record.composePath,
-			workDir: input.hostConfig.rootDir,
-		});
+		await destroyContainer(record);
 		sessions.delete(id);
 		adapters.delete(id);
 		recorder.clear(id);
 		if (wasRunning) {
 			releaseRunningSlot();
+		}
+	}
+
+	async function destroyContainer(record: ManagedSession): Promise<void> {
+		if (record.composePath !== null) {
+			await input.transport.down({
+				projectName: record.projectName,
+				composePath: record.composePath,
+				workDir: input.hostConfig.rootDir,
+			});
+			await input.transport.rm({
+				projectName: record.projectName,
+				composePath: record.composePath,
+				workDir: input.hostConfig.rootDir,
+			});
+			return;
+		}
+		if (record.containerId !== null) {
+			try {
+				await input.transport.stop(record.containerId);
+			} catch {
+				// best-effort: container may already be stopped
+			}
+			await input.transport.rmContainer(record.containerId);
 		}
 	}
 

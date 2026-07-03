@@ -70,8 +70,14 @@ function createInitTrackingTransport(): {
 		async up(input) {
 			return { containerId: `container-${input.projectName}` };
 		},
+		async upFromImage(input) {
+			return { containerId: `container-${input.containerName}` };
+		},
 		async down() {},
 		async rm() {},
+		async rmContainer() {},
+		async stop() {},
+		async start() {},
 		exec(_input) {
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();

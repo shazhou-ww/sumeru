@@ -93,6 +93,54 @@ export function createDockerTransport(
 			return { containerId: firstContainer };
 		},
 
+		async upFromImage({
+			containerName,
+			imageTag,
+			workDir,
+			projectPath,
+			cacheDir,
+			env,
+		}) {
+			const runEnv: Record<string, string> = {
+				...(env ?? {}),
+				SUMERU_PROJECT_PATH: projectPath,
+			};
+			const args = [
+				dockerBin,
+				"run",
+				"-d",
+				"--name",
+				containerName,
+				"--network",
+				"host",
+				"-v",
+				`${projectPath}:${projectPath}`,
+				"-v",
+				`${cacheDir}/pnpm-store:/cache/pnpm-store`,
+				"-v",
+				`${cacheDir}/npm:/cache/npm`,
+				"-v",
+				`${cacheDir}/uv:/cache/uv`,
+				"-v",
+				`${cacheDir}/pip:/cache/pip`,
+				"-w",
+				"/workspace",
+			];
+			for (const [key, value] of Object.entries(runEnv)) {
+				args.push("-e", `${key}=${value}`);
+			}
+			args.push(imageTag);
+			const result = await runCommand(args, workDir);
+			if (result.exitCode !== 0) {
+				throw new Error(`docker run failed: ${result.stderr || result.stdout}`);
+			}
+			const containerId = result.stdout.trim();
+			if (containerId.length === 0) {
+				throw new Error("docker run succeeded but returned no container id");
+			}
+			return { containerId };
+		},
+
 		async down({ projectName, composePath, workDir }) {
 			const result = await runCommand(
 				[
@@ -133,6 +181,13 @@ export function createDockerTransport(
 				throw new Error(
 					`docker compose rm failed: ${result.stderr || result.stdout}`,
 				);
+			}
+		},
+
+		async rmContainer(containerId) {
+			const result = await runCommand([dockerBin, "rm", "-f", containerId]);
+			if (result.exitCode !== 0) {
+				throw new Error(`docker rm failed: ${result.stderr || result.stdout}`);
 			}
 		},
 
@@ -208,8 +263,15 @@ export function createDockerTransport(
 			return runCommand(args, null, env);
 		},
 
-		async commit({ containerId, tag }) {
-			const result = await runCommand([dockerBin, "commit", containerId, tag]);
+		async commit({ containerId, tag, labels }) {
+			const args = [dockerBin, "commit"];
+			if (labels !== null) {
+				for (const [key, value] of Object.entries(labels)) {
+					args.push("--change", `LABEL ${key}=${value}`);
+				}
+			}
+			args.push(containerId, tag);
+			const result = await runCommand(args);
 			if (result.exitCode !== 0) {
 				throw new Error(
 					`docker commit failed: ${result.stderr || result.stdout}`,
@@ -265,8 +327,18 @@ export type MockTransportCall =
 			projectPath: string;
 			env: Record<string, string> | null;
 	  }
+	| {
+			type: "upFromImage";
+			containerName: string;
+			imageTag: string;
+			workDir: string;
+			projectPath: string;
+			cacheDir: string;
+			env: Record<string, string> | null;
+	  }
 	| { type: "down"; projectName: string; composePath: string; workDir: string }
 	| { type: "rm"; projectName: string; composePath: string; workDir: string }
+	| { type: "rmContainer"; containerId: string }
 	| { type: "stop"; containerId: string }
 	| { type: "start"; containerId: string }
 	| {
@@ -281,7 +353,12 @@ export type MockTransportCall =
 			command: Array<string>;
 			env: Record<string, string> | null;
 	  }
-	| { type: "commit"; containerId: string; tag: string }
+	| {
+			type: "commit";
+			containerId: string;
+			tag: string;
+			labels: Record<string, string> | null;
+	  }
 	| { type: "inspectStatus"; containerId: string };
 
 export function createMockTransport(
@@ -309,11 +386,18 @@ export function createMockTransport(
 			calls.push({ type: "up", ...input });
 			return { containerId };
 		},
+		async upFromImage(input) {
+			calls.push({ type: "upFromImage", ...input });
+			return { containerId };
+		},
 		async down(input) {
 			calls.push({ type: "down", ...input });
 		},
 		async rm(input) {
 			calls.push({ type: "rm", ...input });
+		},
+		async rmContainer(containerIdArg) {
+			calls.push({ type: "rmContainer", containerId: containerIdArg });
 		},
 		async stop(containerIdArg) {
 			calls.push({ type: "stop", containerId: containerIdArg });

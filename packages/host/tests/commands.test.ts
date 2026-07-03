@@ -95,8 +95,12 @@ function createCommandsTransport(): {
 		async up(input) {
 			return { containerId: `container-${input.projectName}` };
 		},
+		async upFromImage(input) {
+			return { containerId: `container-${input.containerName}` };
+		},
 		async down() {},
 		async rm() {},
+		async rmContainer() {},
 		async stop() {},
 		async start() {},
 		exec({ containerId: _containerId, command: _command, env: _env }) {

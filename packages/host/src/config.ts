@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve as pathResolve, sep } from "node:path";
 import type { ProviderMode, SkillContent } from "@sumeru/adapter-core";
@@ -10,7 +10,7 @@ import type {
 	Persona,
 	ProviderApiType,
 } from "@sumeru/core";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml } from "yaml";
 import {
 	ensureDataDirs,
 	loadExtensionsFromDisk,
@@ -18,6 +18,11 @@ import {
 	loadPrototypesFromDisk,
 	readExtensionFile,
 } from "./data-store.js";
+import {
+	discoverDockerPrototypeByName,
+	discoverDockerPrototypes,
+	mergeDockerWithYaml,
+} from "./docker-prototypes.js";
 import { logger, TAG_CFG } from "./logger.js";
 import { openDatabase, type SqliteStore } from "./sqlite-store.js";
 import type {
@@ -48,7 +53,7 @@ export async function loadHostConfig(
 	const prototypesDir = join(dataDir, "prototypes");
 	const extensionsDir = join(dataDir, "extensions");
 	await ensureDataDirs(skillsDir, prototypesDir, extensionsDir);
-	const prototypes = await loadPrototypesFromDisk({
+	const prototypes = await loadAllPrototypes({
 		rootDir,
 		prototypesDir,
 		skillsDir,
@@ -88,6 +93,21 @@ export async function reloadPrototypeInConfig(
 	hostConfig: LoadedHostConfig,
 	name: string,
 ): Promise<PrototypeInfo> {
+	const dockerInfo =
+		process.env.VITEST === "true"
+			? null
+			: await discoverDockerPrototypeByName(name);
+	if (dockerInfo !== null) {
+		let yamlInfo: PrototypeInfo | null = null;
+		try {
+			yamlInfo = await loadPrototypeInfo(toStoreInput(hostConfig), name);
+		} catch {
+			yamlInfo = null;
+		}
+		const info = mergeDockerWithYaml(dockerInfo, yamlInfo);
+		hostConfig.prototypes.set(name, info);
+		return info;
+	}
 	const info = await loadPrototypeInfo(toStoreInput(hostConfig), name);
 	if (info.composePath !== null) {
 		await validateComposeProjectVolume(info.composePath);
@@ -113,6 +133,27 @@ function toStoreInput(hostConfig: LoadedHostConfig): {
 		prototypesDir: hostConfig.prototypesDir,
 		skillsDir: hostConfig.skillsDir,
 	};
+}
+
+async function loadAllPrototypes(input: {
+	rootDir: string;
+	prototypesDir: string;
+	skillsDir: string;
+}): Promise<Map<string, PrototypeInfo>> {
+	const yamlPrototypes = await loadPrototypesFromDisk(input);
+	const dockerPrototypes =
+		process.env.VITEST === "true"
+			? new Map<string, PrototypeInfo>()
+			: await discoverDockerPrototypes();
+	const merged = new Map<string, PrototypeInfo>();
+	for (const [name, info] of yamlPrototypes) {
+		merged.set(name, info);
+	}
+	for (const [name, dockerInfo] of dockerPrototypes) {
+		const yamlInfo = merged.get(name) ?? null;
+		merged.set(name, mergeDockerWithYaml(dockerInfo, yamlInfo));
+	}
+	return merged;
 }
 
 export function loadPrototypeInitSkills(

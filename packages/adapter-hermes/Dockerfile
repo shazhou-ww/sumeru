@@ -17,4 +17,5 @@ RUN cd /opt/sumeru && mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/adapter-hermes node_modules/@sumeru/adapter-hermes
 USER node
 WORKDIR /opt/sumeru
+LABEL sumeru.harness="hermes"
 CMD ["sleep", "infinity"]

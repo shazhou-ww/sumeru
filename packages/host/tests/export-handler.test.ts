@@ -151,6 +151,7 @@ function minimalSession(id: string): ManagedSession {
 		containerId: "container-1",
 		projectName: "proj",
 		composePath: "/compose.yaml",
+		imageTag: null,
 		initVersion: null,
 		projectPath: "/tmp/workspaces/demo",
 		sessionEnv: {},

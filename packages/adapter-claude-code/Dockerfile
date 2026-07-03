@@ -13,4 +13,5 @@ RUN cd /opt/sumeru && mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/adapter-claude-code node_modules/@sumeru/adapter-claude-code
 USER node
 WORKDIR /workspace
+LABEL sumeru.harness="claude-code"
 CMD ["sleep", "infinity"]

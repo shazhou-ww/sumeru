@@ -13,4 +13,5 @@ RUN cd /opt/sumeru && mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/adapter-codex node_modules/@sumeru/adapter-codex
 USER node
 WORKDIR /workspace
+LABEL sumeru.harness="codex"
 CMD ["sleep", "infinity"]

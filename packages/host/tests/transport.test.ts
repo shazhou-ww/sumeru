@@ -61,6 +61,28 @@ describe("createDockerTransport", () => {
 		expect(upOptions?.env?.SUMERU_PROJECT_PATH).toBe("/tmp/sumeru-e2e");
 		expect(upOptions?.env?.FOO).toBe("bar");
 	});
+
+	it("runs docker run with standard mounts for image-based prototypes", async () => {
+		spawnMock.mockImplementation(() => mockSpawnChild("container-run-abc\n"));
+
+		const transport = createDockerTransport();
+		await transport.upFromImage({
+			containerName: "ses_test",
+			imageTag: "sumeru/codex:dev",
+			workDir: "/tmp/work",
+			projectPath: "/tmp/sumeru-e2e",
+			cacheDir: "/tmp/work/cache",
+			env: { FOO: "bar" },
+		});
+
+		const args = spawnMock.mock.calls[0]?.[1] as Array<string> | undefined;
+		expect(args?.[0]).toBe("run");
+		expect(args).toContain("--network");
+		expect(args).toContain("host");
+		expect(args).toContain("/tmp/sumeru-e2e:/tmp/sumeru-e2e");
+		expect(args).toContain("/tmp/work/cache/pnpm-store:/cache/pnpm-store");
+		expect(args?.at(-1)).toBe("sumeru/codex:dev");
+	});
 });
 
 describe("defaultAdapterCommand", () => {
@@ -96,6 +118,27 @@ describe("createMockTransport", () => {
 			composePath: "/compose.yaml",
 			workDir: "/work",
 			projectPath: "/tmp/project",
+			env: null,
+		});
+	});
+
+	it("records upFromImage calls", async () => {
+		const { transport, calls } = createMockTransport();
+		await transport.upFromImage({
+			containerName: "ses_mock",
+			imageTag: "sumeru/codex:dev",
+			workDir: "/work",
+			projectPath: "/tmp/project",
+			cacheDir: "/work/cache",
+			env: null,
+		});
+		expect(calls[0]).toEqual({
+			type: "upFromImage",
+			containerName: "ses_mock",
+			imageTag: "sumeru/codex:dev",
+			workDir: "/work",
+			projectPath: "/tmp/project",
+			cacheDir: "/work/cache",
 			env: null,
 		});
 	});

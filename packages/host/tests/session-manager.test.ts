@@ -79,11 +79,19 @@ function createInteractiveTransport(): {
 			upProjectPaths.push(input.projectPath);
 			return { containerId: `container-${input.projectName}` };
 		},
+		async upFromImage(input) {
+			calls.push(`upFromImage:${input.containerName}`);
+			upProjectPaths.push(input.projectPath);
+			return { containerId: `container-${input.containerName}` };
+		},
 		async down(input) {
 			calls.push(`down:${input.projectName}`);
 		},
 		async rm(input) {
 			calls.push(`rm:${input.projectName}`);
+		},
+		async rmContainer(containerId) {
+			calls.push(`rmContainer:${containerId}`);
 		},
 		async stop(containerId) {
 			calls.push(`stop:${containerId}`);
@@ -153,8 +161,12 @@ function createBlockingTransport(): Transport {
 		async up(input) {
 			return { containerId: `container-${input.projectName}` };
 		},
+		async upFromImage(input) {
+			return { containerId: `container-${input.containerName}` };
+		},
 		async down() {},
 		async rm() {},
+		async rmContainer() {},
 		async stop() {},
 		async start() {},
 		exec(_input) {
@@ -471,8 +483,12 @@ describe("session-manager", () => {
 			async up(input) {
 				return { containerId: `container-${input.projectName}` };
 			},
+			async upFromImage(input) {
+				return { containerId: `container-${input.containerName}` };
+			},
 			async down() {},
 			async rm() {},
+			async rmContainer() {},
 			async stop() {},
 			async start() {},
 			exec(_input) {
