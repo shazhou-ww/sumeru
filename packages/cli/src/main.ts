@@ -4,13 +4,16 @@ import { dirname, resolve } from "node:path";
 import type { CliContext, CommandAction, ParsedFlags } from "@ocas/cli-kit";
 import { createCLI } from "@ocas/cli-kit";
 import { z } from "zod";
+import { registerChatCommand } from "./chat.js";
 import { parseEnvFlagsFromArgv } from "./env-flags.js";
+import { registerExecCommand } from "./exec.js";
 import { formatExtensionTable } from "./format.js";
 import { createHostClient, HostClientError } from "./http-client.js";
 import {
 	runImageBuild as executeImageBuild,
 	findRepoRoot,
 } from "./image-build.js";
+import { runSessionModelCommand } from "./model-cmd.js";
 import {
 	isProcessAlive,
 	readPidFile,
@@ -18,7 +21,11 @@ import {
 	resolvePidFilePath,
 	writePidFile,
 } from "./pid-file.js";
+import { registerPrototypeRmCommand } from "./prototype-cmd.js";
+import { registerResetCommand } from "./reset-cmd.js";
+import { registerSessionRmCommand } from "./session-cmd.js";
 import { runSetup } from "./setup.js";
+import { registerSnapshotCommand } from "./snapshot.js";
 
 // ─── Shared schemas ─────────────────────────────────────────────────────
 
@@ -1203,7 +1210,22 @@ cli
 		}
 	});
 
+// ─── Phase 3: verb + target commands ────────────────────────────────────
+
+registerChatCommand(cli);
+registerExecCommand(cli);
+registerResetCommand(cli);
+registerSnapshotCommand(cli);
+registerSessionRmCommand(cli);
+registerPrototypeRmCommand(cli);
+
 // ─── Run ─────────────────────────────────────────────────────────────────
+
+const argv = process.argv.slice(2);
+const modelExitCode = await runSessionModelCommand(argv);
+if (modelExitCode !== null) {
+	process.exit(modelExitCode);
+}
 
 const exitCode = await cli.run();
 process.exit(exitCode);
