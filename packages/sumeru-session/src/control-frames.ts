@@ -96,6 +96,7 @@ async function resetHarnessState(
 		await rm(path, { recursive: true, force: true });
 	}
 	if (persona !== null && harness.personaPath !== null) {
+		await mkdir(dirname(harness.personaPath), { recursive: true });
 		await writeFile(harness.personaPath, persona, "utf8");
 	}
 }

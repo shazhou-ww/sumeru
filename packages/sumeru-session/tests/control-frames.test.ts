@@ -6,7 +6,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { AdapterImpl, DoneValue, TurnValue } from "@sumeru/adapter-core";
 import { afterEach, describe, expect, it } from "vitest";
@@ -20,6 +20,10 @@ import {
 	formatClaudeCodeModelConfig,
 } from "../src/harness/claude-code.js";
 import { codexHarness, formatCodexModelConfig } from "../src/harness/codex.js";
+import {
+	cursorAgentHarness,
+	formatCursorAgentModelConfig,
+} from "../src/harness/cursor-agent.js";
 import {
 	formatHermesModelConfig,
 	hermesHarness,
@@ -690,6 +694,178 @@ describe("handleControlFrame — codex paths", () => {
 	});
 });
 
+describe("formatCursorAgentModelConfig", () => {
+	it("writes JSON with model and apiKey", () => {
+		expect(
+			formatCursorAgentModelConfig({
+				baseUrl: "https://example.test",
+				apiKey: "cursor-key",
+				model: "claude-opus-4-8-thinking-high",
+				provider: null,
+			}),
+		).toBe(
+			`${JSON.stringify(
+				{
+					model: "claude-opus-4-8-thinking-high",
+					apiKey: "cursor-key",
+				},
+				null,
+				2,
+			)}\n`,
+		);
+	});
+
+	it("writes null apiKey when apiKey is null", () => {
+		expect(
+			formatCursorAgentModelConfig({
+				baseUrl: "https://example.test",
+				apiKey: null,
+				model: "claude-sonnet-4.6",
+				provider: null,
+			}),
+		).toBe(
+			`${JSON.stringify(
+				{
+					model: "claude-sonnet-4.6",
+					apiKey: null,
+				},
+				null,
+				2,
+			)}\n`,
+		);
+	});
+});
+
+describe("handleControlFrame — cursor-agent harness", () => {
+	const tempDirs: Array<string> = [];
+
+	afterEach(() => {
+		for (const dir of tempDirs) {
+			rmSync(dir, { recursive: true, force: true });
+		}
+		tempDirs.length = 0;
+	});
+
+	function makeCursorAgentHarness(root: string) {
+		return {
+			resetPaths: [join(root, "sessions")],
+			modelConfigPath: join(root, "config.json"),
+			personaPath: join(root, "rules", "sumeru.md"),
+			skillsDir: join(root, "rules", "skills"),
+			writeModelConfig: async (value: {
+				baseUrl: string;
+				apiKey: string | null;
+				model: string;
+				provider: string | null;
+			}) => {
+				mkdirSync(join(root, "rules"), { recursive: true });
+				writeFileSync(
+					join(root, "config.json"),
+					formatCursorAgentModelConfig(value),
+					"utf8",
+				);
+			},
+			installSkill: async (value: {
+				name: string;
+				content: string;
+				files: Array<{ path: string; content: string }>;
+			}) => {
+				const skillsDir = join(root, "rules", "skills");
+				mkdirSync(skillsDir, { recursive: true });
+				writeFileSync(
+					join(skillsDir, `${value.name}.md`),
+					value.content,
+					"utf8",
+				);
+				for (const file of value.files) {
+					const filePath = join(skillsDir, value.name, file.path);
+					mkdirSync(dirname(filePath), { recursive: true });
+					writeFileSync(filePath, file.content, "utf8");
+				}
+			},
+		};
+	}
+
+	it("clears sessions and writes sumeru.md on reset", async () => {
+		const root = mkdtempSync(
+			join(tmpdir(), "sumeru-session-cursor-agent-reset-"),
+		);
+		tempDirs.push(root);
+		const harness = makeCursorAgentHarness(root);
+		const sessionFile = join(root, "sessions", "thread.json");
+		mkdirSync(join(root, "sessions"), { recursive: true });
+		writeFileSync(sessionFile, "{}", "utf8");
+		writeFileSync(join(root, "config.json"), '{"model":"old-model"}\n', "utf8");
+
+		await handleControlFrame(harness, {
+			type: "reset",
+			value: { persona: "You are Cursor Agent." },
+		});
+
+		expect(readFileSync(join(root, "rules", "sumeru.md"), "utf8")).toBe(
+			"You are Cursor Agent.",
+		);
+		expect(() => readFileSync(sessionFile, "utf8")).toThrow();
+		expect(readFileSync(join(root, "config.json"), "utf8")).toBe(
+			'{"model":"old-model"}\n',
+		);
+	});
+
+	it("writes JSON model config", async () => {
+		const root = mkdtempSync(
+			join(tmpdir(), "sumeru-session-cursor-agent-model-"),
+		);
+		tempDirs.push(root);
+		const harness = makeCursorAgentHarness(root);
+
+		await handleControlFrame(harness, {
+			type: "model",
+			value: {
+				baseUrl: "https://example.test",
+				apiKey: "cursor-key",
+				model: "claude-opus-4-8-thinking-high",
+				provider: null,
+			},
+		});
+
+		expect(readFileSync(join(root, "config.json"), "utf8")).toBe(
+			formatCursorAgentModelConfig({
+				baseUrl: "https://example.test",
+				apiKey: "cursor-key",
+				model: "claude-opus-4-8-thinking-high",
+				provider: null,
+			}),
+		);
+	});
+
+	it("installs skills as flat .md files under rules/skills", async () => {
+		const root = mkdtempSync(
+			join(tmpdir(), "sumeru-session-cursor-agent-skill-"),
+		);
+		tempDirs.push(root);
+		const harness = makeCursorAgentHarness(root);
+
+		await handleControlFrame(harness, {
+			type: "install-skill",
+			value: {
+				name: "tdd",
+				content: "Write tests first.",
+				files: [{ path: "refs/guide.md", content: "Guide body" }],
+			},
+		});
+
+		expect(readFileSync(join(root, "rules", "skills", "tdd.md"), "utf8")).toBe(
+			"Write tests first.",
+		);
+		expect(
+			readFileSync(
+				join(root, "rules", "skills", "tdd", "refs", "guide.md"),
+				"utf8",
+			),
+		).toBe("Guide body");
+	});
+});
+
 describe("runSessionEntry", () => {
 	it("responds with ready for sarsapa control frames", async () => {
 		const stdin = new PassThrough();
@@ -851,6 +1027,24 @@ describe("getHarnessConfig", () => {
 		);
 		expect(getHarnessConfig("claude-code").skillsDir).toBe(
 			claudeCodeHarness.skillsDir,
+		);
+	});
+
+	it("returns cursor-agent harness with JSON writer and sessions reset path", () => {
+		expect(getHarnessConfig("cursor-agent")).toEqual(cursorAgentHarness);
+		expect(getHarnessConfig("cursor-agent").writeModelConfig).not.toBeNull();
+		expect(getHarnessConfig("cursor-agent").installSkill).not.toBeNull();
+		expect(getHarnessConfig("cursor-agent").resetPaths).toEqual(
+			cursorAgentHarness.resetPaths,
+		);
+		expect(getHarnessConfig("cursor-agent").personaPath).toBe(
+			cursorAgentHarness.personaPath,
+		);
+		expect(getHarnessConfig("cursor-agent").modelConfigPath).toBe(
+			cursorAgentHarness.modelConfigPath,
+		);
+		expect(getHarnessConfig("cursor-agent").skillsDir).toBe(
+			cursorAgentHarness.skillsDir,
 		);
 	});
 });
