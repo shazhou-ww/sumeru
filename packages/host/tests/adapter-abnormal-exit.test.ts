@@ -72,6 +72,8 @@ function createCrashableTransport(): {
 		},
 		async down() {},
 		async rm() {},
+		async stop() {},
+		async start() {},
 		exec(_input) {
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();

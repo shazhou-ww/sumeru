@@ -144,6 +144,10 @@ export type Transport = {
 		composePath: string;
 		workDir: string;
 	}): Promise<void>;
+	/** Stop container without removing it (preserves writable layer). */
+	stop(containerId: string): Promise<void>;
+	/** Start a previously stopped container. */
+	start(containerId: string): Promise<void>;
 	exec(input: {
 		containerId: string;
 		command: Array<string>;

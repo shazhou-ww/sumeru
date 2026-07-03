@@ -42,9 +42,25 @@ RUN mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/adapter-core node_modules/@sumeru/adapter-core \
 	&& ln -s /opt/sumeru/adapter-cursor-agent node_modules/@sumeru/adapter-cursor-agent
 
+# ── Shared cache + global install config ──────────────────────────────────
+# Package manager caches → /cache (shared bind mount, cross-session)
+ENV PNPM_STORE_DIR=/cache/pnpm-store
+ENV NPM_CONFIG_CACHE=/cache/npm
+ENV UV_CACHE_DIR=/cache/uv
+ENV PIP_CACHE_DIR=/cache/pip
+
+# Global install targets → HOME (persisted in container writable layer)
+ENV PNPM_HOME=/home/node/.local/share/pnpm
+ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
+ENV PYTHONUSERBASE=/home/node/.local
+ENV PATH="$PNPM_HOME:/home/node/.npm-global/bin:/home/node/.local/bin:${PATH}"
+
 RUN chown -R node:node /opt/sumeru \
 	&& mkdir -p /workspace && chown node:node /workspace \
-	&& mkdir -p /home/node/.cursor && chown node:node /home/node/.cursor
+	&& mkdir -p /home/node/.cursor && chown node:node /home/node/.cursor \
+	&& mkdir -p /home/node/.local/share/pnpm /home/node/.npm-global /home/node/.local/bin \
+	&& chown -R node:node /home/node \
+	&& mkdir -p /cache && chown node:node /cache
 
 # Sticky HOME — survives --user overrides (Docker resolves HOME from /etc/passwd
 # for the numeric uid, which may differ when host passes --user).

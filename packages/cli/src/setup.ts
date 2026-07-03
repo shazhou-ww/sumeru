@@ -142,11 +142,16 @@ export async function runSetup(input: SetupInput): Promise<void> {
 	}
 
 	// ── prototypes/sarsapa/compose.yaml (create only) ───────────────
+	const cacheDir = join(rootDir, "cache");
+	mkdirSync(join(cacheDir, "pnpm-store"), { recursive: true });
+	mkdirSync(join(cacheDir, "npm"), { recursive: true });
+	mkdirSync(join(cacheDir, "uv"), { recursive: true });
+	mkdirSync(join(cacheDir, "pip"), { recursive: true });
 	const composePath = join(rootDir, "prototypes", "sarsapa", "compose.yaml");
 	if (!existsSync(composePath)) {
 		writeFileSync(
 			composePath,
-			`services:\n  agent:\n    image: sumeru/sarsapa:dev\n    mem_limit: 4g\n    cpus: 2\n    volumes:\n      - "\${SUMERU_PROJECT_PATH}:\${SUMERU_PROJECT_PATH}"\n    environment:\n      - ${envKey}=\${${envKey}}\n`,
+			`services:\n  agent:\n    image: sumeru/sarsapa:dev\n    mem_limit: 4g\n    cpus: 2\n    volumes:\n      - "\${SUMERU_PROJECT_PATH}:\${SUMERU_PROJECT_PATH}"\n      - "${cacheDir}/pnpm-store:/cache/pnpm-store"\n      - "${cacheDir}/npm:/cache/npm"\n      - "${cacheDir}/uv:/cache/uv"\n      - "${cacheDir}/pip:/cache/pip"\n    environment:\n      - ${envKey}=\${${envKey}}\n    logging:\n      driver: json-file\n      options:\n        max-size: "10m"\n        max-file: "2"\n    network_mode: host\n`,
 		);
 		actions.push("created prototypes/sarsapa/compose.yaml");
 	}

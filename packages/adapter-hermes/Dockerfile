@@ -39,9 +39,25 @@ RUN mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/adapter-core node_modules/@sumeru/adapter-core \
 	&& ln -s /opt/sumeru/adapter-hermes node_modules/@sumeru/adapter-hermes
 
+# ── Shared cache + global install config ──────────────────────────────────
+# Package manager caches → /cache (shared bind mount, cross-session)
+ENV PNPM_STORE_DIR=/cache/pnpm-store
+ENV NPM_CONFIG_CACHE=/cache/npm
+ENV UV_CACHE_DIR=/cache/uv
+ENV PIP_CACHE_DIR=/cache/pip
+
+# Global install targets → HOME (persisted in container writable layer)
+ENV PNPM_HOME=/home/node/.local/share/pnpm
+ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
+ENV PYTHONUSERBASE=/home/node/.local
+ENV PATH="$PNPM_HOME:/home/node/.npm-global/bin:/home/node/.local/bin:${PATH}"
+
 RUN chown -R node:node /opt/sumeru /opt/hermes-venv /usr/local/uv \
 	&& mkdir -p /workspace && chown node:node /workspace \
-	&& mkdir -p /home/node/.hermes && chown node:node /home/node/.hermes
+	&& mkdir -p /home/node/.hermes && chown node:node /home/node/.hermes \
+	&& mkdir -p /home/node/.local/share/pnpm /home/node/.npm-global /home/node/.local/bin \
+	&& chown -R node:node /home/node \
+	&& mkdir -p /cache && chown node:node /cache
 
 ENV HOME=/home/node
 USER node

@@ -136,6 +136,24 @@ export function createDockerTransport(
 			}
 		},
 
+		async stop(containerId) {
+			const result = await runCommand([dockerBin, "stop", "-t", "5", containerId]);
+			if (result.exitCode !== 0) {
+				throw new Error(
+					`docker stop failed: ${result.stderr || result.stdout}`,
+				);
+			}
+		},
+
+		async start(containerId) {
+			const result = await runCommand([dockerBin, "start", containerId]);
+			if (result.exitCode !== 0) {
+				throw new Error(
+					`docker start failed: ${result.stderr || result.stdout}`,
+				);
+			}
+		},
+
 		exec({ containerId, command, env }) {
 			const args = [dockerBin, "exec", "-i", "-w", ADAPTER_BASE];
 			if (env !== null) {
@@ -206,6 +224,8 @@ export type MockTransportCall =
 	  }
 	| { type: "down"; projectName: string; composePath: string; workDir: string }
 	| { type: "rm"; projectName: string; composePath: string; workDir: string }
+	| { type: "stop"; containerId: string }
+	| { type: "start"; containerId: string }
 	| {
 			type: "exec";
 			containerId: string;
@@ -236,6 +256,12 @@ export function createMockTransport(
 		},
 		async rm(input) {
 			calls.push({ type: "rm", ...input });
+		},
+		async stop(containerIdArg) {
+			calls.push({ type: "stop", containerId: containerIdArg });
+		},
+		async start(containerIdArg) {
+			calls.push({ type: "start", containerId: containerIdArg });
 		},
 		exec(input) {
 			calls.push({ type: "exec", ...input });

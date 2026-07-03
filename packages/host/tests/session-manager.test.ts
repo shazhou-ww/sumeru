@@ -85,6 +85,12 @@ function createInteractiveTransport(): {
 		async rm(input) {
 			calls.push(`rm:${input.projectName}`);
 		},
+		async stop(containerId) {
+			calls.push(`stop:${containerId}`);
+		},
+		async start(containerId) {
+			calls.push(`start:${containerId}`);
+		},
 		exec({ containerId, command, env: _env }) {
 			calls.push(`exec:${containerId}:${command.join(" ")}`);
 			const stdin = new PassThrough();
@@ -139,6 +145,8 @@ function createBlockingTransport(): Transport {
 		},
 		async down() {},
 		async rm() {},
+		async stop() {},
+		async start() {},
 		exec(_input) {
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();
@@ -449,6 +457,8 @@ describe("session-manager", () => {
 			},
 			async down() {},
 			async rm() {},
+			async stop() {},
+			async start() {},
 			exec(_input) {
 				execCount += 1;
 				const stdin = new PassThrough();

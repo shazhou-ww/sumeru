@@ -295,6 +295,14 @@ export function createSessionManager(input: {
 			throw new Error("session_not_running");
 		}
 
+		// Ensure container is running (may have been stopped after previous idle)
+		const containerStatus = await input.transport.inspectStatus(
+			record.containerId,
+		);
+		if (containerStatus === "stopped") {
+			await input.transport.start(record.containerId);
+		}
+
 		if (body.env !== null) {
 			for (const [key, value] of Object.entries(body.env)) {
 				record.sessionEnv[key] = value;
@@ -637,6 +645,14 @@ export function createSessionManager(input: {
 		};
 		sessions.set(id, updated);
 		releaseRunningSlot();
+
+		// Stop container to release CPU/memory (writable layer preserved).
+		// Async fire-and-forget — next submitMessage will docker start it.
+		if (updated.containerId !== null) {
+			input.transport.stop(updated.containerId).catch(() => {
+				// best-effort: container may already be gone
+			});
+		}
 	}
 
 	function runtimeStats(runtime: AdapterRuntime | undefined): {
@@ -810,15 +826,22 @@ export function createSessionManager(input: {
 				if (record === undefined) return;
 				stopAdapter(id);
 				try {
-					await input.transport.down({
-						projectName: record.projectName,
-						composePath: record.composePath,
-						workDir: input.hostConfig.rootDir,
-					});
+					if (record.containerId !== null) {
+						await input.transport.stop(record.containerId);
+					}
 				} catch {
 					// best-effort: container may already be gone
 				}
-				sessions.delete(id);
+				// Keep session records so host can resume after restart.
+				// Mark them as idle so submitMessage can re-start them.
+				if (record.status === "running") {
+					const updated: ManagedSession = {
+						...record,
+						status: "idle",
+						exit: null,
+					};
+					sessions.set(id, updated);
+				}
 				adapters.delete(id);
 			}),
 		);
