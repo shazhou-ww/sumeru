@@ -137,7 +137,13 @@ export function createDockerTransport(
 		},
 
 		async stop(containerId) {
-			const result = await runCommand([dockerBin, "stop", "-t", "5", containerId]);
+			const result = await runCommand([
+				dockerBin,
+				"stop",
+				"-t",
+				"5",
+				containerId,
+			]);
 			if (result.exitCode !== 0) {
 				throw new Error(
 					`docker stop failed: ${result.stderr || result.stdout}`,
@@ -209,8 +215,20 @@ export function createDockerTransport(
 	};
 }
 
-export function defaultAdapterCommand(adapter: string): Array<string> {
+export const SUMERU_SESSION_MAIN = `${ADAPTER_BASE}/sumeru-session/dist/main.js`;
+
+export function legacyAdapterCommand(adapter: string): Array<string> {
 	return ["node", `${ADAPTER_BASE}/adapter-${adapter}/dist/main.js`];
+}
+
+export function defaultAdapterCommand(adapter: string): Array<string> {
+	const sessionMain = SUMERU_SESSION_MAIN;
+	const legacyMain = `${ADAPTER_BASE}/adapter-${adapter}/dist/main.js`;
+	return [
+		"sh",
+		"-c",
+		`if [ -f "${sessionMain}" ]; then exec node "${sessionMain}"; else exec node "${legacyMain}"; fi`,
+	];
 }
 
 export type MockTransportCall =

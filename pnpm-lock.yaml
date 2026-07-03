@@ -132,6 +132,30 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/sumeru-session:
+    dependencies:
+      '@sumeru/adapter-claude-code':
+        specifier: workspace:*
+        version: link:../adapter-claude-code
+      '@sumeru/adapter-codex':
+        specifier: workspace:*
+        version: link:../adapter-codex
+      '@sumeru/adapter-core':
+        specifier: workspace:*
+        version: link:../adapter-core
+      '@sumeru/adapter-cursor-agent':
+        specifier: workspace:*
+        version: link:../adapter-cursor-agent
+      '@sumeru/adapter-hermes':
+        specifier: workspace:*
+        version: link:../adapter-hermes
+      '@sumeru/core':
+        specifier: workspace:*
+        version: link:../core
+      '@sumeru/sarsapa':
+        specifier: workspace:*
+        version: link:../sarsapa
+
 packages:
 
   '@biomejs/biome@2.5.0':

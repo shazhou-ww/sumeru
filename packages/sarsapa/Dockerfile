@@ -7,7 +7,8 @@ COPY --chown=node:node packages/ /opt/sumeru/
 RUN cd /opt/sumeru && mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/core node_modules/@sumeru/core \
 	&& ln -s /opt/sumeru/adapter-core node_modules/@sumeru/adapter-core \
-	&& ln -s /opt/sumeru/adapter-sarsapa node_modules/@sumeru/sarsapa
+	&& ln -s /opt/sumeru/sumeru-session node_modules/@sumeru/sumeru-session \
+	&& ln -s /opt/sumeru/sarsapa node_modules/@sumeru/sarsapa
 USER node
 WORKDIR /workspace
 CMD ["sleep", "infinity"]

@@ -24,7 +24,8 @@
     { "path": "packages/adapter-hermes" },
     { "path": "packages/cli" },
     { "path": "packages/host" },
-    { "path": "packages/sarsapa" }
+    { "path": "packages/sarsapa" },
+    { "path": "packages/sumeru-session" }
   ],
   "files": []
 }

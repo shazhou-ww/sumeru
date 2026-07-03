@@ -539,7 +539,7 @@ export function createSessionManager(input: {
 		}
 		const session = input.transport.exec({
 			containerId: record.containerId,
-			command: defaultAdapterCommand(prototype.name),
+			command: defaultAdapterCommand(prototype.prototype.adapter),
 			env: record.sessionEnv,
 		});
 		runtime.session = session;

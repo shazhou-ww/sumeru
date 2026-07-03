@@ -23,6 +23,8 @@ export {
 	createDockerTransport,
 	createMockTransport,
 	defaultAdapterCommand,
+	legacyAdapterCommand,
+	SUMERU_SESSION_MAIN,
 } from "./transport.js";
 export type {
 	CreateSessionRequest,

@@ -52,6 +52,10 @@ export async function runImageBuild(
 		join(options.repoRoot, "packages/adapter-core"),
 		join(packagesDir, "adapter-core"),
 	);
+	await copyPackageDist(
+		join(options.repoRoot, "packages/sumeru-session"),
+		join(packagesDir, "sumeru-session"),
+	);
 	const adapterDest = adapterPackagesPath(agent);
 	await copyPackageDist(adapterPath, join(packagesDir, adapterDest));
 
