@@ -10,6 +10,8 @@ import type {
 } from "@sumeru/core";
 import type {
 	AdapterInfo,
+	CommandAcceptedValue,
+	CommandResultValue,
 	Envelope,
 	ErrorValue,
 	HostRootValue,
@@ -117,6 +119,18 @@ export function messageAcceptedEnvelope(
 	value: MessageAcceptedValue,
 ): Envelope<MessageAcceptedValue> {
 	return envelope("@sumeru/message-accepted", value);
+}
+
+export function commandAcceptedEnvelope(
+	value: CommandAcceptedValue,
+): Envelope<CommandAcceptedValue> {
+	return envelope("@sumeru/command-accepted", value);
+}
+
+export function commandResultEnvelope(
+	value: CommandResultValue,
+): Envelope<CommandResultValue> {
+	return envelope("@sumeru/command-result", value);
 }
 
 export function errorEnvelope(

@@ -134,6 +134,16 @@ function createInteractiveTransport(): {
 		async inspectStatus() {
 			return "running";
 		},
+		async runOnce({ command }) {
+			return {
+				stdout: `ran:${command.join(" ")}`,
+				stderr: "",
+				exitCode: 0,
+			};
+		},
+		async commit() {
+			return { imageId: "sha256:mock-image" };
+		},
 	};
 	return { transport, calls, upComposeContents, upProjectPaths };
 }
@@ -165,6 +175,12 @@ function createBlockingTransport(): Transport {
 		},
 		async inspectStatus() {
 			return "running";
+		},
+		async runOnce() {
+			return { stdout: "", stderr: "", exitCode: 0 };
+		},
+		async commit() {
+			return { imageId: "sha256:mock-image" };
 		},
 	};
 	return transport;
@@ -514,6 +530,12 @@ describe("session-manager", () => {
 			},
 			async inspectStatus() {
 				return "running";
+			},
+			async runOnce() {
+				return { stdout: "", stderr: "", exitCode: 0 };
+			},
+			async commit() {
+				return { imageId: "sha256:mock-image" };
 			},
 		};
 		const manager = createSessionManager({ hostConfig, transport });

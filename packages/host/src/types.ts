@@ -104,6 +104,37 @@ export type MessageAcceptedValue = {
 	messageId: string;
 };
 
+export type SessionCommand =
+	| {
+			type: "chat";
+			content: string;
+			messageId: string | null;
+			env: Record<string, string> | null;
+			model: SessionModelOverride;
+	  }
+	| { type: "exec"; command: string }
+	| { type: "model"; provider: string; model: string }
+	| {
+			type: "install-skill";
+			name: string;
+			content: string | null;
+			files: Array<{ path: string; content: string }> | null;
+	  }
+	| { type: "reset"; persona: string | null }
+	| { type: "snapshot"; name: string };
+
+export type CommandAcceptedValue = {
+	sessionId: string;
+	commandId: string;
+};
+
+export type CommandResultValue =
+	| { type: "exec"; stdout: string; stderr: string; exitCode: number }
+	| { type: "model"; provider: string; model: string }
+	| { type: "install-skill"; name: string }
+	| { type: "reset" }
+	| { type: "snapshot"; name: string; image: string };
+
 export type HistoryValue = {
 	sessionId: string;
 	total: number;
@@ -153,6 +184,15 @@ export type Transport = {
 		command: Array<string>;
 		env: Record<string, string> | null;
 	}): TransportExecSession;
+	runOnce(input: {
+		containerId: string;
+		command: Array<string>;
+		env: Record<string, string> | null;
+	}): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+	commit(input: {
+		containerId: string;
+		tag: string;
+	}): Promise<{ imageId: string }>;
 	inspectStatus(containerId: string): Promise<"running" | "stopped">;
 };
 

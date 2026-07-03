@@ -26,6 +26,10 @@ import {
 } from "./id.js";
 import { createOcasRecorder, type OcasRecorder } from "./ocas-recorder.js";
 import { parseOutboxLine } from "./outbox.js";
+import {
+	type RunCommandResult,
+	runSessionCommand,
+} from "./session-commands.js";
 import { maskApiKey } from "./sqlite-store.js";
 import {
 	createSseBuffer,
@@ -39,6 +43,7 @@ import type {
 	LoadedHostConfig,
 	ManagedSession,
 	MessageRequest,
+	SessionCommand,
 	Transport,
 } from "./types.js";
 import { turnRecordsToV3, wireTurnsToV3 } from "./wire-turn.js";
@@ -72,6 +77,7 @@ export type SessionManager = {
 	stopSession(id: string): Promise<ManagedSession>;
 	deleteSession(id: string): Promise<void>;
 	submitMessage(id: string, body: MessageRequest): Promise<void>;
+	runCommand(id: string, command: SessionCommand): Promise<RunCommandResult>;
 	subscribeEvents(id: string, onEvent: (event: SseEvent) => void): () => void;
 	getSseBuffer(id: string): SseBuffer;
 	getHistory(id: string, limit: number, offset: number): HistoryValue;
@@ -339,6 +345,34 @@ export function createSessionManager(input: {
 		await deliverMessage(id, record, {
 			messageId: body.messageId,
 			content: body.content,
+		});
+	}
+
+	function updateSessionModel(
+		id: string,
+		model: ManagedSession["model"],
+	): void {
+		const record = sessions.get(id);
+		if (record === undefined) {
+			return;
+		}
+		if (modelConfigChanged(record.model, model)) {
+			record.model = model;
+		}
+	}
+
+	async function runCommand(
+		id: string,
+		command: SessionCommand,
+	): Promise<RunCommandResult> {
+		return runSessionCommand({
+			hostConfig: input.hostConfig,
+			transport: input.transport,
+			getSession,
+			submitMessage,
+			updateSessionModel,
+			id,
+			command,
 		});
 	}
 
@@ -854,6 +888,7 @@ export function createSessionManager(input: {
 		stopSession,
 		deleteSession,
 		submitMessage,
+		runCommand,
 		subscribeEvents,
 		getSseBuffer,
 		getHistory,

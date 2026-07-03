@@ -15,6 +15,10 @@ export function generateMessageId(): string {
 	return `msg_${generateUlid()}`;
 }
 
+export function generateCommandId(): string {
+	return `cmd_${generateUlid()}`;
+}
+
 function generateUlid(): string {
 	const now = Date.now();
 	const random = now === lastTime ? incrementRandom(lastRandom) : freshRandom();

@@ -3,6 +3,7 @@ import { createServer as createHttpServer } from "node:http";
 import { loadHostConfig } from "./config.js";
 import {
 	createAdaptersHandler,
+	createCommandsHandler,
 	createEventsHandler,
 	createExportHandler,
 	createExtensionsHandler,
@@ -94,6 +95,11 @@ export function createHostHandler(input: {
 		.route("GET", "/sessions/:id", sessions.get)
 		.route("POST", "/sessions/:id/stop", sessions.stop)
 		.route("DELETE", "/sessions/:id", sessions.remove)
+		.route(
+			"POST",
+			"/sessions/:id/commands",
+			createCommandsHandler(input.manager),
+		)
 		.route(
 			"POST",
 			"/sessions/:id/messages",

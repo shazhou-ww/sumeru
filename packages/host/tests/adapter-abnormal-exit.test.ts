@@ -97,6 +97,12 @@ function createCrashableTransport(): {
 		async inspectStatus() {
 			return "running";
 		},
+		async runOnce() {
+			return { stdout: "", stderr: "", exitCode: 0 };
+		},
+		async commit() {
+			return { imageId: "sha256:mock-image" };
+		},
 	};
 	return {
 		transport,

@@ -1,4 +1,5 @@
 export { createAdaptersHandler } from "./adapters.js";
+export { createCommandsHandler } from "./commands.js";
 export { createEventsHandler } from "./events.js";
 export { createExportHandler } from "./export.js";
 export { createExtensionsHandler } from "./extensions.js";

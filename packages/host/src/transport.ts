@@ -197,6 +197,31 @@ export function createDockerTransport(
 			return session;
 		},
 
+		async runOnce({ containerId, command, env }) {
+			const args = [dockerBin, "exec", "-i", "-w", ADAPTER_BASE];
+			if (env !== null) {
+				for (const [key, value] of Object.entries(env)) {
+					args.push("-e", `${key}=${value}`);
+				}
+			}
+			args.push(containerId, ...command);
+			return runCommand(args, null, env);
+		},
+
+		async commit({ containerId, tag }) {
+			const result = await runCommand([dockerBin, "commit", containerId, tag]);
+			if (result.exitCode !== 0) {
+				throw new Error(
+					`docker commit failed: ${result.stderr || result.stdout}`,
+				);
+			}
+			const imageId = result.stdout.trim();
+			if (imageId.length === 0) {
+				throw new Error("docker commit succeeded but returned no image id");
+			}
+			return { imageId };
+		},
+
 		async inspectStatus(containerId) {
 			const result = await runCommand([
 				dockerBin,
@@ -250,6 +275,13 @@ export type MockTransportCall =
 			command: Array<string>;
 			env: Record<string, string> | null;
 	  }
+	| {
+			type: "runOnce";
+			containerId: string;
+			command: Array<string>;
+			env: Record<string, string> | null;
+	  }
+	| { type: "commit"; containerId: string; tag: string }
 	| { type: "inspectStatus"; containerId: string };
 
 export function createMockTransport(
@@ -257,12 +289,20 @@ export function createMockTransport(
 		containerId?: string;
 		status?: "running" | "stopped";
 		execLines?: Array<string>;
+		runOnceResult?: { stdout: string; stderr: string; exitCode: number };
+		commitImageId?: string;
 	} = {},
 ): { transport: Transport; calls: Array<MockTransportCall> } {
 	const calls: Array<MockTransportCall> = [];
 	const containerId = options.containerId ?? "mock-container-id";
 	const status = options.status ?? "running";
 	const execLines = options.execLines ?? [];
+	const runOnceResult = options.runOnceResult ?? {
+		stdout: "",
+		stderr: "",
+		exitCode: 0,
+	};
+	const commitImageId = options.commitImageId ?? "sha256:mock-image-id";
 
 	const transport: Transport = {
 		async up(input) {
@@ -294,6 +334,14 @@ export function createMockTransport(
 				lines: rl,
 				waitForExit: async () => ({ exitCode: 0, stderr: "" }),
 			};
+		},
+		async runOnce(input) {
+			calls.push({ type: "runOnce", ...input });
+			return runOnceResult;
+		},
+		async commit(input) {
+			calls.push({ type: "commit", ...input });
+			return { imageId: commitImageId };
 		},
 		async inspectStatus(containerIdArg) {
 			calls.push({ type: "inspectStatus", containerId: containerIdArg });
