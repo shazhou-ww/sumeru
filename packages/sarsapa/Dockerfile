@@ -14,7 +14,17 @@ RUN apt-get update \
 		ca-certificates \
 		build-essential \
 		ripgrep \
+		sudo \
+	&& echo "node ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
 	&& rm -rf /var/lib/apt/lists/*
+
+# Python via uv (agent may need pip install)
+ENV UV_PYTHON_INSTALL_DIR=/usr/local/uv/python
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+RUN uv python install 3.12 \
+	&& ln -sf "$(uv python find 3.12)" /usr/local/bin/python3 \
+	&& ln -sf "$(uv python find 3.12)" /usr/local/bin/python \
+	&& ln -sf /usr/local/bin/uv /usr/local/bin/pip
 
 WORKDIR /opt/sumeru
 
@@ -44,7 +54,7 @@ ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
 ENV PYTHONUSERBASE=/home/node/.local
 ENV PATH="$PNPM_HOME:/home/node/.npm-global/bin:/home/node/.local/bin:${PATH}"
 
-RUN chown -R node:node /opt/sumeru \
+RUN chown -R node:node /opt/sumeru /usr/local/uv \
 	&& mkdir -p /workspace && chown node:node /workspace \
 	&& mkdir -p /home/node/.local/share/pnpm /home/node/.npm-global /home/node/.local/bin \
 	&& chown -R node:node /home/node \
