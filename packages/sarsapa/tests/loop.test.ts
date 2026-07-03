@@ -232,3 +232,85 @@ describe("sarsapa loop — error resilience", () => {
 		expect(done).toBeDefined();
 	});
 });
+
+// --- Multi-turn and skill injection tests ---
+
+describe("sarsapa multi-turn", () => {
+	it("preserves conversation history across multiple handle() calls", async () => {
+		let call = 0;
+		let lastBody: unknown = null;
+		const fakeFetch: typeof fetch = (async (_input, init) => {
+			call += 1;
+			lastBody = JSON.parse((init?.body as string) ?? "{}");
+			return new Response(
+				JSON.stringify({
+					choices: [{ message: { content: `reply ${call}` } }],
+					usage: { prompt_tokens: 10, completion_tokens: 5 },
+				}),
+				{ status: 200, headers: { "Content-Type": "application/json" } },
+			);
+		}) as typeof fetch;
+
+		const adapter = createSarsapaAdapter({ fetchImpl: fakeFetch });
+		await adapter.init({
+			instructions: "you are helpful",
+			skills: [],
+			model: { provider: "openai", name: "gpt-4.1", apiKey: "k", contextWindow: 8000 },
+		});
+
+		// First message
+		const gen1 = adapter.handle({ messageId: "m1", content: "hello", project: null });
+		const turns1: unknown[] = [];
+		for await (const t of gen1) turns1.push(t);
+
+		// Second message — should include history from first
+		const gen2 = adapter.handle({ messageId: "m2", content: "world", project: null });
+		const turns2: unknown[] = [];
+		for await (const t of gen2) turns2.push(t);
+
+		// The second LLM call should have 4 messages: system, user1, assistant1, user2
+		const body = lastBody as { messages: Array<{ role: string; content: string }> };
+		expect(body.messages.length).toBe(4);
+		expect(body.messages[0].role).toBe("system");
+		expect(body.messages[1]).toMatchObject({ role: "user", content: "hello" });
+		expect(body.messages[2]).toMatchObject({ role: "assistant", content: "reply 1" });
+		expect(body.messages[3]).toMatchObject({ role: "user", content: "world" });
+	});
+});
+
+describe("sarsapa skill injection", () => {
+	it("includes skills in system prompt", async () => {
+		let capturedBody: unknown = null;
+		const fakeFetch: typeof fetch = (async (_input, init) => {
+			capturedBody = JSON.parse((init?.body as string) ?? "{}");
+			return new Response(
+				JSON.stringify({
+					choices: [{ message: { content: "ok" } }],
+					usage: { prompt_tokens: 10, completion_tokens: 5 },
+				}),
+				{ status: 200, headers: { "Content-Type": "application/json" } },
+			);
+		}) as typeof fetch;
+
+		const adapter = createSarsapaAdapter({ fetchImpl: fakeFetch });
+		await adapter.init({
+			instructions: "base instructions",
+			skills: [
+				{ name: "tdd", content: "Write tests first." },
+				{ name: "git", content: "Use conventional commits." },
+			],
+			model: { provider: "openai", name: "gpt-4.1", apiKey: "k", contextWindow: 8000 },
+		});
+
+		const gen = adapter.handle({ messageId: "m1", content: "hi", project: null });
+		for await (const _ of gen) { /* drain */ }
+
+		const body = capturedBody as { messages: Array<{ role: string; content: string }> };
+		const system = body.messages[0].content;
+		expect(system).toContain("base instructions");
+		expect(system).toContain("## Skill: tdd");
+		expect(system).toContain("Write tests first.");
+		expect(system).toContain("## Skill: git");
+		expect(system).toContain("Use conventional commits.");
+	});
+});

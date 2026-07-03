@@ -49,7 +49,15 @@ export function createSarsapaAdapter(
 
 	async function init(config: AdapterInitConfig): Promise<void> {
 		initConfig = config;
-		conversation = createConversation(config.instructions);
+		// Build system prompt: instructions + skills content
+		let system = config.instructions;
+		if (config.skills.length > 0) {
+			const skillsSection = config.skills
+				.map((s) => `## Skill: ${s.name}\n\n${s.content}`)
+				.join("\n\n");
+			system = `${system}\n\n# Available Skills\n\n${skillsSection}`;
+		}
+		conversation = createConversation(system);
 	}
 
 	function getNativeId(): string | null {

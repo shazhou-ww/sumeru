@@ -112,6 +112,8 @@ export async function* runLoop(
 		}
 
 		if (res.toolCalls === null) {
+			// Push final assistant message to conversation for multi-turn history.
+			pushAssistant(conversation, res.content, null);
 			const turn: TurnValue = {
 				index,
 				role: "assistant",

@@ -665,8 +665,13 @@ export function createSessionManager(input: {
 				) {
 					handleAdapterFrame(runtime, frame, id);
 					markIdle(id, frame);
-					runtime.session = null;
-					runtime.initialized = false;
+					// Keep session alive after "done" — the adapter process can
+					// handle multiple messages (multi-turn). Only tear down on
+					// suspend/error where the adapter signals it cannot continue.
+					if (frame.type !== "done") {
+						runtime.session = null;
+						runtime.initialized = false;
+					}
 					continue;
 				}
 				handleAdapterFrame(runtime, frame, id);
@@ -703,8 +708,11 @@ export function createSessionManager(input: {
 		releaseRunningSlot();
 
 		// Stop container to release CPU/memory (writable layer preserved).
-		// Async fire-and-forget — next submitMessage will docker start it.
-		if (updated.containerId !== null) {
+		// Skip container stop when the adapter session is still alive (done
+		// with session kept open for multi-turn) — the process needs the
+		// container running to serve the next message.
+		const sessionKept = runtime?.session !== null && runtime?.initialized;
+		if (updated.containerId !== null && !sessionKept) {
 			input.transport.stop(updated.containerId).catch(() => {
 				// best-effort: container may already be gone
 			});
