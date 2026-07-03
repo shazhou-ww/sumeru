@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import type { AdapterImpl } from "@sumeru/adapter-core";
-import { createAdapterEntry } from "@sumeru/adapter-core";
 import { type DetectedAdapter, detectAdapter } from "./detect.js";
+import { createSessionEntry } from "./entrypoint.js";
 
 function resolveHermesProfile(): string {
 	const profile = process.env.SUMERU_HERMES_PROFILE;
@@ -43,7 +43,7 @@ async function loadAdapterImpl(kind: DetectedAdapter): Promise<AdapterImpl> {
 async function main(): Promise<void> {
 	const kind = detectAdapter();
 	const impl = await loadAdapterImpl(kind);
-	createAdapterEntry(impl);
+	createSessionEntry(kind, impl);
 }
 
 void main().catch((err: unknown) => {

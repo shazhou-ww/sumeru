@@ -231,7 +231,7 @@ async function readSessionFrameResponse(
 			continue;
 		}
 		const type = (parsed as { type: string }).type;
-		if (type === "done") {
+		if (type === "done" || type === "ready") {
 			return;
 		}
 		if (type === "error") {
