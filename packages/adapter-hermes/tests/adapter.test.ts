@@ -273,6 +273,34 @@ describe("@sumeru/adapter-hermes — buildHermesConfig", () => {
 			].join("\n"),
 		);
 	});
+
+	it("throws on invalid custom provider endpoint (relative path)", () => {
+		expect(() =>
+			buildHermesConfig({
+				provider: {
+					name: "broken",
+					endpoint: "/v1",
+					apiType: "openai",
+				},
+				name: "auto",
+				apiKey: null,
+			}),
+		).toThrow(/invalid endpoint/i);
+	});
+
+	it("throws on empty custom provider endpoint", () => {
+		expect(() =>
+			buildHermesConfig({
+				provider: {
+					name: "broken",
+					endpoint: "",
+					apiType: "openai",
+				},
+				name: "auto",
+				apiKey: null,
+			}),
+		).toThrow(/invalid endpoint/i);
+	});
 });
 
 describe("@sumeru/adapter-hermes — adapter", () => {

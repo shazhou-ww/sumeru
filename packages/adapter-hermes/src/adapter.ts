@@ -26,6 +26,7 @@ import type {
 
 const DEFAULT_HERMES_BIN = "hermes";
 const DEFAULT_SEND_TIMEOUT_MS = 2 * 60 * 60_000;
+const ACP_INIT_TIMEOUT_MS = 30_000;
 const ACP_ARGS = ["acp", "--accept-hooks"] as const;
 
 export function createHermesAdapter(
@@ -107,7 +108,7 @@ export function createHermesAdapter(
 			args: [...ACP_ARGS],
 			cwd,
 		});
-		await acpClient.initialize();
+		await withTimeout(acpClient.initialize(), ACP_INIT_TIMEOUT_MS, "ACP initialize timed out");
 		return acpClient;
 	}
 
@@ -118,7 +119,11 @@ export function createHermesAdapter(
 	): Promise<void> {
 		if (targetSessionId !== null) {
 			if (activeSessionId !== targetSessionId) {
-				await client.resumeSession(targetSessionId);
+				await withTimeout(
+					client.resumeSession(targetSessionId),
+					ACP_INIT_TIMEOUT_MS,
+					"ACP session/resume timed out",
+				);
 				activeSessionId = targetSessionId;
 				sessionId = targetSessionId;
 				await client.setMode(targetSessionId, "dont_ask");
@@ -126,7 +131,11 @@ export function createHermesAdapter(
 			return;
 		}
 		if (activeSessionId === null) {
-			const result = await client.newSession(cwd);
+			const result = await withTimeout(
+				client.newSession(cwd),
+				ACP_INIT_TIMEOUT_MS,
+				"ACP session/new timed out",
+			);
 			activeSessionId = result.sessionId;
 			sessionId = result.sessionId;
 			await client.setMode(result.sessionId, "dont_ask");
@@ -288,6 +297,13 @@ export function buildHermesConfig(model: ModelConfig): string {
 		// Hermes custom_providers use base_url (with /v1 suffix for chat_completions)
 		// and api_mode instead of our protocol-level endpoint / apiType.
 		let baseUrl = custom.endpoint;
+		// Validate endpoint is an absolute URL — relative paths like "/v1" are
+		// unusable by hermes and cause silent ACP init failures (#242).
+		if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+			throw new Error(
+				`Custom provider "${custom.name}" has invalid endpoint "${baseUrl}" (must be an absolute URL with http:// or https://)`,
+			);
+		}
 		if (!baseUrl.endsWith("/v1") && !baseUrl.endsWith("/v1/")) {
 			baseUrl = `${baseUrl.replace(/\/$/, "")}/v1`;
 		}
@@ -409,5 +425,27 @@ function mapToolCall(
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => {
 		setTimeout(resolve, ms);
+	});
+}
+
+function withTimeout<T>(
+	promise: Promise<T>,
+	ms: number,
+	message: string,
+): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(() => {
+			reject(new Error(message));
+		}, ms);
+		promise.then(
+			(value) => {
+				clearTimeout(timer);
+				resolve(value);
+			},
+			(err) => {
+				clearTimeout(timer);
+				reject(err);
+			},
+		);
 	});
 }
