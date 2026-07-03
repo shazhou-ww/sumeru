@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DetectedAdapter } from "../detect.js";
+import { claudeCodeHarness } from "./claude-code.js";
 import { codexHarness } from "./codex.js";
 import { hermesHarness } from "./hermes.js";
 import { sarsapaHarness } from "./sarsapa.js";
@@ -29,12 +30,7 @@ function homeHarness(options: {
 const HARNESS_BY_ADAPTER: Record<DetectedAdapter, HarnessConfig> = {
 	sarsapa: sarsapaHarness,
 	hermes: hermesHarness,
-	"claude-code": homeHarness({
-		resetPaths: [".claude"],
-		personaFile: "CLAUDE.md",
-		skillsSubdir: ".cursor/skills",
-		modelConfigPath: null,
-	}),
+	"claude-code": claudeCodeHarness,
 	"cursor-agent": homeHarness({
 		resetPaths: [".cursor"],
 		personaFile: ".cursorrules",

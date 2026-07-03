@@ -15,6 +15,10 @@ import {
 	isControlFrameType,
 } from "../src/control-frames.js";
 import { runSessionEntry } from "../src/entrypoint.js";
+import {
+	claudeCodeHarness,
+	formatClaudeCodeModelConfig,
+} from "../src/harness/claude-code.js";
 import { codexHarness, formatCodexModelConfig } from "../src/harness/codex.js";
 import {
 	formatHermesModelConfig,
@@ -413,6 +417,175 @@ describe("handleControlFrame — hermes harness", () => {
 	});
 });
 
+describe("formatClaudeCodeModelConfig", () => {
+	it("writes .env with base URL stripped of /v1 suffix", () => {
+		expect(
+			formatClaudeCodeModelConfig({
+				baseUrl: "http://127.0.0.1:4142/v1",
+				apiKey: "sk-ant-xxx",
+				model: "claude-sonnet-4.6",
+				provider: null,
+			}),
+		).toBe(
+			[
+				"ANTHROPIC_BASE_URL=http://127.0.0.1:4142",
+				"ANTHROPIC_API_KEY=sk-ant-xxx",
+				"CLAUDE_MODEL=claude-sonnet-4.6",
+				"",
+			].join("\n"),
+		);
+	});
+
+	it("keeps base URL unchanged when /v1 is not present", () => {
+		expect(
+			formatClaudeCodeModelConfig({
+				baseUrl: "http://127.0.0.1:4142",
+				apiKey: "sk-ant-xxx",
+				model: "claude-sonnet-4.6",
+				provider: null,
+			}),
+		).toBe(
+			[
+				"ANTHROPIC_BASE_URL=http://127.0.0.1:4142",
+				"ANTHROPIC_API_KEY=sk-ant-xxx",
+				"CLAUDE_MODEL=claude-sonnet-4.6",
+				"",
+			].join("\n"),
+		);
+	});
+
+	it("omits ANTHROPIC_API_KEY when apiKey is null", () => {
+		expect(
+			formatClaudeCodeModelConfig({
+				baseUrl: "http://127.0.0.1:4142",
+				apiKey: null,
+				model: "claude-sonnet-4.6",
+				provider: null,
+			}),
+		).toBe(
+			[
+				"ANTHROPIC_BASE_URL=http://127.0.0.1:4142",
+				"CLAUDE_MODEL=claude-sonnet-4.6",
+				"",
+			].join("\n"),
+		);
+	});
+});
+
+describe("handleControlFrame — claude-code harness", () => {
+	const tempDirs: Array<string> = [];
+
+	afterEach(() => {
+		for (const dir of tempDirs) {
+			rmSync(dir, { recursive: true, force: true });
+		}
+		tempDirs.length = 0;
+	});
+
+	function makeClaudeCodeHarness(root: string) {
+		return {
+			resetPaths: [join(root, "projects")],
+			modelConfigPath: join(root, ".env"),
+			personaPath: join(root, "CLAUDE.md"),
+			skillsDir: join(root, "skills"),
+			writeModelConfig: async (value: {
+				baseUrl: string;
+				apiKey: string | null;
+				model: string;
+				provider: string | null;
+			}) => {
+				mkdirSync(root, { recursive: true });
+				writeFileSync(
+					join(root, ".env"),
+					formatClaudeCodeModelConfig(value),
+					"utf8",
+				);
+			},
+			installSkill: null,
+		};
+	}
+
+	it("clears projects and writes CLAUDE.md on reset", async () => {
+		const root = mkdtempSync(
+			join(tmpdir(), "sumeru-session-claude-code-reset-"),
+		);
+		tempDirs.push(root);
+		const harness = makeClaudeCodeHarness(root);
+		const projectFile = join(root, "projects", "session.json");
+		mkdirSync(join(root, "projects"), { recursive: true });
+		writeFileSync(projectFile, "{}", "utf8");
+		writeFileSync(
+			join(root, ".env"),
+			"ANTHROPIC_BASE_URL=http://old\n",
+			"utf8",
+		);
+
+		await handleControlFrame(harness, {
+			type: "reset",
+			value: { persona: "You are Claude Code." },
+		});
+
+		expect(readFileSync(join(root, "CLAUDE.md"), "utf8")).toBe(
+			"You are Claude Code.",
+		);
+		expect(() => readFileSync(projectFile, "utf8")).toThrow();
+		expect(readFileSync(join(root, ".env"), "utf8")).toBe(
+			"ANTHROPIC_BASE_URL=http://old\n",
+		);
+	});
+
+	it("writes .env model config without /v1 in ANTHROPIC_BASE_URL", async () => {
+		const root = mkdtempSync(
+			join(tmpdir(), "sumeru-session-claude-code-model-"),
+		);
+		tempDirs.push(root);
+		const harness = makeClaudeCodeHarness(root);
+
+		await handleControlFrame(harness, {
+			type: "model",
+			value: {
+				baseUrl: "http://127.0.0.1:4142/v1",
+				apiKey: "sk-ant-xxx",
+				model: "claude-sonnet-4.6",
+				provider: null,
+			},
+		});
+
+		expect(readFileSync(join(root, ".env"), "utf8")).toBe(
+			formatClaudeCodeModelConfig({
+				baseUrl: "http://127.0.0.1:4142/v1",
+				apiKey: "sk-ant-xxx",
+				model: "claude-sonnet-4.6",
+				provider: null,
+			}),
+		);
+	});
+
+	it("installs skills under .claude/skills/<name>/SKILL.md", async () => {
+		const root = mkdtempSync(
+			join(tmpdir(), "sumeru-session-claude-code-skill-"),
+		);
+		tempDirs.push(root);
+		const harness = makeClaudeCodeHarness(root);
+
+		await handleControlFrame(harness, {
+			type: "install-skill",
+			value: {
+				name: "tdd",
+				content: "Write tests first.",
+				files: [{ path: "refs/guide.md", content: "Guide body" }],
+			},
+		});
+
+		expect(readFileSync(join(root, "skills", "tdd", "SKILL.md"), "utf8")).toBe(
+			"Write tests first.",
+		);
+		expect(
+			readFileSync(join(root, "skills", "tdd", "refs", "guide.md"), "utf8"),
+		).toBe("Guide body");
+	});
+});
+
 describe("handleControlFrame — codex paths", () => {
 	const tempDirs: Array<string> = [];
 
@@ -662,5 +835,22 @@ describe("getHarnessConfig", () => {
 			hermesHarness.modelConfigPath,
 		);
 		expect(getHarnessConfig("hermes").skillsDir).toBe(hermesHarness.skillsDir);
+	});
+
+	it("returns claude-code harness with .env writer and projects reset path", () => {
+		expect(getHarnessConfig("claude-code")).toEqual(claudeCodeHarness);
+		expect(getHarnessConfig("claude-code").writeModelConfig).not.toBeNull();
+		expect(getHarnessConfig("claude-code").resetPaths).toEqual(
+			claudeCodeHarness.resetPaths,
+		);
+		expect(getHarnessConfig("claude-code").personaPath).toBe(
+			claudeCodeHarness.personaPath,
+		);
+		expect(getHarnessConfig("claude-code").modelConfigPath).toBe(
+			claudeCodeHarness.modelConfigPath,
+		);
+		expect(getHarnessConfig("claude-code").skillsDir).toBe(
+			claudeCodeHarness.skillsDir,
+		);
 	});
 });
