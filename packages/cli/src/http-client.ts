@@ -42,7 +42,7 @@ export type PrototypeDetail = Prototype;
 
 export type CreateSessionBody = {
 	prototype: string;
-	project: string;
+	project: string | null;
 	task: string;
 	model: { provider: SessionInfo["model"]["provider"]; name: string } | null;
 	env: Record<string, string> | null;

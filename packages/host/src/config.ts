@@ -229,18 +229,20 @@ export function resolveSessionModel(
 }
 
 export type ResolveProjectResult =
-	| { ok: true; project: string; projectPath: string }
+	| { ok: true; project: string | null; projectPath: string | null }
 	| { ok: false; message: string };
 
 export function resolveProjectPath(
 	workspaceRoot: string,
-	rawProject: string,
+	rawProject: string | null,
 ): ResolveProjectResult {
-	if (rawProject.length === 0) {
-		return { ok: false, message: 'Field "project" must be a non-empty string' };
+	if (rawProject === null || rawProject.length === 0) {
+		return { ok: true, project: null, projectPath: null };
 	}
 	const root = pathResolve(workspaceRoot);
-	const resolved = pathResolve(root, rawProject);
+	const resolved = isAbsolute(rawProject)
+		? pathResolve(rawProject)
+		: pathResolve(root, rawProject);
 	if (resolved !== root && !resolved.startsWith(root + sep)) {
 		return {
 			ok: false,

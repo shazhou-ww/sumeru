@@ -47,8 +47,11 @@ export function createDockerTransport(
 		async up({ projectName, composePath, workDir, projectPath, env }) {
 			const composeEnv: Record<string, string> = {
 				...(env ?? {}),
-				SUMERU_PROJECT_PATH: projectPath,
 			};
+			if (projectPath !== null) {
+				// Host path; compose.yaml defines the container mount target.
+				composeEnv.SUMERU_PROJECT_PATH = projectPath;
+			}
 			const result = await runCommand(
 				[
 					composeBin,
@@ -103,8 +106,10 @@ export function createDockerTransport(
 		}) {
 			const runEnv: Record<string, string> = {
 				...(env ?? {}),
-				SUMERU_PROJECT_PATH: projectPath,
 			};
+			if (projectPath !== null) {
+				runEnv.SUMERU_PROJECT_PATH = projectPath;
+			}
 			const args = [
 				dockerBin,
 				"run",
@@ -113,8 +118,12 @@ export function createDockerTransport(
 				containerName,
 				"--network",
 				"host",
-				"-v",
-				`${projectPath}:${projectPath}`,
+			];
+			if (projectPath !== null) {
+				args.push("-v", `${projectPath}:/workspace:rw`);
+				args.push("-w", "/workspace");
+			}
+			args.push(
 				"-v",
 				`${cacheDir}/pnpm-store:/cache/pnpm-store`,
 				"-v",
@@ -123,9 +132,7 @@ export function createDockerTransport(
 				`${cacheDir}/uv:/cache/uv`,
 				"-v",
 				`${cacheDir}/pip:/cache/pip`,
-				"-w",
-				"/workspace",
-			];
+			);
 			for (const [key, value] of Object.entries(runEnv)) {
 				args.push("-e", `${key}=${value}`);
 			}
@@ -324,7 +331,7 @@ export type MockTransportCall =
 			projectName: string;
 			composePath: string;
 			workDir: string;
-			projectPath: string;
+			projectPath: string | null;
 			env: Record<string, string> | null;
 	  }
 	| {
@@ -332,7 +339,7 @@ export type MockTransportCall =
 			containerName: string;
 			imageTag: string;
 			workDir: string;
-			projectPath: string;
+			projectPath: string | null;
 			cacheDir: string;
 			env: Record<string, string> | null;
 	  }

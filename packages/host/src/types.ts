@@ -74,7 +74,7 @@ export type ManagedSession = SessionInfo & {
 	composePath: string | null;
 	imageTag: string | null;
 	initVersion: string | null;
-	projectPath: string;
+	projectPath: string | null;
 	sessionEnv: Record<string, string>;
 };
 
@@ -85,7 +85,7 @@ export type SessionModelOverride =
 
 export type CreateSessionRequest = {
 	prototype: string;
-	project: string;
+	project: string | null;
 	task: string;
 	model: SessionModelOverride;
 	env: Record<string, string> | null;
@@ -164,14 +164,14 @@ export type Transport = {
 		projectName: string;
 		composePath: string;
 		workDir: string;
-		projectPath: string;
+		projectPath: string | null;
 		env: Record<string, string> | null;
 	}): Promise<TransportUpResult>;
 	upFromImage(input: {
 		containerName: string;
 		imageTag: string;
 		workDir: string;
-		projectPath: string;
+		projectPath: string | null;
 		cacheDir: string;
 		env: Record<string, string> | null;
 	}): Promise<TransportUpResult>;

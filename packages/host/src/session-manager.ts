@@ -406,7 +406,7 @@ export function createSessionManager(input: {
 		const message: InboxMessage = {
 			messageId: body.messageId,
 			content: body.content,
-			project: record.projectPath,
+			project: record.projectPath !== null ? "/workspace" : null,
 		};
 		await ensureAdapterReady(id, record);
 		const runtime = adapters.get(id);

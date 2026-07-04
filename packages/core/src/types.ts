@@ -108,7 +108,7 @@ export type SessionInfo = {
 	prototype: string;
 	model: ModelConfig;
 	image: string;
-	project: string;
+	project: string | null;
 	task: string;
 	status: SessionStatus;
 	exit: ExitSignal | null;

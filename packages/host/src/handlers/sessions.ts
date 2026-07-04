@@ -119,15 +119,24 @@ function parseCreateBody(body: unknown): CreateSessionRequest | null {
 	const project = body.project;
 	const task = body.task;
 	if (typeof prototype !== "string" || prototype.length === 0) return null;
-	if (typeof project !== "string" || project.length === 0) return null;
+	if (project !== null && typeof project !== "string") return null;
 	if (typeof task !== "string" || task.length === 0) return null;
+
+	const normalizedProject: string | null =
+		project === null || project.length === 0 ? null : project;
 
 	const model = parseModelBody(body.model);
 	if (model === "invalid") return null;
 
 	const envRaw = body.env;
 	if (envRaw === undefined || envRaw === null) {
-		return { prototype, project, task, model, env: null };
+		return {
+			prototype,
+			project: normalizedProject,
+			task,
+			model,
+			env: null,
+		};
 	}
 	if (!isRecord(envRaw)) return null;
 	const env: Record<string, string> = {};
@@ -135,7 +144,13 @@ function parseCreateBody(body: unknown): CreateSessionRequest | null {
 		if (typeof value !== "string") return null;
 		env[key] = value;
 	}
-	return { prototype, project, task, model, env };
+	return {
+		prototype,
+		project: normalizedProject,
+		task,
+		model,
+		env,
+	};
 }
 
 function parseModelBody(

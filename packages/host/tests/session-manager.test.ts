@@ -67,11 +67,13 @@ function createInteractiveTransport(): {
 	transport: Transport;
 	calls: Array<string>;
 	upComposeContents: Array<string>;
-	upProjectPaths: Array<string>;
+	upProjectPaths: Array<string | null>;
+	inboxProjects: Array<string | null>;
 } {
 	const calls: Array<string> = [];
 	const upComposeContents: Array<string> = [];
-	const upProjectPaths: Array<string> = [];
+	const upProjectPaths: Array<string | null> = [];
+	const inboxProjects: Array<string | null> = [];
 	const transport: Transport = {
 		async up(input) {
 			calls.push(`up:${input.projectName}`);
@@ -110,6 +112,20 @@ function createInteractiveTransport(): {
 					stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
 				}
 				if (text.includes('"message"')) {
+					for (const line of text.split("\n")) {
+						if (line.length === 0 || !line.includes('"message"')) continue;
+						try {
+							const envelope = JSON.parse(line) as {
+								type: string;
+								value: { project: string | null };
+							};
+							if (envelope.type === "message") {
+								inboxProjects.push(envelope.value.project);
+							}
+						} catch {
+							// ignore partial lines
+						}
+					}
 					stdout.write(
 						`${JSON.stringify({
 							type: "turn",
@@ -153,7 +169,7 @@ function createInteractiveTransport(): {
 			return { imageId: "sha256:mock-image" };
 		},
 	};
-	return { transport, calls, upComposeContents, upProjectPaths };
+	return { transport, calls, upComposeContents, upProjectPaths, inboxProjects };
 }
 
 function createBlockingTransport(): Transport {
@@ -270,11 +286,45 @@ describe("session-manager", () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);
 		seedDb(hostConfig);
-		const { transport, upProjectPaths } = createInteractiveTransport();
+		const { transport, upProjectPaths, inboxProjects } =
+			createInteractiveTransport();
 		const manager = createSessionManager({ hostConfig, transport });
 
 		await manager.createSession(createSessionBody({ project: "demo" }));
 		expect(upProjectPaths[0]).toBe("/tmp/workspaces/demo");
+		expect(inboxProjects[0]).toBe("/workspace");
+	});
+
+	it("accepts absolute project paths under workspaceRoot", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
+		const { transport, upProjectPaths, inboxProjects } =
+			createInteractiveTransport();
+		const manager = createSessionManager({ hostConfig, transport });
+
+		await manager.createSession(
+			createSessionBody({ project: "/tmp/workspaces/demo" }),
+		);
+		expect(upProjectPaths[0]).toBe("/tmp/workspaces/demo");
+		expect(inboxProjects[0]).toBe("/workspace");
+	});
+
+	it("allows null project with no volume mount path", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
+		const { transport, upProjectPaths, inboxProjects } =
+			createInteractiveTransport();
+		const manager = createSessionManager({ hostConfig, transport });
+
+		const created = await manager.createSession(
+			createSessionBody({ project: null }),
+		);
+		expect(created.project).toBeNull();
+		expect(created.projectPath).toBeNull();
+		expect(upProjectPaths[0]).toBeNull();
+		expect(inboxProjects[0]).toBeNull();
 	});
 
 	it("creates and deletes docker-backed sessions", async () => {

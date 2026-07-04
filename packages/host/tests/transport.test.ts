@@ -62,7 +62,7 @@ describe("createDockerTransport", () => {
 		expect(upOptions?.env?.FOO).toBe("bar");
 	});
 
-	it("runs docker run with standard mounts for image-based prototypes", async () => {
+	it("runs docker run with /workspace mount for image-based prototypes", async () => {
 		spawnMock.mockImplementation(() => mockSpawnChild("container-run-abc\n"));
 
 		const transport = createDockerTransport();
@@ -79,9 +79,33 @@ describe("createDockerTransport", () => {
 		expect(args?.[0]).toBe("run");
 		expect(args).toContain("--network");
 		expect(args).toContain("host");
-		expect(args).toContain("/tmp/sumeru-e2e:/tmp/sumeru-e2e");
+		expect(args).toContain("/tmp/sumeru-e2e:/workspace:rw");
+		expect(args).toContain("-w");
+		expect(args).toContain("/workspace");
 		expect(args).toContain("/tmp/work/cache/pnpm-store:/cache/pnpm-store");
 		expect(args?.at(-1)).toBe("sumeru/codex:dev");
+	});
+
+	it("omits /workspace mount when projectPath is null", async () => {
+		spawnMock.mockImplementation(() => mockSpawnChild("container-run-abc\n"));
+
+		const transport = createDockerTransport();
+		await transport.upFromImage({
+			containerName: "ses_test",
+			imageTag: "sumeru/codex:dev",
+			workDir: "/tmp/work",
+			projectPath: null,
+			cacheDir: "/tmp/work/cache",
+			env: null,
+		});
+
+		const args = spawnMock.mock.calls[0]?.[1] as Array<string> | undefined;
+		expect(args?.some((arg) => arg.includes("/workspace"))).toBe(false);
+		expect(args).toContain("/tmp/work/cache/pnpm-store:/cache/pnpm-store");
+		const upOptions = spawnMock.mock.calls[0]?.[2] as
+			| { env?: Record<string, string> }
+			| undefined;
+		expect(upOptions?.env?.SUMERU_PROJECT_PATH).toBeUndefined();
 	});
 });
 
