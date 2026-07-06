@@ -4,7 +4,6 @@ import type {
 	Prototype,
 	Provider,
 	SessionInfo,
-	Skill,
 	Turn,
 } from "@sumeru/core";
 

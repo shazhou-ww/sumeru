@@ -255,25 +255,43 @@ describe("sarsapa multi-turn", () => {
 		await adapter.init({
 			instructions: "you are helpful",
 			skills: [],
-			model: { provider: "openai", name: "gpt-4.1", apiKey: "k", contextWindow: 8000 },
+			model: {
+				provider: "openai",
+				name: "gpt-4.1",
+				apiKey: "k",
+				contextWindow: 8000,
+			},
 		});
 
 		// First message
-		const gen1 = adapter.handle({ messageId: "m1", content: "hello", project: null });
+		const gen1 = adapter.handle({
+			messageId: "m1",
+			content: "hello",
+			project: null,
+		});
 		const turns1: unknown[] = [];
 		for await (const t of gen1) turns1.push(t);
 
 		// Second message — should include history from first
-		const gen2 = adapter.handle({ messageId: "m2", content: "world", project: null });
+		const gen2 = adapter.handle({
+			messageId: "m2",
+			content: "world",
+			project: null,
+		});
 		const turns2: unknown[] = [];
 		for await (const t of gen2) turns2.push(t);
 
 		// The second LLM call should have 4 messages: system, user1, assistant1, user2
-		const body = lastBody as { messages: Array<{ role: string; content: string }> };
+		const body = lastBody as {
+			messages: Array<{ role: string; content: string }>;
+		};
 		expect(body.messages.length).toBe(4);
 		expect(body.messages[0].role).toBe("system");
 		expect(body.messages[1]).toMatchObject({ role: "user", content: "hello" });
-		expect(body.messages[2]).toMatchObject({ role: "assistant", content: "reply 1" });
+		expect(body.messages[2]).toMatchObject({
+			role: "assistant",
+			content: "reply 1",
+		});
 		expect(body.messages[3]).toMatchObject({ role: "user", content: "world" });
 	});
 });
@@ -299,13 +317,26 @@ describe("sarsapa skill injection", () => {
 				{ name: "tdd", content: "Write tests first." },
 				{ name: "git", content: "Use conventional commits." },
 			],
-			model: { provider: "openai", name: "gpt-4.1", apiKey: "k", contextWindow: 8000 },
+			model: {
+				provider: "openai",
+				name: "gpt-4.1",
+				apiKey: "k",
+				contextWindow: 8000,
+			},
 		});
 
-		const gen = adapter.handle({ messageId: "m1", content: "hi", project: null });
-		for await (const _ of gen) { /* drain */ }
+		const gen = adapter.handle({
+			messageId: "m1",
+			content: "hi",
+			project: null,
+		});
+		for await (const _ of gen) {
+			/* drain */
+		}
 
-		const body = capturedBody as { messages: Array<{ role: string; content: string }> };
+		const body = capturedBody as {
+			messages: Array<{ role: string; content: string }>;
+		};
 		const system = body.messages[0].content;
 		expect(system).toContain("base instructions");
 		expect(system).toContain("## Skill: tdd");

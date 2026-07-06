@@ -108,7 +108,11 @@ export function createHermesAdapter(
 			args: [...ACP_ARGS],
 			cwd,
 		});
-		await withTimeout(acpClient.initialize(), ACP_INIT_TIMEOUT_MS, "ACP initialize timed out");
+		await withTimeout(
+			acpClient.initialize(),
+			ACP_INIT_TIMEOUT_MS,
+			"ACP initialize timed out",
+		);
 		return acpClient;
 	}
 
