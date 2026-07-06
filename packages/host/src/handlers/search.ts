@@ -52,7 +52,7 @@ export function searchEnvelope(value: SearchValue) {
 }
 
 function parseSessionFilter(raw: string | null): string | null | undefined {
-	if (raw === null || raw.length === 0) return null;
+	if (raw === null) return null;
 	if (raw.trim().length === 0) return undefined;
 	return raw;
 }
