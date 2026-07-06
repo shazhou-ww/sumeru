@@ -35,7 +35,7 @@ Persona (谁) + Model (用什么) + Prototype (怎么跑) = Session (干活)
 # 1. 安装依赖 & 构建
 pnpm install && pnpm run build
 
-# 2. 初始化 (创建 host 目录 + 配置 provider + build 镜像)
+# 2. 初始化（配置 provider + 构建基础镜像）
 sumeru setup --root-dir /opt/sumeru-data \
   --provider anthropic --api-key "$ANTHROPIC_API_KEY" \
   --model claude-sonnet-4
@@ -43,12 +43,36 @@ sumeru setup --root-dir /opt/sumeru-data \
 # 3. 启动 Host
 sumeru server start
 
-# 4. 创建 Session
-sumeru session create --prototype sarsapa --project /path/to/repo \
+# 4. 创建 Session（给 agent 派任务）
+sumeru session add --prototype sarsapa --project ./my-repo \
   --task "实现一个 hello world HTTP server"
 
-# 5. 查看结果
-sumeru session events <session-id>
+# 5. 查看实时输出
+sumeru session logs <session-id> --follow
+
+# 6. 多轮对话
+sumeru session send <session-id> "加上 /health 端点"
+```
+
+## CLI 命令一览
+
+```
+sumeru setup                                    — 一键初始化
+sumeru server { start | stop | status }         — 管理 Host 进程
+
+sumeru session list                             — 列出所有 session
+sumeru session add --prototype <name> ...       — 创建 session
+sumeru session send <id> "message"              — 发送后续消息
+sumeru session logs <id> [--follow]             — 查看 turn 输出
+sumeru session stop <id>                        — 停止 session
+sumeru session remove <id>                      — 删除 session
+
+sumeru prototype list                           — 列出可用 prototypes
+sumeru image build <name> --agent <type>        — 构建 Docker 镜像
+
+sumeru provider { list | add | remove } <name>  — Provider 管理
+sumeru persona { list | get | put } <name>      — Persona 管理
+sumeru search <query>                           — 搜索 session 历史
 ```
 
 ## API
