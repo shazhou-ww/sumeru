@@ -165,11 +165,7 @@
 
 ---
 
-## 14. Image 构建
-
-| # | 场景 | API | CLI | Spec |
-|---|------|-----|-----|------|
-| 14.1 | 构建 Docker image | — (纯本地操作) | `sumeru image build <name> --agent <type>` | — |
+## ~~14. Image 构建~~ (已废弃，见 [#247](https://git.shazhou.work/shazhou/sumeru/issues/247))
 
 ---
 
