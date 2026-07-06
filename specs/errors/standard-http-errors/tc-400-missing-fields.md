@@ -65,7 +65,7 @@ prerequisites:
 - [ ] Step 4 HTTP 状态码为 400
 - [ ] `.type` = `"@sumeru/error"`
 - [ ] `.value.error` = `"invalid_request"`
-- [ ] `.value.message` 包含 "prototype", "project", "task" 字段说明
+- [ ] `.value.message` 包含 "prototype" 字段说明
 
 ## Failure Signals
 

@@ -117,7 +117,7 @@ export function formatSessionTable(sessions: Array<SessionInfo>): string {
 		{ header: "PROTOTYPE", width: 16, value: (row) => row.prototype },
 		{ header: "STATUS", width: 12, value: (row) => row.status },
 		{ header: "PROJECT", width: 20, value: (row) => row.project ?? "-" },
-		{ header: "TASK", width: 24, value: (row) => row.task },
+		{ header: "TASK", width: 24, value: (row) => row.task ?? "-" },
 	]);
 }
 

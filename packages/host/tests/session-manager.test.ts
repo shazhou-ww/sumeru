@@ -353,6 +353,26 @@ describe("session-manager", () => {
 		expect(calls.some((call) => call.startsWith("rm:"))).toBe(true);
 	});
 
+	it("creates session with task=null → idle without sending message", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
+		const { transport, calls } = createInteractiveTransport();
+		const manager = createSessionManager({ hostConfig, transport });
+
+		const created = await manager.createSession(
+			createSessionBody({ task: null }),
+		);
+		expect(created.task).toBeNull();
+		expect(created.status).toBe("idle");
+		// Container should be up (adapter ready)
+		expect(calls.some((call) => call.startsWith("up:"))).toBe(true);
+		// Adapter exec started (for adapter process), but no running slot held
+		const sessions = manager.listSessions();
+		expect(sessions).toHaveLength(1);
+		expect(sessions[0]?.status).toBe("idle");
+	});
+
 	it("queues session creation in FIFO order when maxRunning is reached", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);

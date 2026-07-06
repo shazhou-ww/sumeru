@@ -83,7 +83,7 @@ curl -X POST http://localhost:7900/sessions \
   "type": "@sumeru/error",
   "value": {
     "error": "invalid_request",
-    "message": "Body must include non-empty string fields \"prototype\", \"project\", and \"task\""
+    "message": "Body must include a non-empty string field \"prototype\""
   }
 }
 ```
@@ -116,7 +116,7 @@ curl -X POST http://localhost:7900/sessions \
   "type": "@sumeru/error",
   "value": {
     "error": "invalid_request",
-    "message": "Body must include non-empty string fields \"prototype\", \"project\", and \"task\""
+    "message": "Body must include a non-empty string field \"prototype\""
   }
 }
 ```

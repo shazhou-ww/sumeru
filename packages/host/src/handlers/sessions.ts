@@ -71,7 +71,7 @@ export function createSessionsHandler(manager: SessionManager) {
 					400,
 					errorEnvelope(
 						"invalid_request",
-						'Body must include non-empty string fields "prototype", "project", and "task"',
+						'Body must include a non-empty string field "prototype"',
 					),
 				);
 				return;
@@ -120,10 +120,17 @@ function parseCreateBody(body: unknown): CreateSessionRequest | null {
 	const task = body.task;
 	if (typeof prototype !== "string" || prototype.length === 0) return null;
 	if (project !== null && typeof project !== "string") return null;
-	if (typeof task !== "string" || task.length === 0) return null;
+	if (
+		task !== undefined &&
+		task !== null &&
+		(typeof task !== "string" || task.length === 0)
+	)
+		return null;
 
 	const normalizedProject: string | null =
 		project === null || project.length === 0 ? null : project;
+	const normalizedTask: string | null =
+		task === undefined || task === null ? null : task;
 
 	const model = parseModelBody(body.model);
 	if (model === "invalid") return null;
@@ -133,7 +140,7 @@ function parseCreateBody(body: unknown): CreateSessionRequest | null {
 		return {
 			prototype,
 			project: normalizedProject,
-			task,
+			task: normalizedTask,
 			model,
 			env: null,
 		};
@@ -147,7 +154,7 @@ function parseCreateBody(body: unknown): CreateSessionRequest | null {
 	return {
 		prototype,
 		project: normalizedProject,
-		task,
+		task: normalizedTask,
 		model,
 		env,
 	};

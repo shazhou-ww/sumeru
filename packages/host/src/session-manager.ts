@@ -206,7 +206,7 @@ export function createSessionManager(input: {
 				image,
 				project: body.project,
 				task: body.task,
-				status: "running",
+				status: body.task !== null ? "running" : "idle",
 				exit: null,
 				tokenUsage: null,
 				createdAt: new Date().toISOString(),
@@ -220,7 +220,11 @@ export function createSessionManager(input: {
 			};
 			sessions.set(id, record);
 			await ensureAdapterReady(id, record);
-			await sendTask(id, record, body.task);
+			if (body.task !== null) {
+				await sendTask(id, record, body.task as string);
+			} else {
+				releaseRunningSlot();
+			}
 			return record;
 		} catch (err) {
 			const record = sessions.get(id);

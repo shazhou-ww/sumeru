@@ -86,7 +86,7 @@ export type SessionModelOverride =
 export type CreateSessionRequest = {
 	prototype: string;
 	project: string | null;
-	task: string;
+	task: string | null;
 	model: SessionModelOverride;
 	env: Record<string, string> | null;
 };
