@@ -156,14 +156,21 @@
 
 ## 13. In-Session Commands
 
-| # | 场景 | API | CLI | Spec |
-|---|------|-----|-----|------|
-| 13.1 | chat 命令（发消息+等结果） | `POST /sessions/:id/commands` `{"type":"chat","content":"..."}` | `sumeru chat <target> [prompt]` — target 为 session ID 或 prototype 名（后者自动创建 session，project=cwd） | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.2 | exec 命令（容器内执行 shell） | `POST /sessions/:id/commands` `{"type":"exec","command":"..."}` | `sumeru exec <target> -- <command...>` — target 同上 | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.3 | model 命令（切换 model） | `POST /sessions/:id/commands` `{"type":"model",...}` | `sumeru session model <id> <model-id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.4 | reset 命令（清上下文） | `POST /sessions/:id/commands` `{"type":"reset",...}` | `sumeru reset <id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.5 | install-skill 命令 | `POST /sessions/:id/commands` `{"type":"install-skill",...}` | — (API-only，CLI 无独立入口) | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.6 | snapshot 命令（docker commit） | `POST /sessions/:id/commands` `{"type":"snapshot",...}` | `sumeru snapshot <id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+> CLI 整合计划见 [#248](https://git.shazhou.work/shazhou/sumeru/issues/248)：
+> 所有操作收归 `sumeru session` 子命令，砍掉顶级 chat/exec/reset/snapshot。
+
+| # | 场景 | API | CLI (目标态) | Spec |
+|---|------|-----|-------------|------|
+| 13.1 | 发消息（唯一入口） | `POST /sessions/:id/messages` | `sumeru session send <id> "msg" [--model] [--env]` | [resume/message-resume-idle.md](./resume/message-resume-idle.md) |
+| 13.2 | 容器内执行 shell | `POST /sessions/:id/commands` `{"type":"exec",...}` | `sumeru session exec <id> -- <command...>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.3 | 切换 model | `POST /sessions/:id/commands` `{"type":"model",...}` | `sumeru session model <id> <model-id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.4 | 清上下文 | `POST /sessions/:id/commands` `{"type":"reset",...}` | `sumeru session reset <id> [--persona]` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.5 | install-skill | `POST /sessions/:id/commands` `{"type":"install-skill",...}` | — (API-only) | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.6 | snapshot（docker commit） | `POST /sessions/:id/commands` `{"type":"snapshot",...}` | `sumeru session snapshot <id> <name>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+
+**Deprecated:**
+- `POST /sessions/:id/commands` type:"chat" → 用 `POST /messages` 替代
+- CLI 顶级 `sumeru chat` / `sumeru exec` / `sumeru reset` / `sumeru snapshot` → 收归 `sumeru session` 下
 
 ---
 
