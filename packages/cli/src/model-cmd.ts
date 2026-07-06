@@ -7,21 +7,13 @@ import {
 export async function runSessionModelCommand(
 	argv: Array<string>,
 ): Promise<number | null> {
-	if (argv[0] !== "model" || argv.length < 3) {
+	// Detect: sumeru session model <id> <model-id>
+	if (argv[0] !== "session" || argv[1] !== "model" || argv.length < 4) {
 		return null;
 	}
-	const sub = argv[1];
-	if (
-		sub === "list" ||
-		sub === "get" ||
-		sub === "add" ||
-		sub === "update" ||
-		sub === "remove"
-	) {
-		return null;
-	}
-	const sessionId = sub;
-	const modelId = argv[2];
+	const sessionId = argv[2];
+	const modelId = argv[3];
+	if (sessionId === undefined || modelId === undefined) return null;
 	const idx = modelId.indexOf(":");
 	if (idx === -1) {
 		process.stderr.write("Invalid model ID. Expected format: provider:model\n");

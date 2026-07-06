@@ -4,9 +4,12 @@ import { dirname, resolve } from "node:path";
 import type { CliContext, CommandAction, ParsedFlags } from "@ocas/cli-kit";
 import { createCLI } from "@ocas/cli-kit";
 import { z } from "zod";
-import { registerChatCommand } from "./chat.js";
+import {
+	ApiClientError,
+	createApiClient,
+	resolveApiBaseUrl,
+} from "./api-client.js";
 import { parseEnvFlagsFromArgv } from "./env-flags.js";
-import { registerExecCommand } from "./exec.js";
 import { formatExtensionTable } from "./format.js";
 import { createHostClient, HostClientError } from "./http-client.js";
 import {
@@ -22,10 +25,8 @@ import {
 	writePidFile,
 } from "./pid-file.js";
 import { registerPrototypeRmCommand } from "./prototype-cmd.js";
-import { registerResetCommand } from "./reset-cmd.js";
 import { registerSessionRmCommand } from "./session-cmd.js";
 import { runSetup } from "./setup.js";
-import { registerSnapshotCommand } from "./snapshot.js";
 
 // ─── Shared schemas ─────────────────────────────────────────────────────
 
@@ -1211,6 +1212,123 @@ cli
 		}
 	});
 
+// ─── session exec ────────────────────────────────────────────────────────
+
+cli
+	.command("session")
+	.command("exec")
+	.describe("Run a shell command in a session container")
+	.arg("id")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
+	.action(async (args, flags, ctx) => {
+		const separator = process.argv.indexOf("--");
+		if (separator === -1) {
+			ctx.error("Usage: sumeru session exec <id> -- <command...>");
+		}
+		const parts = process.argv.slice(separator + 1);
+		if (parts.length === 0) {
+			ctx.error("Usage: sumeru session exec <id> -- <command...>");
+		}
+		const command = parts.join(" ");
+		const api = createApiClient(
+			resolveApiBaseUrl({
+				host: flags.host as string | undefined,
+				port: flags.port as string | undefined,
+			}),
+		);
+		try {
+			const result = await api.postCommand(args.id, {
+				type: "exec",
+				command,
+			});
+			if (result.mode !== "sync" || result.value.type !== "exec") {
+				ctx.error("Expected sync exec result");
+			}
+			const execResult = result.value as { type: "exec"; stdout: string; stderr: string; exitCode: number };
+			process.stdout.write(execResult.stdout);
+			if (execResult.stderr.length > 0) {
+				process.stderr.write(execResult.stderr);
+			}
+			process.exit(execResult.exitCode);
+		} catch (err) {
+			if (err instanceof ApiClientError) {
+				ctx.error(`${err.code}: ${err.message}`);
+			}
+			const msg = err instanceof Error ? err.message : String(err);
+			ctx.error(msg);
+		}
+	});
+
+// ─── session reset ───────────────────────────────────────────────────────
+
+cli
+	.command("session")
+	.command("reset")
+	.describe("Reset a session context, optionally with a new persona")
+	.arg("id")
+	.flag("persona", { type: "string" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const persona = (flags.persona as string | undefined) ?? null;
+		const api = createApiClient(
+			resolveApiBaseUrl({
+				host: flags.host as string | undefined,
+				port: flags.port as string | undefined,
+			}),
+		);
+		try {
+			await api.postCommand(args.id, { type: "reset", persona });
+			return { message: `reset ${args.id}` };
+		} catch (err) {
+			if (err instanceof ApiClientError) {
+				ctx.error(`${err.code}: ${err.message}`);
+			}
+			const msg = err instanceof Error ? err.message : String(err);
+			ctx.error(msg);
+		}
+	});
+
+// ─── session snapshot ────────────────────────────────────────────────────
+
+cli
+	.command("session")
+	.command("snapshot")
+	.describe("Snapshot a session into a new prototype image")
+	.arg("id")
+	.arg("name")
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, flags, ctx) => {
+		const api = createApiClient(
+			resolveApiBaseUrl({
+				host: flags.host as string | undefined,
+				port: flags.port as string | undefined,
+			}),
+		);
+		try {
+			const result = await api.postCommand(args.id, {
+				type: "snapshot",
+				name: args.name,
+			});
+			if (result.mode !== "sync" || result.value.type !== "snapshot") {
+				ctx.error("Expected sync snapshot result");
+			}
+			const snapshotResult = result.value as { type: "snapshot"; name: string; image: string };
+			return { message: `${snapshotResult.name} ${snapshotResult.image}` };
+		} catch (err) {
+			if (err instanceof ApiClientError) {
+				ctx.error(`${err.code}: ${err.message}`);
+			}
+			const msg = err instanceof Error ? err.message : String(err);
+			ctx.error(msg);
+		}
+	});
+
 // ─── search ──────────────────────────────────────────────────────────────
 
 cli
@@ -1243,10 +1361,6 @@ cli
 
 // ─── Phase 3: verb + target commands ────────────────────────────────────
 
-registerChatCommand(cli);
-registerExecCommand(cli);
-registerResetCommand(cli);
-registerSnapshotCommand(cli);
 registerSessionRmCommand(cli);
 registerPrototypeRmCommand(cli);
 
