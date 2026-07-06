@@ -310,7 +310,8 @@ export function createDockerTransport(
 }
 
 export function defaultAdapterCommand(adapter: string): Array<string> {
-	return ["node", `${ADAPTER_BASE}/adapter-${adapter}/dist/main.js`];
+	const pkg = adapter === "sarsapa" ? "sarsapa" : `adapter-${adapter}`;
+	return ["node", `${ADAPTER_BASE}/${pkg}/dist/main.js`];
 }
 
 export type MockTransportCall =
