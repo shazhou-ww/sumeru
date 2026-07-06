@@ -33,8 +33,9 @@ Configuration is loaded from a root directory (`host.yaml`, `prototypes/`, SQLit
 | GET | `/` | Host status |
 | PUT | `/providers/:name`, `/personas/:name`, `/prototypes/:name`, `/extensions/:name`, `/skills/:name` | Upsert pattern |
 | PUT | `/providers/:name/models/:modelName` | Upsert model |
-| POST | `/sessions` | Create session |
-| POST | `/sessions/:id/messages` | Send message |
+| POST | `/sessions` | Create session (task optional → idle) |
+| POST | `/sessions/:id/messages` | Send message (resume idle session) |
+| POST | `/sessions/:id/commands` | In-session commands (exec, model, reset, snapshot) |
 | GET | `/sessions/:id/events` | SSE event stream |
 | GET | `/search` | Full-text search |
 
