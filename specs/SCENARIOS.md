@@ -181,8 +181,8 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 16.1 | 交互式对话 | — (CLI-only) | `sumeru chat <prototype> --project <p>` | — |
-| 16.2 | 单次执行 | — (CLI-only) | `sumeru exec <prototype> --project <p> --task <t>` | — |
+| 16.1 | 交互式对话 | — (CLI-only，内部调用 Commands API) | `sumeru chat <target> [prompt]` — target 为 session ID 或 prototype 名（后者自动创建 session，project=cwd） | — |
+| 16.2 | 容器内执行命令 | — (CLI-only，内部调用 Commands API) | `sumeru exec <target> -- <command...>` — target 同上 | — |
 
 ---
 
