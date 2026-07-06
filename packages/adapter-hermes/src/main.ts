@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { createAdapterEntry } from "@sumeru/adapter-core";
+import { createSessionLoop } from "@sumeru/adapter-core";
 import { createHermesAdapter } from "./adapter.js";
+import { hermesHarness } from "./harness.js";
 
 const profile =
 	typeof process.env.SUMERU_HERMES_PROFILE === "string" &&
@@ -8,4 +9,4 @@ const profile =
 		? process.env.SUMERU_HERMES_PROFILE
 		: "default";
 
-createAdapterEntry(createHermesAdapter({ profile }));
+createSessionLoop(createHermesAdapter({ profile }), hermesHarness);

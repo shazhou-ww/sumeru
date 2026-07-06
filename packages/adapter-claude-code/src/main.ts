@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { createAdapterEntry } from "@sumeru/adapter-core";
+import { createSessionLoop } from "@sumeru/adapter-core";
 import { createClaudeCodeAdapter } from "./adapter.js";
+import { claudeCodeHarness } from "./harness.js";
 
-createAdapterEntry(createClaudeCodeAdapter());
+createSessionLoop(createClaudeCodeAdapter(), claudeCodeHarness);

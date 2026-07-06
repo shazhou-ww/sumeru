@@ -104,7 +104,6 @@ packages/
   adapter-codex/  — Codex CLI adapter
   adapter-claude-code/ — Claude Code adapter
   adapter-cursor-agent/ — Cursor Agent adapter
-  sumeru-session/ — 容器内统一入口（检测 agent 类型并路由）
   base/           — 基础 Docker image (Dockerfile)
 docker/
   selftest/       — 自测 prototype（Dockerfile + persona）
@@ -127,7 +126,7 @@ sumeru/base:dev            ← node:24-slim + python 3.12 + 通用工具
 
 **Session 生命周期**：
 1. `POST /sessions` → `docker run` 新容器
-2. `docker exec` 启动 adapter 进程（通过 sumeru-session 路由）
+2. `docker exec` 启动 adapter 进程（各 adapter 包自带 main.ts 入口）
 3. Agent 完成任务 → `done` → session idle（容器保持 running，支持多轮）
 4. 显式 stop / 超时 → `docker stop`（writable layer 保留）
 5. 再次发消息 → `docker start` → 恢复

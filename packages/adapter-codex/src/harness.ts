@@ -1,8 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ModelControlValue } from "../control-frames.js";
-import type { HarnessConfig } from "./types.js";
+import type { HarnessConfig, ModelControlValue } from "@sumeru/adapter-core";
 
 const DEFAULT_PROVIDER_ID = "bridge";
 const DEFAULT_PROVIDER_NAME = "Copilot Bridge";

@@ -12,8 +12,6 @@ import {
 	createDockerTransport,
 	createMockTransport,
 	defaultAdapterCommand,
-	legacyAdapterCommand,
-	SUMERU_SESSION_MAIN,
 } from "../src/transport.js";
 
 function mockSpawnChild(stdout = "container-abc\n"): ChildProcess {
@@ -110,16 +108,15 @@ describe("createDockerTransport", () => {
 });
 
 describe("defaultAdapterCommand", () => {
-	it("prefers sumeru-session with legacy fallback", () => {
-		const command = defaultAdapterCommand("codex");
-		expect(command[0]).toBe("sh");
-		expect(command[1]).toBe("-c");
-		expect(command[2]).toContain(SUMERU_SESSION_MAIN);
-		expect(command[2]).toContain("/opt/sumeru/adapter-codex/dist/main.js");
+	it("returns per-adapter entrypoint", () => {
+		expect(defaultAdapterCommand("codex")).toEqual([
+			"node",
+			"/opt/sumeru/adapter-codex/dist/main.js",
+		]);
 	});
 
-	it("legacyAdapterCommand keeps per-adapter entrypoint", () => {
-		expect(legacyAdapterCommand("hermes")).toEqual([
+	it("returns hermes adapter entrypoint", () => {
+		expect(defaultAdapterCommand("hermes")).toEqual([
 			"node",
 			"/opt/sumeru/adapter-hermes/dist/main.js",
 		]);

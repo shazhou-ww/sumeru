@@ -310,7 +310,7 @@ describe("POST /sessions/:id/commands", () => {
 		expect(transport.runOnceCommands).toEqual([["sh", "-c", "echo hello"]]);
 	});
 
-	it("resolves model commands and emits model frame to sumeru-session", async () => {
+	it("resolves model commands and emits model frame to adapter session loop", async () => {
 		const { server, transport, manager } = await startTestServer();
 		const created = await manager.createSession({
 			prototype: "claude-code",

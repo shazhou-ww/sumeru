@@ -1,6 +1,18 @@
 // @sumeru/adapter-core — public entry. Pure re-export barrel.
 // Adapter common framework: cli-kit NDJSON stdin/stdout entrypoint.
+
+export {
+	type ControlFrameType,
+	handleControlFrame,
+	type InstallSkillControlValue,
+	isControlFrameType,
+	type ModelControlValue,
+	type ResetControlValue,
+} from "./control-frames.js";
 export { createAdapterEntry, runAdapterEntry } from "./entrypoint.js";
+export type { HarnessConfig } from "./harness-types.js";
+export type { SessionLoopOptions } from "./session-loop.js";
+export { createSessionLoop, runSessionLoop } from "./session-loop.js";
 export type {
 	AdapterEntryOptions,
 	AdapterHandleYield,

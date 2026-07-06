@@ -1,4 +1,5 @@
 export { createSarsapaAdapter } from "./agent.js";
+export { sarsapaHarness } from "./harness.js";
 export { manifest } from "./manifest.js";
 export type {
 	LlmMessage,

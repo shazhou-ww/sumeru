@@ -81,12 +81,12 @@ export function createHermesAdapter(
 			await writeFile(join(skillDir, "SKILL.md"), skill.content, "utf8");
 		}
 		// Only write config.yaml if it doesn't already exist.
-		// sumeru-session's model/reset commands manage this file when present;
+		// control-frame model/reset commands manage this file when present;
 		// adapter should not overwrite their configuration.
 		const configPath = join(hermesDir, "config.yaml");
 		try {
 			await access(configPath);
-			// config.yaml exists (written by sumeru-session) — skip
+			// config.yaml exists (written by control frames) — skip
 		} catch {
 			// config.yaml missing — write initial config from init frame
 			await writeFile(configPath, buildHermesConfig(config.model), "utf8");

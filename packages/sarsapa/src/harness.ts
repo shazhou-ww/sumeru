@@ -1,4 +1,4 @@
-import type { HarnessConfig } from "./types.js";
+import type { HarnessConfig } from "@sumeru/adapter-core";
 
 export const sarsapaHarness: HarnessConfig = {
 	resetPaths: [],

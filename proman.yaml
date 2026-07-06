@@ -35,10 +35,6 @@ packages:
     path: packages/adapter-cursor-agent
     type: lib
 
-  - name: "@sumeru/sumeru-session"
-    path: packages/sumeru-session
-    type: lib
-
 release:
   registry: https://registry.npmjs.org
   access: public

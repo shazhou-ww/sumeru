@@ -11,25 +11,27 @@ import { PassThrough } from "node:stream";
 import type { AdapterImpl, DoneValue, TurnValue } from "@sumeru/adapter-core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-	handleControlFrame,
-	isControlFrameType,
-} from "../src/control-frames.js";
-import { runSessionEntry } from "../src/entrypoint.js";
-import {
 	claudeCodeHarness,
 	formatClaudeCodeModelConfig,
-} from "../src/harness/claude-code.js";
-import { codexHarness, formatCodexModelConfig } from "../src/harness/codex.js";
+} from "../../adapter-claude-code/src/harness.js";
+import {
+	codexHarness,
+	formatCodexModelConfig,
+} from "../../adapter-codex/src/harness.js";
 import {
 	cursorAgentHarness,
 	formatCursorAgentModelConfig,
-} from "../src/harness/cursor-agent.js";
+} from "../../adapter-cursor-agent/src/harness.js";
 import {
 	formatHermesModelConfig,
 	hermesHarness,
-} from "../src/harness/hermes.js";
-import { getHarnessConfig } from "../src/harness/index.js";
-import { sarsapaHarness } from "../src/harness/sarsapa.js";
+} from "../../adapter-hermes/src/harness.js";
+import { sarsapaHarness } from "../../sarsapa/src/harness.js";
+import {
+	handleControlFrame,
+	isControlFrameType,
+} from "../src/control-frames.js";
+import { runSessionLoop } from "../src/session-loop.js";
 
 type StdoutCapture = {
 	stream: NodeJS.WritableStream;
@@ -866,13 +868,13 @@ describe("handleControlFrame — cursor-agent harness", () => {
 	});
 });
 
-describe("runSessionEntry", () => {
+describe("runSessionLoop", () => {
 	it("responds with ready for sarsapa control frames", async () => {
 		const stdin = new PassThrough();
 		const stdout = makeStdout();
 		const sigterm = makeSigtermHook();
-		const runPromise = runSessionEntry({
-			kind: "sarsapa",
+		const runPromise = runSessionLoop({
+			harness: sarsapaHarness,
 			impl: makeStubAdapter(),
 			stdin,
 			stdout: stdout.stream,
@@ -904,8 +906,8 @@ describe("runSessionEntry", () => {
 		const stdin = new PassThrough();
 		const stdout = makeStdout();
 		const sigterm = makeSigtermHook();
-		const runPromise = runSessionEntry({
-			kind: "sarsapa",
+		const runPromise = runSessionLoop({
+			harness: sarsapaHarness,
 			impl: makeStubAdapter(),
 			stdin,
 			stdout: stdout.stream,
@@ -960,8 +962,8 @@ describe("runSessionEntry", () => {
 		const stdin = new PassThrough();
 		const stdout = makeStdout();
 		const sigterm = makeSigtermHook();
-		const runPromise = runSessionEntry({
-			kind: "sarsapa",
+		const runPromise = runSessionLoop({
+			harness: sarsapaHarness,
 			impl,
 			stdin,
 			stdout: stdout.stream,
@@ -979,72 +981,46 @@ describe("runSessionEntry", () => {
 	});
 });
 
-describe("getHarnessConfig", () => {
-	it("returns sarsapa no-op paths", () => {
-		expect(getHarnessConfig("sarsapa")).toEqual(sarsapaHarness);
+describe("adapter harness configs", () => {
+	it("exports sarsapa no-op paths", () => {
+		expect(sarsapaHarness.resetPaths).toEqual([]);
 	});
 
-	it("returns codex harness with TOML writer and session reset path", () => {
-		expect(getHarnessConfig("codex")).toEqual(codexHarness);
-		expect(getHarnessConfig("codex").writeModelConfig).not.toBeNull();
-		expect(getHarnessConfig("codex").resetPaths).toEqual(
-			codexHarness.resetPaths,
-		);
-		expect(getHarnessConfig("codex").personaPath).toBe(
-			codexHarness.personaPath,
-		);
-		expect(getHarnessConfig("codex").modelConfigPath).toBe(
-			codexHarness.modelConfigPath,
-		);
+	it("exports codex harness with TOML writer and session reset path", () => {
+		expect(codexHarness.writeModelConfig).not.toBeNull();
+		expect(codexHarness.resetPaths).toEqual(codexHarness.resetPaths);
+		expect(codexHarness.personaPath).toBe(codexHarness.personaPath);
+		expect(codexHarness.modelConfigPath).toBe(codexHarness.modelConfigPath);
 	});
 
-	it("returns hermes harness with YAML writer and sessions reset path", () => {
-		expect(getHarnessConfig("hermes")).toEqual(hermesHarness);
-		expect(getHarnessConfig("hermes").writeModelConfig).not.toBeNull();
-		expect(getHarnessConfig("hermes").resetPaths).toEqual(
-			hermesHarness.resetPaths,
-		);
-		expect(getHarnessConfig("hermes").personaPath).toBe(
-			hermesHarness.personaPath,
-		);
-		expect(getHarnessConfig("hermes").modelConfigPath).toBe(
-			hermesHarness.modelConfigPath,
-		);
-		expect(getHarnessConfig("hermes").skillsDir).toBe(hermesHarness.skillsDir);
+	it("exports hermes harness with YAML writer and sessions reset path", () => {
+		expect(hermesHarness.writeModelConfig).not.toBeNull();
+		expect(hermesHarness.resetPaths).toEqual(hermesHarness.resetPaths);
+		expect(hermesHarness.personaPath).toBe(hermesHarness.personaPath);
+		expect(hermesHarness.modelConfigPath).toBe(hermesHarness.modelConfigPath);
+		expect(hermesHarness.skillsDir).toBe(hermesHarness.skillsDir);
 	});
 
-	it("returns claude-code harness with .env writer and projects reset path", () => {
-		expect(getHarnessConfig("claude-code")).toEqual(claudeCodeHarness);
-		expect(getHarnessConfig("claude-code").writeModelConfig).not.toBeNull();
-		expect(getHarnessConfig("claude-code").resetPaths).toEqual(
-			claudeCodeHarness.resetPaths,
-		);
-		expect(getHarnessConfig("claude-code").personaPath).toBe(
-			claudeCodeHarness.personaPath,
-		);
-		expect(getHarnessConfig("claude-code").modelConfigPath).toBe(
+	it("exports claude-code harness with .env writer and projects reset path", () => {
+		expect(claudeCodeHarness.writeModelConfig).not.toBeNull();
+		expect(claudeCodeHarness.resetPaths).toEqual(claudeCodeHarness.resetPaths);
+		expect(claudeCodeHarness.personaPath).toBe(claudeCodeHarness.personaPath);
+		expect(claudeCodeHarness.modelConfigPath).toBe(
 			claudeCodeHarness.modelConfigPath,
 		);
-		expect(getHarnessConfig("claude-code").skillsDir).toBe(
-			claudeCodeHarness.skillsDir,
-		);
+		expect(claudeCodeHarness.skillsDir).toBe(claudeCodeHarness.skillsDir);
 	});
 
-	it("returns cursor-agent harness with JSON writer and sessions reset path", () => {
-		expect(getHarnessConfig("cursor-agent")).toEqual(cursorAgentHarness);
-		expect(getHarnessConfig("cursor-agent").writeModelConfig).not.toBeNull();
-		expect(getHarnessConfig("cursor-agent").installSkill).not.toBeNull();
-		expect(getHarnessConfig("cursor-agent").resetPaths).toEqual(
+	it("exports cursor-agent harness with JSON writer and sessions reset path", () => {
+		expect(cursorAgentHarness.writeModelConfig).not.toBeNull();
+		expect(cursorAgentHarness.installSkill).not.toBeNull();
+		expect(cursorAgentHarness.resetPaths).toEqual(
 			cursorAgentHarness.resetPaths,
 		);
-		expect(getHarnessConfig("cursor-agent").personaPath).toBe(
-			cursorAgentHarness.personaPath,
-		);
-		expect(getHarnessConfig("cursor-agent").modelConfigPath).toBe(
+		expect(cursorAgentHarness.personaPath).toBe(cursorAgentHarness.personaPath);
+		expect(cursorAgentHarness.modelConfigPath).toBe(
 			cursorAgentHarness.modelConfigPath,
 		);
-		expect(getHarnessConfig("cursor-agent").skillsDir).toBe(
-			cursorAgentHarness.skillsDir,
-		);
+		expect(cursorAgentHarness.skillsDir).toBe(cursorAgentHarness.skillsDir);
 	});
 });

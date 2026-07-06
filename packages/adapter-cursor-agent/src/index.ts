@@ -1,4 +1,8 @@
 export { createCursorAgentAdapter } from "./adapter.js";
+export {
+	cursorAgentHarness,
+	formatCursorAgentModelConfig,
+} from "./harness.js";
 export { manifest } from "./manifest.js";
 export { defaultStreamingSpawn } from "./spawn.js";
 export {

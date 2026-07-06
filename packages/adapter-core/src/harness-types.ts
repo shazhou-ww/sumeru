@@ -1,7 +1,7 @@
 import type {
 	InstallSkillControlValue,
 	ModelControlValue,
-} from "../control-frames.js";
+} from "./control-frames.js";
 
 export type HarnessConfig = {
 	resetPaths: Array<string>;

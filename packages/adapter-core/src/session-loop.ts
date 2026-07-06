@@ -1,3 +1,5 @@
+import { handleControlFrame, isControlFrameType } from "./control-frames.js";
+import type { HarnessConfig } from "./harness-types.js";
 import type {
 	AdapterEntryOptions,
 	AdapterHandleYield,
@@ -6,15 +8,12 @@ import type {
 	AdapterInitConfig,
 	OutboundFrame,
 	SuspendValue,
-} from "@sumeru/adapter-core";
-import { handleControlFrame, isControlFrameType } from "./control-frames.js";
-import type { DetectedAdapter } from "./detect.js";
-import { getHarnessConfig } from "./harness/index.js";
+} from "./types.js";
 
 const DEFAULT_SEND_TIMEOUT_MS = 7_200_000;
 
-type SessionEntryOptions = AdapterEntryOptions & {
-	kind: DetectedAdapter;
+export type SessionLoopOptions = AdapterEntryOptions & {
+	harness: HarnessConfig;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -72,6 +71,7 @@ function delay(ms: number): Promise<void> {
 function createLineReader(stdin: NodeJS.ReadableStream): {
 	nextLine(): Promise<string | null>;
 	dispose(): void;
+	wake(): void;
 } {
 	const lineQueue: Array<string> = [];
 	let pending = "";
@@ -129,21 +129,21 @@ function createLineReader(stdin: NodeJS.ReadableStream): {
 			stdin.removeListener("data", onData);
 			stdin.removeListener("end", onEnd);
 		},
+		wake,
 	};
 }
 
-export async function runSessionEntry(
-	options: SessionEntryOptions,
+export async function runSessionLoop(
+	options: SessionLoopOptions,
 ): Promise<void> {
 	const {
-		kind,
+		harness,
 		impl,
 		stdin,
 		stdout,
 		onSigterm,
 		sendTimeoutMs = null,
 	} = options;
-	const harness = getHarnessConfig(kind);
 	const handleTimeoutMs = sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
 
 	let initialized = false;
@@ -157,6 +157,7 @@ export async function runSessionEntry(
 
 	const disposeSigterm = onSigterm(() => {
 		stopRequested = true;
+		reader.wake();
 	});
 
 	const handleMessage = async (
@@ -326,12 +327,12 @@ export async function runSessionEntry(
 	}
 }
 
-export function createSessionEntry(
-	kind: DetectedAdapter,
+export function createSessionLoop(
 	impl: AdapterImpl,
+	harness: HarnessConfig,
 ): void {
-	void runSessionEntry({
-		kind,
+	void runSessionLoop({
+		harness,
 		impl,
 		stdin: process.stdin,
 		stdout: process.stdout,

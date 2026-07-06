@@ -1,6 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { HarnessConfig } from "./harness/types.js";
+import type { HarnessConfig } from "./harness-types.js";
 
 export type ControlFrameType = "reset" | "model" | "install-skill";
 

@@ -2,10 +2,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
+	HarnessConfig,
 	InstallSkillControlValue,
 	ModelControlValue,
-} from "../control-frames.js";
-import type { HarnessConfig } from "./types.js";
+} from "@sumeru/adapter-core";
 
 export type CursorAgentModelConfig = {
 	model: string;
