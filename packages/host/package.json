@@ -32,11 +32,7 @@
     "@sumeru/adapter-hermes": "workspace:*",
     "@sumeru/core": "workspace:*",
     "@sumeru/sarsapa": "workspace:*",
-    "better-sqlite3": "^11.10.0",
     "yaml": "^2.8.0"
-  },
-  "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13"
   },
   "scripts": {
     "test:ci": "npx vitest run"

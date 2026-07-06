@@ -4,6 +4,5 @@ packages:
 onlyBuiltDependencies:
   - esbuild
   - "@biomejs/biome"
-  - better-sqlite3
 
 minimumReleaseAge: 0

@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import type {
 	Model,
 	Persona,
@@ -5,7 +6,6 @@ import type {
 	ProviderApiType,
 	Skill,
 } from "@sumeru/core";
-import Database from "better-sqlite3";
 
 const SCHEMA_VERSION = 3;
 
@@ -205,13 +205,13 @@ export function maskApiKey(key: string | null): string | null {
 }
 
 export function openDatabase(dbPath: string): SqliteStore {
-	const db = new Database(dbPath);
-	db.pragma("foreign_keys = ON");
+	const db = new DatabaseSync(dbPath);
+	db.exec("PRAGMA foreign_keys = ON");
 	runMigrations(db);
 	return createSqliteStore(db);
 }
 
-function runMigrations(db: Database.Database): void {
+function runMigrations(db: DatabaseSync): void {
 	db.exec(`
 CREATE TABLE IF NOT EXISTS schema_version (
   version INTEGER NOT NULL
@@ -248,7 +248,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 	}
 }
 
-function createSqliteStore(db: Database.Database): SqliteStore {
+function createSqliteStore(db: DatabaseSync): SqliteStore {
 	return {
 		close() {
 			db.close();
