@@ -14,8 +14,8 @@
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
 | 1.1 | 查询 Host 状态 | `GET /` | `sumeru server status` | [host/root-status/spec.md](./host/root-status/spec.md) |
-| 1.2 | 启动 Host 进程 | — | `sumeru server start` | — |
-| 1.3 | 停止 Host 进程 | — | `sumeru server stop` | — |
+| 1.2 | 启动 Host 进程 | — | `sumeru server start` | [cli/server-lifecycle/spec.md](./cli/server-lifecycle/spec.md) |
+| 1.3 | 停止 Host 进程 | — | `sumeru server stop` | [cli/server-lifecycle/spec.md](./cli/server-lifecycle/spec.md) |
 
 ---
 
@@ -125,11 +125,11 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 10.1 | 列出 prototypes | `GET /prototypes` | `sumeru prototype list` | — |
-| 10.2 | 获取 prototype 详情 | `GET /prototypes/:name` | `sumeru prototype get <name>` | — |
-| 10.3 | 创建 prototype | `PUT /prototypes/:name` | `sumeru prototype add <name> --model --adapter [--persona]` | — |
-| 10.4 | 更新 prototype | `PUT /prototypes/:name` | `sumeru prototype update <name> --model/--adapter/--persona` | — |
-| 10.5 | 删除 prototype | `DELETE /prototypes/:name` | `sumeru prototype remove <name>` | — |
+| 10.1 | 列出 prototypes | `GET /prototypes` | `sumeru prototype list` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
+| 10.2 | 获取 prototype 详情 | `GET /prototypes/:name` | `sumeru prototype get <name>` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
+| 10.3 | 创建 prototype | `PUT /prototypes/:name` | `sumeru prototype add <name> --model --adapter [--persona]` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
+| 10.4 | 更新 prototype | `PUT /prototypes/:name` | `sumeru prototype update <name> --model/--adapter/--persona` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
+| 10.5 | 删除 prototype | `DELETE /prototypes/:name` | `sumeru prototype remove <name>` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
 
 ---
 
@@ -137,10 +137,10 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 11.1 | 列出 extensions | `GET /extensions` | `sumeru extension list` | — |
-| 11.2 | 获取 extension 详情 | `GET /extensions/:name` | `sumeru extension get <name>` | — |
-| 11.3 | 创建/更新 extension | `PUT /extensions/:name` | `sumeru extension put <name> --dockerfile <instr>` | — |
-| 11.4 | 删除 extension | `DELETE /extensions/:name` | `sumeru extension remove <name>` | — |
+| 11.1 | 列出 extensions | `GET /extensions` | `sumeru extension list` | [extension/crud-lifecycle/spec.md](./extension/crud-lifecycle/spec.md) |
+| 11.2 | 获取 extension 详情 | `GET /extensions/:name` | `sumeru extension get <name>` | [extension/crud-lifecycle/spec.md](./extension/crud-lifecycle/spec.md) |
+| 11.3 | 创建/更新 extension | `PUT /extensions/:name` | `sumeru extension put <name> --dockerfile <instr>` | [extension/crud-lifecycle/spec.md](./extension/crud-lifecycle/spec.md) |
+| 11.4 | 删除 extension | `DELETE /extensions/:name` | `sumeru extension remove <name>` | [extension/crud-lifecycle/spec.md](./extension/crud-lifecycle/spec.md) |
 
 ---
 
@@ -158,10 +158,10 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 13.1 | model 命令（切换 model） | `POST /sessions/:id/commands` `{"command":"model",...}` | `sumeru session model <id> <model-id>` | — |
-| 13.2 | reset 命令（清上下文） | `POST /sessions/:id/commands` `{"command":"reset",...}` | `sumeru reset <id>` | — |
-| 13.3 | install-skill 命令 | `POST /sessions/:id/commands` `{"command":"install-skill",...}` | — (API-only，CLI 无独立入口) | — |
-| 13.4 | snapshot 命令（docker commit） | `POST /sessions/:id/commands` `{"command":"snapshot",...}` | `sumeru snapshot <id>` | — |
+| 13.1 | model 命令（切换 model） | `POST /sessions/:id/commands` `{"command":"model",...}` | `sumeru session model <id> <model-id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.2 | reset 命令（清上下文） | `POST /sessions/:id/commands` `{"command":"reset",...}` | `sumeru reset <id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.3 | install-skill 命令 | `POST /sessions/:id/commands` `{"command":"install-skill",...}` | — (API-only，CLI 无独立入口) | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.4 | snapshot 命令（docker commit） | `POST /sessions/:id/commands` `{"command":"snapshot",...}` | `sumeru snapshot <id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
 
 ---
 
@@ -177,7 +177,7 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 15.1 | 全文搜索 sessions | `GET /search?q=...` | `sumeru search <query> [--session <id>]` | — |
+| 15.1 | 全文搜索 sessions | `GET /search?q=...` | `sumeru search <query> [--session <id>]` | [search/full-text-search/spec.md](./search/full-text-search/spec.md) |
 
 ---
 
@@ -211,7 +211,7 @@
 | 18.7 | 409 Session already idle | `POST /sessions/:id/stop` | `sumeru session stop <id>` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
 | 18.8 | 409 Skill referenced | `DELETE /skills/:name` | `sumeru skill remove <name>` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
 | 18.9 | 409 Provider in use | `DELETE /providers/:name` | `sumeru provider remove <name>` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
-| 18.10 | Host 未启动时操作 | `ECONNREFUSED` | 所有命令 → 友好错误提示 | — |
+| 18.10 | Host 未启动时操作 | `ECONNREFUSED` | 所有命令 → 友好错误提示 | [cli/error-experience/spec.md](./cli/error-experience/spec.md) |
 
 ---
 
