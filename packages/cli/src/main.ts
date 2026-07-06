@@ -12,10 +12,6 @@ import {
 import { parseEnvFlagsFromArgv } from "./env-flags.js";
 import { formatExtensionTable } from "./format.js";
 import { createHostClient, HostClientError } from "./http-client.js";
-import {
-	runImageBuild as executeImageBuild,
-	findRepoRoot,
-} from "./image-build.js";
 import { runSessionModelCommand } from "./model-cmd.js";
 import {
 	isProcessAlive,
@@ -969,42 +965,6 @@ cli
 			return { message: `removed skill ${args.name}` };
 		} catch (err) {
 			handleClientError(err, ctx);
-		}
-	});
-
-// ─── image ───────────────────────────────────────────────────────────────
-
-cli
-	.command("image")
-	.command("build")
-	.describe("Build a Docker image for an adapter")
-	.arg("name")
-	.flag("agent", { type: "string" })
-	.flag("adapter", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(messageSchema, "{{message}}")
-	.action(async (args, flags, ctx) => {
-		const agent = flags.agent as string | undefined;
-		if (!agent) {
-			ctx.error(
-				"Usage: sumeru image build <name> --agent <type> [--adapter <pkg-or-path>]",
-			);
-		}
-		const repoRoot = await findRepoRoot(process.cwd());
-		try {
-			const result = await executeImageBuild({
-				name: args.name,
-				agent: agent!,
-				adapter: (flags.adapter as string) ?? null,
-				repoRoot,
-			});
-			return {
-				message: `built ${result.tag} (${result.digest})`,
-			};
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			ctx.error(msg);
 		}
 	});
 

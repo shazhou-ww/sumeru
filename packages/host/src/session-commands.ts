@@ -41,6 +41,9 @@ export async function runSessionCommand(input: {
 
 	switch (input.command.type) {
 		case "chat": {
+			console.warn(
+				"[deprecated] commands type:chat — use POST /sessions/:id/messages instead",
+			);
 			const commandId = input.command.messageId ?? generateCommandId();
 			await input.submitMessage(input.id, {
 				messageId: commandId,
