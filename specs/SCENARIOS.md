@@ -158,10 +158,12 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 13.1 | model 命令（切换 model） | `POST /sessions/:id/commands` `{"command":"model",...}` | `sumeru session model <id> <model-id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.2 | reset 命令（清上下文） | `POST /sessions/:id/commands` `{"command":"reset",...}` | `sumeru reset <id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.3 | install-skill 命令 | `POST /sessions/:id/commands` `{"command":"install-skill",...}` | — (API-only，CLI 无独立入口) | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.4 | snapshot 命令（docker commit） | `POST /sessions/:id/commands` `{"command":"snapshot",...}` | `sumeru snapshot <id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.1 | chat 命令（发消息+等结果） | `POST /sessions/:id/commands` `{"type":"chat","content":"..."}` | `sumeru chat <target> [prompt]` — target 为 session ID 或 prototype 名（后者自动创建 session，project=cwd） | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.2 | exec 命令（容器内执行 shell） | `POST /sessions/:id/commands` `{"type":"exec","command":"..."}` | `sumeru exec <target> -- <command...>` — target 同上 | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.3 | model 命令（切换 model） | `POST /sessions/:id/commands` `{"type":"model",...}` | `sumeru session model <id> <model-id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.4 | reset 命令（清上下文） | `POST /sessions/:id/commands` `{"type":"reset",...}` | `sumeru reset <id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.5 | install-skill 命令 | `POST /sessions/:id/commands` `{"type":"install-skill",...}` | — (API-only，CLI 无独立入口) | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 13.6 | snapshot 命令（docker commit） | `POST /sessions/:id/commands` `{"type":"snapshot",...}` | `sumeru snapshot <id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
 
 ---
 
@@ -176,13 +178,6 @@
 | 15.1 | 全文搜索 sessions | `GET /search?q=...` | `sumeru search <query> [--session <id>]` | [search/full-text-search/spec.md](./search/full-text-search/spec.md) |
 
 ---
-
-## 16. 交互模式
-
-| # | 场景 | API | CLI | Spec |
-|---|------|-----|-----|------|
-| 16.1 | 交互式对话 | — (CLI-only，内部调用 Commands API) | `sumeru chat <target> [prompt]` — target 为 session ID 或 prototype 名（后者自动创建 session，project=cwd） | — |
-| 16.2 | 容器内执行命令 | — (CLI-only，内部调用 Commands API) | `sumeru exec <target> -- <command...>` — target 同上 | — |
 
 ---
 
