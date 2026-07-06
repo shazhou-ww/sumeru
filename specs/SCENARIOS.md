@@ -99,6 +99,47 @@
 |---|------|--------|
 | 10.1 | GET / | 返回 name, version, status, uptime |
 
+## 11. CLI — Setup & Server
+
+| # | 场景 | 验证点 |
+|---|------|--------|
+| 11.1 | `sumeru setup` | 创建 rootDir + host.yaml + seed Provider/Model/Persona + build image |
+| 11.2 | `sumeru server start` | 后台启动 host 进程，端口可达 |
+| 11.3 | `sumeru server stop` | 停止 host 进程 |
+| 11.4 | `sumeru server status` | 显示 running/stopped + uptime |
+
+## 12. CLI — Session 操作
+
+| # | 场景 | 验证点 |
+|---|------|--------|
+| 12.1 | `sumeru session list` | 表格输出所有 session（id, prototype, status） |
+| 12.2 | `sumeru session add` | 创建 session，输出 session id |
+| 12.3 | `sumeru session add --project` | 指定项目路径 |
+| 12.4 | `sumeru session add --project null` | 无项目（环境迭代模式）|
+| 12.5 | `sumeru session send <id> "msg"` | 发送消息，等完成输出结果 |
+| 12.6 | `sumeru session logs <id>` | 输出 turn 历史 |
+| 12.7 | `sumeru session logs <id> --follow` | 流式输出（SSE 消费）|
+| 12.8 | `sumeru session stop <id>` | 停止 session |
+| 12.9 | `sumeru session remove <id>` | 删除 session + 容器 |
+
+## 13. CLI — Resource 管理
+
+| # | 场景 | 验证点 |
+|---|------|--------|
+| 13.1 | `sumeru provider list` | 表格输出 |
+| 13.2 | `sumeru provider add <name>` | 交互式/flag 创建 |
+| 13.3 | `sumeru prototype list` | 列出 Docker 发现的 prototypes |
+| 13.4 | `sumeru persona list/get/put` | CRUD persona |
+| 13.5 | `sumeru image build <name>` | 构建 Docker 镜像 |
+
+## 14. CLI — 错误体验
+
+| # | 场景 | 验证点 |
+|---|------|--------|
+| 14.1 | host 未启动时操作 | 友好错误信息（不是 raw ECONNREFUSED）|
+| 14.2 | 不存在的 session id | "Session not found" 而非 stack trace |
+| 14.3 | 缺少必填参数 | help 提示而非崩溃 |
+
 ---
 
 ## 原则
