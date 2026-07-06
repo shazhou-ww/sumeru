@@ -1161,8 +1161,7 @@ cli
 	.flag("port", { type: "string" })
 	.returns(listSchema, "", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
-		const after =
-			flags.after !== undefined ? Number(flags.after) : undefined;
+		const after = flags.after !== undefined ? Number(flags.after) : undefined;
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
 			const envelope = await client.getTurns(args.id, { after });
@@ -1206,7 +1205,12 @@ cli
 			if (result.mode !== "sync" || result.value.type !== "exec") {
 				ctx.error("Expected sync exec result");
 			}
-			const execResult = result.value as { type: "exec"; stdout: string; stderr: string; exitCode: number };
+			const execResult = result.value as {
+				type: "exec";
+				stdout: string;
+				stderr: string;
+				exitCode: number;
+			};
 			process.stdout.write(execResult.stdout);
 			if (execResult.stderr.length > 0) {
 				process.stderr.write(execResult.stderr);
@@ -1278,7 +1282,11 @@ cli
 			if (result.mode !== "sync" || result.value.type !== "snapshot") {
 				ctx.error("Expected sync snapshot result");
 			}
-			const snapshotResult = result.value as { type: "snapshot"; name: string; image: string };
+			const snapshotResult = result.value as {
+				type: "snapshot";
+				name: string;
+				image: string;
+			};
 			return { message: `${snapshotResult.name} ${snapshotResult.image}` };
 		} catch (err) {
 			if (err instanceof ApiClientError) {
