@@ -32,8 +32,8 @@ Persona (谁) + Model (用什么) + Prototype (怎么跑) = Session (干活)
 ## Quick Start
 
 ```bash
-# 1. 安装依赖 & 构建
-pnpm install && pnpm run build
+# 1. 安装 CLI
+npm install -g @sumeru/cli
 
 # 2. 初始化（配置 provider + 构建基础镜像）
 sumeru setup --root-dir /opt/sumeru-data \
