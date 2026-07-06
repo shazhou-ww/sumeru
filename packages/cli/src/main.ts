@@ -1131,16 +1131,26 @@ cli
 	.describe("Send a message to a session")
 	.arg("id")
 	.arg("message")
+	.flag("model", { type: "string" })
+	.flag("env", { type: "string" })
 	.flag("host", { type: "string" })
 	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
+		let env: Record<string, string> | null = null;
+		try {
+			env = parseEnvFlagsFromArgv(process.argv.slice(2));
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			ctx.error(msg);
+		}
+		const model = (flags.model as string | undefined) ?? null;
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 		try {
 			const envelope = await client.submitMessage(args.id, {
 				content: args.message,
-				env: null,
-				model: null,
+				env,
+				model,
 			});
 			return {
 				message: `accepted message ${envelope.value.messageId} for ${envelope.value.sessionId}`,
@@ -1175,6 +1185,27 @@ cli
 				if (!follow) break;
 			} while (follow);
 			return undefined;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("session")
+	.command("turns")
+	.describe("List turns for a session")
+	.arg("id")
+	.flag("after", { type: "number" })
+	.flag("host", { type: "string" })
+	.flag("port", { type: "string" })
+	.returns(listSchema, "", { defaultFormat: "text" })
+	.action(async (args, flags, ctx) => {
+		const after =
+			flags.after !== undefined ? Number(flags.after) : undefined;
+		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		try {
+			const envelope = await client.getTurns(args.id, { after });
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
