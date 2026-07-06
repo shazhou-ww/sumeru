@@ -2,421 +2,134 @@
 
 > 芥子纳须弥 — 一粒芥子里装一座须弥山
 
-Sumeru 是一个 **Agent 运行时**：一个 HTTP 服务，管理多个 AI coding agent 的生命周期。你定义 agent 的身份（谁）、能力（用什么模型）、运行环境（Docker 容器），Sumeru 负责启停、资源隔离、会话管理和全量记录。
+Sumeru 是一个 **Agent 运行时**：一个 HTTP 服务，管理多个 AI coding agent 的生命周期。定义 agent 的身份（persona）、能力（model）、运行环境（Docker 容器），Sumeru 负责启停、资源隔离、多轮会话和全量 turn 记录。
 
 当前版本：**0.3.0**
 
-**解决的问题**：当你有多种 agent（Claude Code、Codex、Hermes、自定义 agent）需要在同一台机器上并行跑任务时，手动管理进程、认证、资源限制和会话记录是噩梦。Sumeru 把这些统一为 HTTP API + CLI，一条命令创建 session，一条命令发消息。
-
 ## 核心概念
 
-Sumeru 用多层抽象描述一个 agent：
-
-```
-Provider  ── 谁提供 API？（SiliconFlow / Anthropic / OpenAI / 自建代理）
-   │
-Model     ── 用哪个模型？（provider:name，如 siliconflow:deepseek-v3）
-   │
-Persona   ── 它是谁？（system prompt + skills）
-   │
-Extension ── 可选 Dockerfile 扩展层（叠加到 adapter 镜像上）
-   │
-Prototype ── 组装成可运行的 agent 模板（persona + model + adapter + extensions）
-   │
-Session   ── 一次对话（容器实例 + 多轮 message + 全量 turn 记录）
-```
-
-| 概念 | 存储 | 说明 |
+| 概念 | 本质 | 说明 |
 |------|------|------|
-| **Provider** | SQLite | LLM API 提供方。`apiType`（openai/anthropic）、`baseUrl`、`apiKey` |
-| **Model** | SQLite | 嵌套在 Provider 下，ID 格式 `provider:name`（如 `siliconflow:deepseek-v3`） |
-| **Persona** | SQLite | agent 的身份：instructions（system prompt）+ skills 列表 |
-| **Extension** | YAML 文件 | Dockerfile 指令片段，Prototype 可引用以叠加扩展层 |
-| **Prototype** | YAML 文件 | 组装层：`persona` + `model` + `adapter` + `extensions` + 资源 defaults |
-| **Session** | 内存 + ocas | 一次 agent 对话实例，`ses_` + ULID。支持多次 message 延续 |
-| **Adapter** | npm 包 | 每类 agent 一个适配器，实现 NDJSON stdin/stdout 协议 |
-
-Docker 镜像不是独立实体。镜像标签由 adapter 名称推导（`sumeru/sarsapa:dev` 或 `sumeru/adapter-<name>:dev`），在 `prototypes/<name>/compose.yaml` 中声明。`sumeru image build` 只负责本地构建，不注册到任何实体。
-
-### 依赖链
+| **Session** | Docker container | 一次 agent 会话实例，支持多轮对话，`docker stop/start` 保留状态 |
+| **Prototype** | Docker image tag | 可运行的 agent 模板，从 `sumeru.harness` label 自动发现 |
+| **Persona** | SQLite 记录 | agent 身份：instructions (system prompt) + skills |
+| **Harness** | 内置适配器 | 对应特定 Agent CLI（hermes / codex / claude-code / cursor-agent / sarsapa）|
 
 ```
-Provider → Model → Persona → Prototype → Session
-Extension ────────────────────────────────┘（可选）
+Persona (谁) + Model (用什么) + Prototype (怎么跑) = Session (干活)
 ```
 
-创建时必须按依赖序（先 Provider 再 Model），删除时有引用保护（删 Provider 前必须先删引用它的 Model）。
+## 支持的 Agent
+
+| Adapter | Agent CLI | 说明 |
+|---------|-----------|------|
+| **sarsapa** | 内置 ReAct loop | 轻量原生 agent，直接调 LLM API |
+| **hermes** | `hermes acp` | Hermes Agent（ACP 协议，全功能）|
+| **codex** | `codex` | OpenAI Codex CLI |
+| **claude-code** | `claude` | Anthropic Claude Code CLI |
+| **cursor-agent** | `cursor-agent` | Cursor Agent CLI |
 
 ## Quick Start
 
-### 1. 安装
-
 ```bash
-pnpm add -g @sumeru/cli
-```
+# 1. 安装依赖 & 构建
+pnpm install && pnpm run build
 
-### 2. 一键 setup
+# 2. 初始化 (创建 host 目录 + 配置 provider + build 镜像)
+sumeru setup --root-dir /opt/sumeru-data \
+  --provider anthropic --api-key "$ANTHROPIC_API_KEY" \
+  --model claude-sonnet-4
 
-```bash
-sumeru setup \
-  --provider siliconflow \
-  --api-key sk-your-key \
-  --model deepseek-ai/DeepSeek-V3 \
-  --root-dir ./my-sumeru
-```
-
-自动创建目录结构、host.yaml（含 `defaults.model`）、.env、Provider、Model、默认 Persona。幂等可重跑。
-
-### 3. 构建 Agent 镜像
-
-```bash
-cd my-sumeru
-sumeru image build sarsapa --agent sarsapa
-```
-
-自动 Docker build，生成 `sumeru/sarsapa:dev` 标签（其他 adapter 为 `sumeru/adapter-<name>:dev`）。支持的 agent type：`sarsapa`、`hermes`、`claude-code`、`codex`、`cursor-agent`。镜像标签写在 `prototypes/<name>/compose.yaml` 中，不注册到 Host API。
-
-### 4. 注册 Prototype
-
-```bash
-sumeru prototype add sarsapa --model siliconflow:deepseek-v3 --adapter sarsapa --persona default
-```
-
-### 5. 启动 Host
-
-```bash
+# 3. 启动 Host
 sumeru server start
+
+# 4. 创建 Session
+sumeru session create --prototype sarsapa --project /path/to/repo \
+  --task "实现一个 hello world HTTP server"
+
+# 5. 查看结果
+sumeru session events <session-id>
 ```
 
-### 6. 创建 Session 开始工作
+## API
+
+Host 暴露 REST API（默认 `http://127.0.0.1:7900`）：
+
+| Method | Endpoint | 说明 |
+|--------|----------|------|
+| GET | `/` | Host 状态 |
+| GET | `/prototypes` | 列出可用 prototypes |
+| GET | `/sessions` | 列出所有 sessions |
+| POST | `/sessions` | 创建 session（指定 prototype + project + task）|
+| GET | `/sessions/:id` | Session 详情 |
+| GET | `/sessions/:id/events` | SSE 事件流（实时 turns）|
+| POST | `/sessions/:id/messages` | 发送后续消息（多轮）|
+| DELETE | `/sessions/:id` | 删除 session |
+| POST | `/sessions/:id/commands` | 统一命令 API（model/reset/install-skill/snapshot）|
+
+## 项目结构
+
+```
+packages/
+  core/           — 共享类型定义（零运行时依赖）
+  adapter-core/   — Adapter 框架 + NDJSON 协议
+  host/           — HTTP 服务 + Docker transport + session 管理
+  cli/            — CLI 客户端（sumeru 命令）
+  sarsapa/        — 内置轻量 agent（ReAct loop）
+  adapter-hermes/ — Hermes ACP adapter
+  adapter-codex/  — Codex CLI adapter
+  adapter-claude-code/ — Claude Code adapter
+  adapter-cursor-agent/ — Cursor Agent adapter
+  sumeru-session/ — 容器内统一入口（检测 agent 类型并路由）
+  base/           — 基础 Docker image (Dockerfile)
+docker/
+  selftest/       — 自测 prototype（Dockerfile + persona）
+deploy/
+  sumeru.service  — systemd 部署配置
+```
+
+## Docker 架构
+
+所有 agent 运行在 Docker 容器内。镜像继承树：
+
+```
+sumeru/base:dev            ← node:24-slim + python 3.12 + 通用工具
+  ├── sumeru/sarsapa:dev   ← 内置 agent（无外部 CLI）
+  ├── sumeru/hermes:dev    ← + hermes-agent[acp]
+  ├── sumeru/codex:dev     ← + codex CLI
+  ├── sumeru/claude-code:dev ← + claude CLI
+  └── sumeru/cursor-agent:dev ← + cursor-agent
+```
+
+**Session 生命周期**：
+1. `POST /sessions` → `docker run` 新容器
+2. `docker exec` 启动 adapter 进程（通过 sumeru-session 路由）
+3. Agent 完成任务 → `done` → session idle（容器保持 running，支持多轮）
+4. 显式 stop / 超时 → `docker stop`（writable layer 保留）
+5. 再次发消息 → `docker start` → 恢复
+
+**Project 挂载**：`-v /host/path/to/repo:/workspace:rw`，agent cwd = `/workspace`。
+
+## 开发
 
 ```bash
-sumeru create sarsapa --project ~/my-project --task "Fix the login bug"
-
-# 查看 session 列表
-sumeru sessions
-
-# 跟踪日志
-sumeru logs ses_01KXYZ... --follow
-
-# 发送后续消息
-sumeru send ses_01KXYZ... "Also update the tests"
+pnpm install           # 安装依赖
+pnpm run build         # 编译所有包
+pnpm run check         # Biome lint
+npx vitest run         # 运行测试（326 tests）
+npx tsc --noEmit       # 类型检查
 ```
 
-## HTTP API
-
-所有响应使用 envelope 格式 `{ type: "@sumeru/<entity>", value: ... }`。
-
-### Host
-
-```
-GET  /                     → @sumeru/host（名称、版本、运行状态、uptime）
-```
-
-### Provider（SQLite upsert）
-
-```
-GET    /providers           → @sumeru/provider-list
-PUT    /providers/:name     → 201/200 @sumeru/provider（upsert）
-GET    /providers/:name     → @sumeru/provider
-DELETE /providers/:name     → 204
-```
-
-请求 body：`{ "apiType": "openai"|"anthropic", "baseUrl": "...", "apiKey": "..." }`
-
-新建时 `apiType` 必填；更新时字段可选（partial update）。
-
-### Model（嵌套在 Provider 下）
-
-```
-GET    /models                              → @sumeru/model-list（全部）
-GET    /providers/:name/models              → @sumeru/model-list（按 provider）
-PUT    /providers/:name/models/:model       → 201/200 @sumeru/model（upsert）
-GET    /providers/:name/models/:model       → @sumeru/model
-DELETE /providers/:name/models/:model       → 204
-```
-
-请求 body：`{ "model": "...", "contextWindow": 128000, "toolUse": true, "streaming": true }`
-
-- Model ID 格式：`provider:name`（如 `siliconflow:deepseek-v3`）
-- URL 中的 `:model` 是 Model 的短名（`name`），`:name` 是 Provider name
-- `model` 字段是 LLM 模型名（如 `deepseek-ai/DeepSeek-V3`），和 ID 中的 `name` 不同
-
-### Persona（SQLite upsert）
-
-```
-GET    /personas            → @sumeru/persona-list
-PUT    /personas/:name      → 201/200 @sumeru/persona（upsert）
-GET    /personas/:name      → @sumeru/persona
-DELETE /personas/:name      → 204
-```
-
-请求 body：`{ "instructions": "...", "skills": ["skill-a", "skill-b"] }`
-
-- `skills` 引用 SQLite 中的 Skill name，创建时会校验是否存在
-
-### Extension（YAML upsert）
-
-```
-GET    /extensions          → @sumeru/extension-list
-PUT    /extensions/:name    → 201/200 @sumeru/extension（upsert）
-GET    /extensions/:name    → @sumeru/extension
-DELETE /extensions/:name    → 204
-```
-
-请求 body：`{ "description": "...", "dockerfile": "RUN apt-get install ..." }`
-
-- 存储在 `data/extensions/<name>.yaml`
-- Prototype 通过 `extensions: ["rust", "node-20"]` 引用，按顺序叠加到 adapter 基础镜像上
-
-### Prototype（YAML upsert）
-
-```
-GET    /prototypes          → @sumeru/prototype-list
-GET    /prototypes/:name    → @sumeru/prototype
-PUT    /prototypes/:name    → 201/200 @sumeru/prototype（upsert）
-DELETE /prototypes/:name    → 204
-```
-
-请求 body：`{ "persona": "...", "model": "provider:name", "adapter": "...", "extensions": ["..."] }`
-
-创建时校验 `persona`、`model`、`extensions` 引用均存在。Docker 镜像由 adapter 名称推导，在 `prototypes/<name>/compose.yaml` 中声明。Prototype 也可通过 `data/prototypes/*.yaml` 文件加载。
-
-### Session
-
-```
-GET    /sessions             → @sumeru/session-list
-POST   /sessions             → 201 @sumeru/session
-GET    /sessions/:id         → @sumeru/session
-POST   /sessions/:id/stop    → @sumeru/session
-DELETE /sessions/:id         → 204
-```
-
-创建 body：`{ "prototype": "sarsapa", "project": "my-project", "task": "Fix the bug" }`
-
-支持可选字段：
-- `model`：覆盖 Prototype 默认模型。`"provider:name"`（如 `"siliconflow:deepseek-v3"`）或 `{"provider": {...}, "name": "gpt-4o"}`（ad-hoc）
-- `env`：注入环境变量到容器
-
-模型解析优先级：**session override > prototype.model > host.yaml defaults.model**
-
-### 发消息（resume）
-
-```
-POST /sessions/:id/messages  → 202 @sumeru/message-accepted
-```
-
-请求 body：`{ "content": "继续修 tests", "model": "siliconflow:deepseek-v3" }`
-
-- `content`：消息内容（必填）
-- `model`：可选，运行时切换模型（hot-switch）
-- `env`：可选，追加环境变量
-
-### 事件流（SSE）
-
-```
-GET /sessions/:id/events  → text/event-stream
-```
-
-事件类型：
-- `event: turn` — Turn 对象（assistant 回复 / tool 调用结果）
-- `event: exit` — 会话结束信号（complete / failed / timeout / stopped / exhausted）
-- `event: heartbeat` — 保活
-
-支持 `Last-Event-ID` header 断点续传。
-
-### 历史 & 搜索
-
-```
-GET  /sessions/:id/turns     → @sumeru/turn-list
-GET  /sessions/:id/history   → @sumeru/history
-GET  /search?q=keyword       → @sumeru/search
-POST /sessions/:id/export    → tar.gz 导出
-```
-
-### Skill
-
-```
-GET    /skills/:name          → @sumeru/skill
-PUT    /skills/:name          → @sumeru/skill
-DELETE /skills/:name          → 204
-```
-
-Skills 以文件形式放在 `data/skills/` 下，Host 启动时自动导入 SQLite。也可通过 API 动态管理。
-
-### 错误格式
-
-```json
-{ "type": "@sumeru/error", "value": { "error": "error_code", "message": "..." } }
-```
-
-常见错误码：
-
-| Code | HTTP | 说明 |
-|------|------|------|
-| `provider_in_use` | 409 | 有 Model 引用此 Provider |
-| `provider_not_found` | 404 | Provider 不存在 |
-| `model_not_found` | 404 | Model 不存在（格式 `provider:name`） |
-| `persona_in_use` | 409 | 有 Prototype 引用此 Persona |
-| `persona_not_found` | 404 | Persona 不存在 |
-| `skills_not_found` | 400 | Persona 引用了不存在的 Skill |
-| `extension_not_found` | 404 | Extension 不存在 |
-| `session_not_found` | 404 | Session 不存在 |
-| `session_busy` | 409 | Session 正在运行中 |
-| `prototype_not_found` | 404 | Prototype 不存在 |
-| `image_not_found` | 400 | Docker 镜像未构建（需先 `sumeru image build`） |
-| `invalid_body` | 400 | 请求 body 格式错误 |
-| `invalid_json` | 400 | 非法 JSON |
-
-## CLI
-
-```
-sumeru <command> [options]
-```
-
-| 命令 | 说明 |
-|------|------|
-| `setup --provider --api-key --model [--root-dir]` | 一键初始化（幂等） |
-| `server start [--config] [--port]` | 启动 Host 服务 |
-| `server stop` | 停止 Host |
-| `server status` | 查看 Host 状态 |
-| `prototype list` | 列出所有 Prototype |
-| `prototype add <name> --model --adapter [--persona]` | 注册 Prototype |
-| `prototype remove <name>` | 删除 Prototype |
-| `provider list` | 列出 Provider |
-| `provider add <name> --api-type --base-url [--api-key]` | 添加 Provider |
-| `provider remove <name>` | 删除 Provider |
-| `model list` | 列出 Model |
-| `model add <provider>:<name> --provider --model [--context-window]` | 添加 Model |
-| `model remove <provider>:<name>` | 删除 Model |
-| `sessions` | 列出 Session |
-| `create <prototype> --project --task` | 创建 Session |
-| `send <session_id> <message>` | 发送消息 |
-| `logs <session_id> [--follow]` | 查看 Session 日志 |
-| `stop <session_id>` | 停止 Session |
-| `delete <session_id>` | 删除 Session |
-| `image build <name> --agent <type> [--adapter <path>]` | 构建 Docker 镜像 |
-
-环境变量：
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `SUMERU_HOST` | `127.0.0.1` | API client 连接地址 |
-| `SUMERU_PORT` | `7900` | API client 连接端口 |
-| `SUMERU_PID_FILE` | 自动推导 | PID 文件路径 |
-
-## Packages
-
-| 包 | 版本 | 说明 |
-|---|---|---|
-| `@sumeru/core` | 0.3.0 | 共享类型定义（零运行时依赖） |
-| `@sumeru/adapter-core` | 0.3.0 | Adapter 通用框架（NDJSON 协议入口） |
-| `@sumeru/sarsapa` | 0.3.0 | 内置轻量 agent（单 session native agent） |
-| `@sumeru/adapter-claude-code` | 0.3.0 | Claude Code CLI 适配器 |
-| `@sumeru/adapter-codex` | 0.3.0 | OpenAI Codex CLI 适配器 |
-| `@sumeru/adapter-hermes` | 0.3.0 | Hermes Agent 适配器 |
-| `@sumeru/adapter-cursor-agent` | 0.3.0 | Cursor Agent CLI 适配器 |
-| `@sumeru/host` | 0.3.0 | Host HTTP 服务 + Transport 层 |
-| `@sumeru/cli` | 0.3.0 | CLI 工具 |
-
-## 配置参考
-
-### host.yaml
-
-```yaml
-name: sumeru@local          # 实例名（必填）
-maxRunning: 3               # 最大并行 session 数（必填）
-workspaceRoot: /workspace   # 容器内工作目录根（必填）
-envFile: .env               # 环境变量文件路径（必填）
-defaults:                   # 可选：session 默认值
-  model: siliconflow:deepseek-v3  # provider:name，prototype 未指定 model 时使用
-  timeout: 120              # 秒
-  maxTurns: 20
-  resources:
-    cpu: 2                  # ⚠️ number，不是 Docker 的 cpus 字符串
-    memory: "4g"            # ⚠️ string，不是 Docker 的 mem_limit
-```
-
-> **注意**：v3 起 `models` 和 `resourceLimits` 字段已废弃。模型配置迁移到 SQLite（Provider + Model），通过 API/CLI 管理。旧配置会打印 deprecation warning 但不报错。
-
-### Prototype YAML
-
-```yaml
-name: sarsapa
-persona: sarsapa-worker     # → SQLite Persona.name
-model: siliconflow:deepseek-v3  # → provider:name 格式
-adapter: sarsapa            # → Adapter 名称（镜像标签由此推导）
-extensions:                 # 可选，按顺序叠加 Dockerfile 扩展层
-  - rust
-defaults:                   # 可选，覆盖 host defaults
-  maxTurns: 40
-  timeout: 300
-  resources:
-    cpu: 4
-    memory: "8g"
-```
-
-## Development
-
+构建 Docker 镜像：
 ```bash
-pnpm install
-pnpm run build        # TypeScript 编译
-pnpm run test         # vitest（254 tests）
-pnpm run check        # biome lint
-pnpm run typecheck    # tsc --noEmit
+sumeru image build sarsapa --agent sarsapa
+sumeru image build hermes --agent hermes
 ```
 
 ## 部署
 
-Sumeru 作为**用户级常驻服务**运行。Linux 用 systemd user service，macOS 用 launchd LaunchAgent。
+见 [deploy/README.md](deploy/README.md) — systemd user service 方式。
 
-### Linux：systemd
+## License
 
-```bash
-# 安装 unit 文件
-mkdir -p ~/.config/systemd/user
-cp deploy/sumeru.service ~/.config/systemd/user/
-
-# 配置 adapter 认证（如果用 CLI-based adapter）
-mkdir -p ~/.config/sumeru
-cp deploy/sumeru.env.example ~/.config/sumeru/env
-chmod 600 ~/.config/sumeru/env
-$EDITOR ~/.config/sumeru/env
-
-# 启用
-systemctl --user daemon-reload
-systemctl --user enable --now sumeru
-```
-
-```bash
-journalctl --user -u sumeru -f    # 日志
-systemctl --user restart sumeru   # 重启
-systemctl --user status sumeru    # 状态
-```
-
-### macOS：launchd
-
-```bash
-mkdir -p ~/.config/sumeru
-cp deploy/sumeru-launchd-run.sh.example ~/.config/sumeru/launchd-run.sh
-chmod 755 ~/.config/sumeru/launchd-run.sh
-
-sed "s|__HOME__|$HOME|g" deploy/sumeru.plist.example \
-  > ~/Library/LaunchAgents/work.shazhou.sumeru.plist
-
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/work.shazhou.sumeru.plist
-launchctl kickstart -k gui/$(id -u)/work.shazhou.sumeru
-```
-
-```bash
-launchctl print gui/$(id -u)/work.shazhou.sumeru     # 状态
-launchctl kickstart -k gui/$(id -u)/work.shazhou.sumeru  # 重启
-launchctl bootout gui/$(id -u)/work.shazhou.sumeru   # 停止
-tail -f ~/.config/sumeru/sumeru.log                  # 日志
-```
-
-> CLI-based adapter（claude-code / codex / cursor-agent）需要 PATH 和 API key。systemd/launchd 不继承 login shell 环境，必须在 env 文件或 wrapper 脚本中显式声明。
-
-## Name
-
-> 须弥山 — 佛教宇宙观中的世界中心。一粒芥子里装一座须弥山 — 一个小小的 HTTP 服务里，容纳了整个 agent 世界。
+Private.
