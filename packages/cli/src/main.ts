@@ -1134,16 +1134,21 @@ cli
 		const follow = Boolean(flags.follow);
 		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
 
+		let gotExit = false;
 		const printEvent = (event: string, data: string): void => {
 			if (event === "heartbeat") return;
 			ctx.stdout(`event: ${event}\n`);
 			ctx.stdout(`data: ${data}\n\n`);
+			if (event === "exit") {
+				gotExit = true;
+			}
 		};
 
 		try {
 			do {
+				gotExit = false;
 				await client.streamEvents(args.id, printEvent);
-				if (!follow) break;
+				if (gotExit || !follow) break;
 			} while (follow);
 			return undefined;
 		} catch (err) {
