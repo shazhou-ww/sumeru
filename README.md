@@ -61,15 +61,18 @@ sumeru setup                                    — 一键初始化
 sumeru server { start | stop | status }         — 管理 Host 进程
 
 sumeru session list                             — 列出所有 session
-sumeru session add --prototype <name> ...       — 创建 session
+sumeru session add <prototype> --project --task — 创建 session
 sumeru session send <id> "message"              — 发送后续消息
 sumeru session logs <id> [--follow]             — 查看 turn 输出
+sumeru session turns <id> [--after N]           — 查询 turn 历史
+sumeru session exec <id> -- <command>           — 容器内执行命令
+sumeru session model <id> <provider:model>      — 切换 model
+sumeru session reset <id> [--persona <name>]    — 清上下文
+sumeru session snapshot <id> <name>             — docker commit
 sumeru session stop <id>                        — 停止 session
 sumeru session remove <id>                      — 删除 session
 
 sumeru prototype list                           — 列出可用 prototypes
-sumeru image build <name> --agent <type>        — 构建 Docker 镜像
-
 sumeru provider { list | add | remove } <name>  — Provider 管理
 sumeru persona { list | get | put } <name>      — Persona 管理
 sumeru search <query>                           — 搜索 session 历史
@@ -139,14 +142,14 @@ sumeru/base:dev            ← node:24-slim + python 3.12 + 通用工具
 pnpm install           # 安装依赖
 pnpm run build         # 编译所有包
 pnpm run check         # Biome lint
-npx vitest run         # 运行测试（326 tests）
+npx vitest run         # 运行测试（321 tests）
 npx tsc --noEmit       # 类型检查
 ```
 
 构建 Docker 镜像：
 ```bash
-sumeru image build sarsapa --agent sarsapa
-sumeru image build hermes --agent hermes
+docker build -t sumeru/sarsapa:dev -f packages/sarsapa/Dockerfile .
+docker build -t sumeru/hermes:dev -f packages/adapter-hermes/Dockerfile .
 ```
 
 ## 部署
