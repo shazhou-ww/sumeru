@@ -30,7 +30,7 @@ import type {
 	Transport,
 } from "./types.js";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.3.1";
 
 export type StartHostConfig = {
 	rootDir: string;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { VERSION } from "../src/index.js";
 
 describe("@sumeru/host — package surface", () => {
-	it("exposes VERSION at 0.3.0", () => {
-		expect(VERSION).toBe("0.3.0");
+	it("exposes VERSION at 0.3.1", () => {
+		expect(VERSION).toBe("0.3.1");
 	});
 });
