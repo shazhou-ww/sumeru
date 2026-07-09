@@ -20,6 +20,7 @@ import {
 	resolveProjectPath,
 	resolveSessionModel,
 } from "./config.js";
+import { createEventLog, type EventLog } from "./event-log.js";
 import {
 	generateMessageId,
 	generateSessionId,
@@ -55,6 +56,7 @@ type AdapterRuntime = {
 	readTask: Promise<void> | null;
 	subscribers: Set<(event: SseEvent) => void>;
 	sseBuffer: SseBuffer;
+	eventLog: EventLog;
 	session: {
 		stdin: NodeJS.WritableStream;
 		waitForExit(): Promise<{ exitCode: number | null; stderr: string }>;
@@ -81,6 +83,7 @@ export type SessionManager = {
 	runCommand(id: string, command: SessionCommand): Promise<RunCommandResult>;
 	subscribeEvents(id: string, onEvent: (event: SseEvent) => void): () => void;
 	getSseBuffer(id: string): SseBuffer;
+	getEventLog(id: string): EventLog;
 	getHistory(id: string, limit: number, offset: number): HistoryValue;
 	getSessionTurns(id: string, after: number | null): Array<Turn>;
 	hostRoot(): HostRootSnapshot;
@@ -108,6 +111,7 @@ export function createSessionManager(input: {
 	const startedAt = Date.now();
 	const recorder =
 		input.recorder ?? createOcasRecorder(input.hostConfig.dataDir);
+	const eventLogDir = join(input.hostConfig.rootDir, "data", "logs");
 
 	restorePersistedSessions();
 
@@ -145,7 +149,7 @@ export function createSessionManager(input: {
 				sessionEnv: {},
 			};
 			sessions.set(row.id, record);
-			adapters.set(row.id, createAdapterRuntime());
+			adapters.set(row.id, createAdapterRuntime(row.id, eventLogDir));
 		}
 	}
 
@@ -326,6 +330,7 @@ export function createSessionManager(input: {
 			stopAdapter(id);
 		}
 		await destroyContainer(record);
+		adapters.get(id)?.eventLog.remove();
 		sessions.delete(id);
 		adapters.delete(id);
 		input.hostConfig.sqliteStore.removeSession(id);
@@ -504,6 +509,14 @@ export function createSessionManager(input: {
 		return ensureAdapterRuntime(id).sseBuffer;
 	}
 
+	function getEventLog(id: string): EventLog {
+		const record = sessions.get(id);
+		if (record === undefined) {
+			throw new Error("session_not_found");
+		}
+		return ensureAdapterRuntime(id).eventLog;
+	}
+
 	function subscribeEvents(
 		id: string,
 		onEvent: (event: SseEvent) => void,
@@ -522,16 +535,18 @@ export function createSessionManager(input: {
 		}
 		let runtime = adapters.get(id);
 		if (runtime === undefined) {
-			runtime = createAdapterRuntime();
+			runtime = createAdapterRuntime(id, eventLogDir);
 			adapters.set(id, runtime);
 		}
 		return runtime;
 	}
 
 	function appendTurnEvent(runtime: AdapterRuntime, turn: Turn): SseEvent {
+		const data = JSON.stringify(turn);
+		runtime.eventLog.append("turn", data);
 		const event = runtime.sseBuffer.append({
 			event: "turn",
-			data: JSON.stringify(turn),
+			data,
 		});
 		for (const subscriber of runtime.subscribers) {
 			subscriber(event);
@@ -543,9 +558,11 @@ export function createSessionManager(input: {
 		runtime: AdapterRuntime,
 		exit: ExitSignal,
 	): SseEvent {
+		const data = JSON.stringify(exit);
+		runtime.eventLog.append("exit", data);
 		const event = runtime.sseBuffer.append({
 			event: "exit",
-			data: JSON.stringify(exit),
+			data,
 		});
 		for (const subscriber of runtime.subscribers) {
 			subscriber(event);
@@ -609,6 +626,8 @@ export function createSessionManager(input: {
 		let runtime = adapters.get(id);
 		if (runtime === undefined) {
 			runtime = createAdapterRuntime(
+				id,
+				eventLogDir,
 				await buildInitConfig(record.prototype, record.model),
 			);
 			adapters.set(id, runtime);
@@ -972,6 +991,7 @@ export function createSessionManager(input: {
 		runCommand,
 		subscribeEvents,
 		getSseBuffer,
+		getEventLog,
 		getHistory,
 		getSessionTurns,
 		hostRoot,
@@ -995,6 +1015,8 @@ function toPersistSessionInput(record: ManagedSession): PersistSessionInput {
 }
 
 function createAdapterRuntime(
+	sessionId: string,
+	logDir: string,
 	initConfig: AdapterInitConfig = {
 		instructions: "",
 		skills: [],
@@ -1007,6 +1029,7 @@ function createAdapterRuntime(
 		readTask: null,
 		subscribers: new Set(),
 		sseBuffer: createSseBuffer(),
+		eventLog: createEventLog(logDir, sessionId),
 		session: null,
 		turnCount: 0,
 		tokenUsage: { ...EMPTY_TOKEN_USAGE },

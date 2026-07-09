@@ -7,6 +7,7 @@ import {
 	writeSseHeaders,
 } from "../http-utils.js";
 import type { SessionManager } from "../session-manager.js";
+import type { SseEvent } from "../sse-buffer.js";
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
@@ -27,6 +28,19 @@ export function createEventsHandler(manager: SessionManager) {
 			return;
 		}
 
+		// If session is idle and buffer is empty with no persisted log, return immediately
+		const session = manager.getSession(id);
+		if (
+			session !== null &&
+			session.status === "idle" &&
+			buffer.latest() === 0 &&
+			manager.getEventLog(id).readAll().length === 0
+		) {
+			writeSseHeaders(res);
+			res.end();
+			return;
+		}
+
 		if (lastEventId !== null && buffer.isExpired(lastEventId)) {
 			writeJson(
 				res,
@@ -44,7 +58,10 @@ export function createEventsHandler(manager: SessionManager) {
 
 		const replayFrom = lastEventId ?? 0;
 		let watermark = replayFrom;
-		const replayEvents = buffer.eventsAfter(replayFrom);
+		const replayEvents =
+			buffer.latest() === 0
+				? persistedEventsToSse(manager.getEventLog(id).readAll(), replayFrom)
+				: buffer.eventsAfter(replayFrom);
 		for (const evt of replayEvents) {
 			writeRawSseEvent(res, evt);
 			watermark = evt.id;
@@ -56,7 +73,7 @@ export function createEventsHandler(manager: SessionManager) {
 		if (
 			lastReplayed !== undefined &&
 			lastReplayed.event === "exit" &&
-			lastReplayed.id >= buffer.latest()
+			(buffer.latest() === 0 || lastReplayed.id >= buffer.latest())
 		) {
 			res.end();
 			return;
@@ -98,6 +115,19 @@ export function createEventsHandler(manager: SessionManager) {
 			writeEventsSubscribeError(res, err);
 		}
 	};
+}
+
+function persistedEventsToSse(
+	entries: Array<{ event: string; data: string }>,
+	afterId: number,
+): Array<SseEvent> {
+	return entries
+		.map((entry, index) => ({
+			id: index + 1,
+			event: entry.event,
+			data: entry.data,
+		}))
+		.filter((evt) => evt.id > afterId);
 }
 
 function parseLastEventId(req: IncomingMessage): number | null {

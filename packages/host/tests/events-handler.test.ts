@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it, vi } from "vitest";
+import { createEventLog } from "../src/event-log.js";
 import { createEventsHandler } from "../src/handlers/events.js";
 import type { SessionManager } from "../src/session-manager.js";
 import { createSseBuffer, type SseEvent } from "../src/sse-buffer.js";
@@ -108,6 +109,8 @@ describe("createEventsHandler", () => {
 		let subscriber: ((event: SseEvent) => void) | null = null;
 		const manager: SessionManager = {
 			getSseBuffer: () => buffer,
+			getEventLog: () => createEventLog("/tmp/sumeru-test-logs", "ses_1"),
+			getSession: () => ({ status: "running" }),
 			subscribeEvents: (_id, onEvent) => {
 				subscriber = onEvent;
 				return () => {
@@ -147,8 +150,11 @@ describe("createEventsHandler", () => {
 });
 
 function createMockManager(buffer: ReturnType<typeof createSseBuffer>) {
+	const eventLog = createEventLog("/tmp/sumeru-test-logs", "ses_mock");
 	return {
 		getSseBuffer: () => buffer,
+		getEventLog: () => eventLog,
+		getSession: () => ({ status: "running" }),
 		subscribeEvents: () => () => undefined,
 	} as SessionManager;
 }

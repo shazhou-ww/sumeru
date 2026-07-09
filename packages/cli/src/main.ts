@@ -127,6 +127,30 @@ cli
 
 cli
 	.command("server")
+	.command("restart")
+	.describe("Restart the host process")
+	.returns(messageSchema, "{{message}}")
+	.action(async (_args, _flags, ctx) => {
+		const pidFilePath = resolvePidFilePath();
+		const pid = readPidFile(pidFilePath);
+		if (pid !== null && isProcessAlive(pid)) {
+			try {
+				process.kill(pid, "SIGTERM");
+			} catch {}
+			removePidFile(pidFilePath);
+			// Wait for process to exit
+			const deadline = Date.now() + 5000;
+			while (Date.now() < deadline && isProcessAlive(pid)) {
+				await new Promise((r) => setTimeout(r, 200));
+			}
+		}
+		// Lazy start will spawn a new host
+		await getClient();
+		return { message: "Host restarted." };
+	});
+
+cli
+	.command("server")
 	.command("status")
 	.describe("Show host status")
 	.returns(
@@ -929,13 +953,8 @@ cli
 	.flag("env", { type: "string" })
 	.returns(idSchema, "{{id}}")
 	.action(async (args, flags, ctx) => {
-		const project = flags.project as string | undefined;
-		const task = flags.task as string | undefined;
-		if (!project || !task) {
-			ctx.error(
-				"Usage: sumeru session add <prototype> --project <path> --task <description> [--env KEY=VALUE ...]",
-			);
-		}
+		const project = (flags.project as string | undefined) ?? null;
+		const task = (flags.task as string | undefined) ?? null;
 		let env: Record<string, string> | null = null;
 		try {
 			env = parseEnvFlagsFromArgv(process.argv.slice(2));
@@ -947,8 +966,8 @@ cli
 		try {
 			const envelope = await client.addSession({
 				prototype: args.prototype,
-				project: project!,
-				task: task!,
+				project,
+				task,
 				model: null,
 				env,
 			});
