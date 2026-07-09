@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import type { CliContext, CommandAction, ParsedFlags } from "@ocas/cli-kit";
 import { createCLI } from "@ocas/cli-kit";
@@ -60,6 +61,9 @@ function handleClientError(err: unknown, ctx: CliContext): never {
 		ctx.error(`${err.code}: ${err.message}`);
 	}
 	const msg = err instanceof Error ? err.message : String(err);
+	if (msg === "fetch failed" || msg.includes("ECONNREFUSED")) {
+		ctx.error(`Host not reachable. Start it with: sumeru server start`);
+	}
 	ctx.error(msg);
 }
 
@@ -146,8 +150,6 @@ cli
 			"127.0.0.1";
 		const portRaw =
 			(flags.port as string | undefined) ?? process.env.SUMERU_PORT ?? "7900";
-		const rootDir =
-			configPath !== undefined ? resolve(dirname(configPath)) : process.cwd();
 		const pidFilePath = resolvePidFilePath();
 		const existingPid = readPidFile(pidFilePath);
 		if (existingPid !== null && isProcessAlive(existingPid)) {
@@ -159,16 +161,39 @@ cli
 			removePidFile(pidFilePath);
 		}
 
-		const hostBin = process.env.SUMERU_HOST_BIN ?? "sumeru-host";
-		const child = spawn(hostBin, [rootDir], {
-			stdio: "inherit",
-			env: {
-				...process.env,
-				SUMERU_HOST: host,
-				SUMERU_PORT: portRaw,
-			},
-			detached: true,
-		});
+		const hostBin = process.env.SUMERU_HOST_BIN ?? null;
+		const rootDir =
+			configPath !== undefined
+				? resolve(dirname(configPath))
+				: resolve(homedir(), ".sumeru");
+
+		let child: ReturnType<typeof spawn>;
+		if (hostBin !== null) {
+			child = spawn(hostBin, [rootDir], {
+				stdio: "ignore",
+				env: {
+					...process.env,
+					SUMERU_HOST: host,
+					SUMERU_PORT: portRaw,
+				},
+				detached: true,
+			});
+		} else {
+			// Find host dist relative to CLI package
+			const hostMain = resolve(
+				dirname(new URL(import.meta.url).pathname),
+				"../../host/dist/main.js",
+			);
+			child = spawn("node", [hostMain, rootDir], {
+				stdio: "ignore",
+				env: {
+					...process.env,
+					SUMERU_HOST: host,
+					SUMERU_PORT: portRaw,
+				},
+				detached: true,
+			});
+		}
 
 		if (child.pid === undefined) {
 			ctx.error(
