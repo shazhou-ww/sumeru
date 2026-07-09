@@ -69,8 +69,8 @@ importers:
   packages/cli:
     dependencies:
       '@ocas/cli-kit':
-        specifier: ^0.3.0
-        version: 0.3.0
+        specifier: ^0.4.0
+        version: 0.4.0
       '@sumeru/core':
         specifier: workspace:*
         version: link:../core
@@ -339,8 +339,8 @@ packages:
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
 
-  '@ocas/cli-kit@0.3.0':
-    resolution: {integrity: sha512-le9oni0St6pG0MRys7KyuXMMNnSCU+nPe/uXduZ2wLlCjKgxnK6nkTsM9s3mW2n8g6V33lT0vcwFEmjZMGqN+g==}
+  '@ocas/cli-kit@0.4.0':
+    resolution: {integrity: sha512-VrEEqMOjaDVl5JU9bj8Eh5Fs2pvZgDUAohK2ziu+B33L4l/iXY4ZCbJZ2oRDb0obB9lmSC4iQti6YgOYaHhAvg==}
     engines: {node: '>=24.15.0'}
 
   '@ocas/core@0.5.0':
@@ -925,7 +925,7 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
-  '@ocas/cli-kit@0.3.0':
+  '@ocas/cli-kit@0.4.0':
     dependencies:
       zod: 4.4.3
 
