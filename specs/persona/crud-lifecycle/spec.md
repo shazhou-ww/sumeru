@@ -6,7 +6,7 @@ tags: [persona, crud, lifecycle, sqlite]
 
 # Persona 完整 CRUD 生命周期
 
-Persona 是 Agent 角色配置（SQLite 实体，Phase 2 新增）。包含 instructions 和 skills 引用。
+Persona 是 Agent 角色配置（SQLite 实体，Phase 2 新增）。Persona = pure system prompt text.
 
 ## Persona 字段
 
@@ -14,7 +14,6 @@ Persona 是 Agent 角色配置（SQLite 实体，Phase 2 新增）。包含 inst
 {
   "name": "general",
   "instructions": "A general-purpose coding agent.",
-  "skills": ["bash", "git"],
   "createdAt": "2026-07-01T12:00:00.000Z",
   "updatedAt": "2026-07-01T12:00:00.000Z"
 }
@@ -25,8 +24,9 @@ Persona 是 Agent 角色配置（SQLite 实体，Phase 2 新增）。包含 inst
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | name | string | ✅ (URL) | 唯一标识，来自 URL `:name` |
-| instructions | string | ✅ | Agent 指令文本 |
-| skills | string[] | ❌ | Skill 名称数组（引用 SQLite skills 表） |
+| instructions | string | ✅ | Agent 指令文本（system prompt） |
+| createdAt | string | auto | ISO 8601 创建时间 |
+| updatedAt | string | auto | ISO 8601 更新时间 |
 
 ### API
 
@@ -37,11 +37,15 @@ Persona 是 Agent 角色配置（SQLite 实体，Phase 2 新增）。包含 inst
 | PUT | /personas/:name | upsert（201 新建 / 200 替换 / 400） |
 | DELETE | /personas/:name | 删除（204 / 404 / 409） |
 
+### PUT Body
+
+```json
+{
+  "instructions": "Your system prompt text here."
+}
+```
+
 PUT 使用 merge 语义 — 省略的字段保留现有值。
-
-### Skills 引用校验
-
-创建/更新 Persona 时 `skills` 中的每个 skill 必须在 SQLite skills 表中存在，否则返回 `400 skills_not_found`。
 
 ### 删除保护
 

@@ -3,6 +3,10 @@
 > 按功能域组织，每个场景同时列出 API 端点和对应 CLI 命令。
 > CLI 标注说明：`—` = 不适用（by design），`🚧 #N` = 缺失已开 issue 跟进。
 
+> **CLI Initialization:** CLI uses lazy initialization (auto-creates ~/.sumeru/ on first command) and lazy start (auto-spawns host when needed). No setup command required.
+
+> **Host/Port:** Host/port configured via SUMERU_HOST/SUMERU_PORT environment variables (default 127.0.0.1:7900)
+
 ---
 
 # Part I — Host 本体（API + CLI E2E）
@@ -16,6 +20,7 @@
 | 1.1 | 查询 Host 状态 | `GET /` | `sumeru server status` | [host/root-status/spec.md](./host/root-status/spec.md) |
 | 1.2 | 启动 Host 进程 | — | `sumeru server start` | [cli/server-lifecycle/spec.md](./cli/server-lifecycle/spec.md) |
 | 1.3 | 停止 Host 进程 | — | `sumeru server stop` | [cli/server-lifecycle/spec.md](./cli/server-lifecycle/spec.md) |
+| 1.4 | 重启 Host 进程 | — | `sumeru server restart` | [cli/server-lifecycle/spec.md](./cli/server-lifecycle/spec.md) |
 
 ---
 
@@ -23,9 +28,9 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 2.1 | 创建 session（happy path） | `POST /sessions` | `sumeru session add <proto> --project <p> --task <t>` | [session/create-and-start/spec.md](./session/create-and-start/spec.md) |
-| 2.2 | 创建 session（project=null） | `POST /sessions` (`"project":null`) | `sumeru session add <proto> --project null --task <t>` | [session/create-and-start/spec.md](./session/create-and-start/spec.md) |
-| 2.3 | 创建 session（prototype 不存在） | `POST /sessions` → 404 | `sumeru session add ghost ...` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
+| 2.1 | 创建 session（happy path） | `POST /sessions` | `sumeru session add <proto> [--project <p>] [--task <t>]` | [session/create-and-start/spec.md](./session/create-and-start/spec.md) |
+| 2.2 | 创建 session（minimal, no project/task） | `POST /sessions` (`project`/`task` omitted) | `sumeru session add <proto>` | [session/create-and-start/spec.md](./session/create-and-start/spec.md) |
+| 2.3 | 创建 session（prototype 不存在） | `POST /sessions` → 404 | `sumeru session add ghost` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
 | 2.4 | 创建 session（project 路径越界） | `POST /sessions` → 400 | — (CLI 不直传越界路径) | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
 | 2.5 | 列出所有 sessions | `GET /sessions` | `sumeru session list` | [session/list-and-detail/spec.md](./session/list-and-detail/spec.md) |
 | 2.6 | 获取 session 详情 | `GET /sessions/:id` | `sumeru session get <id>` | [session/list-and-detail/spec.md](./session/list-and-detail/spec.md) |
@@ -66,8 +71,8 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 5.1 | 全量查询 turns | `GET /sessions/:id/turns` | 🚧 [#245](https://git.shazhou.work/shazhou/sumeru/issues/245) `session turns` 命令缺失 | [turns/list-turns-pagination/spec.md](./turns/list-turns-pagination/spec.md) |
-| 5.2 | 分页查询（after=N） | `GET /sessions/:id/turns?after=N` | 🚧 [#245](https://git.shazhou.work/shazhou/sumeru/issues/245) `session turns --after N` 缺失 | [turns/list-turns-pagination/spec.md](./turns/list-turns-pagination/spec.md) |
+| 5.1 | 全量查询 turns | `GET /sessions/:id/turns` | `sumeru session turns <id>` | [turns/list-turns-pagination/spec.md](./turns/list-turns-pagination/spec.md) |
+| 5.2 | 分页查询（after=N） | `GET /sessions/:id/turns?after=N` | `sumeru session turns <id> --after N` | [turns/list-turns-pagination/spec.md](./turns/list-turns-pagination/spec.md) |
 | 5.3 | Turn discriminated union | turn 结构区分 assistant / tool | — (数据结构定义，非独立操作) | [turns/turn-discriminated-union/spec.md](./turns/turn-discriminated-union/spec.md) |
 
 ---
@@ -103,123 +108,75 @@
 |---|------|-----|-----|------|
 | 8.1 | 列出 personas | `GET /personas` | `sumeru persona list` | [persona/crud-lifecycle/spec.md](./persona/crud-lifecycle/spec.md) |
 | 8.2 | 获取 persona 详情 | `GET /personas/:name` | `sumeru persona get <name>` | [persona/crud-lifecycle/spec.md](./persona/crud-lifecycle/spec.md) |
-| 8.3 | 创建 persona | `PUT /personas/:name` | `sumeru persona add <name> --instructions --skills` | [persona/crud-lifecycle/spec.md](./persona/crud-lifecycle/spec.md) |
-| 8.4 | 更新 persona | `PUT /personas/:name` | `sumeru persona update <name> --instructions/--skills` | [persona/crud-lifecycle/spec.md](./persona/crud-lifecycle/spec.md) |
-| 8.5 | 删除 persona | `DELETE /personas/:name` | `sumeru persona remove <name>` | [persona/crud-lifecycle/spec.md](./persona/crud-lifecycle/spec.md) |
-| 8.6 | 删除被 Prototype 引用的 persona（409） | `DELETE /personas/:name` → 409 | `sumeru persona remove <name>` → error | [persona/crud-lifecycle/spec.md](./persona/crud-lifecycle/spec.md) |
+| 8.3 | 创建 persona | `PUT /personas/:name` | `sumeru persona add <name> --instructions` | [persona/crud-lifecycle/spec.md](./persona/crud-lifecycle/spec.md) |
+| 8.4 | 删除 persona | `DELETE /personas/:name` | `sumeru persona remove <name>` | [persona/crud-lifecycle/spec.md](./persona/crud-lifecycle/spec.md) |
+| 8.5 | 删除被 Prototype 引用的 persona（409） | `DELETE /personas/:name` → 409 | `sumeru persona remove <name>` → error | [persona/crud-lifecycle/spec.md](./persona/crud-lifecycle/spec.md) |
 
 ---
 
-## 9. Registry — Skill
+## 9. Registry — Prototype
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 9.1 | 获取 skill | `GET /skills/:name` | `sumeru skill get <name>` | [skill/crud-idempotent/spec.md](./skill/crud-idempotent/spec.md) |
-| 9.2 | 创建/更新 skill（PUT 幂等） | `PUT /skills/:name` | `sumeru skill put <name> --content <text>` | [skill/crud-idempotent/spec.md](./skill/crud-idempotent/spec.md) |
-| 9.3 | 删除 skill（无引用） | `DELETE /skills/:name` | `sumeru skill remove <name>` | [skill/delete-reverse-reference/spec.md](./skill/delete-reverse-reference/spec.md) |
-| 9.4 | 删除被 Prototype 引用的 skill（409） | `DELETE /skills/:name` → 409 | `sumeru skill remove <name>` → error | [skill/delete-reverse-reference/spec.md](./skill/delete-reverse-reference/spec.md) |
+| 9.1 | 列出 prototypes | `GET /prototypes` | `sumeru prototype list` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
+| 9.2 | 删除 prototype | `DELETE /prototypes/:name` | `sumeru prototype remove <name>` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
 
 ---
 
-## 10. Registry — Prototype
+## 10. Adapter — 可观测面
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 10.1 | 列出 prototypes | `GET /prototypes` | `sumeru prototype list` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
-| 10.2 | 获取 prototype 详情 | `GET /prototypes/:name` | `sumeru prototype get <name>` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
-| 10.3 | 创建 prototype | `PUT /prototypes/:name` | `sumeru prototype add <name> --model --adapter [--persona]` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
-| 10.4 | 更新 prototype | `PUT /prototypes/:name` | `sumeru prototype update <name> --model/--adapter/--persona` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
-| 10.5 | 删除 prototype | `DELETE /prototypes/:name` | `sumeru prototype remove <name>` | [prototype/crud-lifecycle/spec.md](./prototype/crud-lifecycle/spec.md) |
+| 10.1 | 列出 adapters | `GET /adapters` | `sumeru adapter list` | [adapter/adapter-list/spec.md](./adapter/adapter-list/spec.md) |
+| 10.2 | 获取 adapter 详情 | `GET /adapters/:name` | `sumeru adapter get <name>` | [adapter/adapter-list/spec.md](./adapter/adapter-list/spec.md) |
+| 10.3 | 列出 adapter 内置模型 | `GET /adapters/:name/models` | `sumeru adapter models <name>` | [adapter/adapter-list/spec.md](./adapter/adapter-list/spec.md) |
 
 ---
 
-## 11. Registry — Extension
+## 11. In-Session Commands
+
+> 所有操作收归 `sumeru session` 子命令。
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 11.1 | 列出 extensions | `GET /extensions` | `sumeru extension list` | [extension/crud-lifecycle/spec.md](./extension/crud-lifecycle/spec.md) |
-| 11.2 | 获取 extension 详情 | `GET /extensions/:name` | `sumeru extension get <name>` | [extension/crud-lifecycle/spec.md](./extension/crud-lifecycle/spec.md) |
-| 11.3 | 创建/更新 extension | `PUT /extensions/:name` | `sumeru extension put <name> --dockerfile <instr>` | [extension/crud-lifecycle/spec.md](./extension/crud-lifecycle/spec.md) |
-| 11.4 | 删除 extension | `DELETE /extensions/:name` | `sumeru extension remove <name>` | [extension/crud-lifecycle/spec.md](./extension/crud-lifecycle/spec.md) |
+| 11.1 | 发消息（唯一入口） | `POST /sessions/:id/messages` | `sumeru session send <id> "msg" [--model] [--env]` | [resume/message-resume-idle.md](./resume/message-resume-idle.md) |
+| 11.2 | 容器内执行 shell | `POST /sessions/:id/commands` `{"type":"exec",...}` | `sumeru session exec <id> -- <command...>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 11.3 | 切换 model | `POST /sessions/:id/commands` `{"type":"model",...}` | `sumeru session model <id> <model-id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 11.4 | 清上下文 | `POST /sessions/:id/commands` `{"type":"reset",...}` | `sumeru session reset <id> [--persona]` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 11.5 | snapshot（docker commit） | `POST /sessions/:id/commands` `{"type":"snapshot",...}` | `sumeru session snapshot <id> <name>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
 
 ---
 
-## 12. Adapter — 可观测面
+## 12. Search
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 12.1 | 列出 adapters | `GET /adapters` | `sumeru adapter list` | [adapter/adapter-list/spec.md](./adapter/adapter-list/spec.md) |
-| 12.2 | 获取 adapter 详情 | `GET /adapters/:name` | `sumeru adapter get <name>` | [adapter/adapter-list/spec.md](./adapter/adapter-list/spec.md) |
-| 12.3 | 列出 adapter 内置模型 | `GET /adapters/:name/models` | `sumeru adapter models <name>` | [adapter/adapter-list/spec.md](./adapter/adapter-list/spec.md) |
+| 12.1 | 全文搜索 sessions | `GET /search?q=...` | `sumeru search <query> [--session <id>]` | [search/full-text-search/spec.md](./search/full-text-search/spec.md) |
 
 ---
 
-## 13. In-Session Commands
-
-> CLI 整合计划见 [#248](https://git.shazhou.work/shazhou/sumeru/issues/248)：
-> 所有操作收归 `sumeru session` 子命令，砍掉顶级 chat/exec/reset/snapshot。
-
-| # | 场景 | API | CLI (目标态) | Spec |
-|---|------|-----|-------------|------|
-| 13.1 | 发消息（唯一入口） | `POST /sessions/:id/messages` | `sumeru session send <id> "msg" [--model] [--env]` | [resume/message-resume-idle.md](./resume/message-resume-idle.md) |
-| 13.2 | 容器内执行 shell | `POST /sessions/:id/commands` `{"type":"exec",...}` | `sumeru session exec <id> -- <command...>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.3 | 切换 model | `POST /sessions/:id/commands` `{"type":"model",...}` | `sumeru session model <id> <model-id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.4 | 清上下文 | `POST /sessions/:id/commands` `{"type":"reset",...}` | `sumeru session reset <id> [--persona]` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.5 | install-skill | `POST /sessions/:id/commands` `{"type":"install-skill",...}` | — (API-only) | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-| 13.6 | snapshot（docker commit） | `POST /sessions/:id/commands` `{"type":"snapshot",...}` | `sumeru session snapshot <id> <name>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
-
-**Deprecated:**
-- `POST /sessions/:id/commands` type:"chat" → 用 `POST /messages` 替代
-- CLI 顶级 `sumeru chat` / `sumeru exec` / `sumeru reset` / `sumeru snapshot` → 收归 `sumeru session` 下
-
----
-
-## ~~14. Image 构建~~ (已废弃，见 [#247](https://git.shazhou.work/shazhou/sumeru/issues/247))
-
----
-
-## 15. Search
+## 13. 错误契约
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 15.1 | 全文搜索 sessions | `GET /search?q=...` | `sumeru search <query> [--session <id>]` | [search/full-text-search/spec.md](./search/full-text-search/spec.md) |
+| 13.1 | 400 Invalid JSON | 所有 POST/PUT 端点 | 所有写命令 → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
+| 13.2 | 400 Missing fields | `POST /sessions` 缺必填 | `sumeru session add` 缺参数 → help 提示 | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
+| 13.3 | 400 Invalid project | `POST /sessions` 路径越界 | — (路径校验在 Host 侧) | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
+| 13.4 | 404 Session not found | `GET/POST/DELETE /sessions/:id` | `sumeru session get/stop/remove <id>` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
+| 13.5 | 404 Prototype not found | `POST /sessions`, `GET /prototypes/:name` | `sumeru session add`, `sumeru prototype get` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
+| 13.6 | 409 Session already idle | `POST /sessions/:id/stop` | `sumeru session stop <id>` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
+| 13.7 | 409 Provider in use | `DELETE /providers/:name` | `sumeru provider remove <name>` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
+| 13.8 | Host 未启动时操作 | `ECONNREFUSED` | 所有命令 → 友好错误提示 | [cli/error-experience/spec.md](./cli/error-experience/spec.md) |
 
 ---
 
----
-
-## 17. Setup
+## 14. Host 韧性
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 17.1 | 初始化环境 | — (CLI-only) | `sumeru setup --provider --api-key --model` | — |
-
----
-
-## 18. 错误契约
-
-| # | 场景 | API | CLI | Spec |
-|---|------|-----|-----|------|
-| 18.1 | 400 Invalid JSON | 所有 POST/PUT 端点 | 所有写命令 → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
-| 18.2 | 400 Missing fields | `POST /sessions` 缺必填 | `sumeru session add` 缺参数 → help 提示 | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
-| 18.3 | 400 Invalid project | `POST /sessions` 路径越界 | — (路径校验在 Host 侧) | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
-| 18.4 | 404 Session not found | `GET/POST/DELETE /sessions/:id` | `sumeru session get/stop/remove <id>` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
-| 18.5 | 404 Prototype not found | `POST /sessions`, `GET /prototypes/:name` | `sumeru session add`, `sumeru prototype get` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
-| 18.6 | 404 Skill not found | `GET /skills/:name` | `sumeru skill get <name>` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
-| 18.7 | 409 Session already idle | `POST /sessions/:id/stop` | `sumeru session stop <id>` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
-| 18.8 | 409 Skill referenced | `DELETE /skills/:name` | `sumeru skill remove <name>` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
-| 18.9 | 409 Provider in use | `DELETE /providers/:name` | `sumeru provider remove <name>` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
-| 18.10 | Host 未启动时操作 | `ECONNREFUSED` | 所有命令 → 友好错误提示 | [cli/error-experience/spec.md](./cli/error-experience/spec.md) |
-
----
-
-## 19. Host 韧性
-
-| # | 场景 | API | CLI | Spec |
-|---|------|-----|-----|------|
-| 19.1 | unhandledRejection 守卫 | — (进程级) | — (内部行为) | [host/unhandled-rejection-guard.md](./host/unhandled-rejection-guard.md) |
-| 19.2 | markIdle 缺失 session 守卫 | — (内部) | — (内部行为) | [host/mark-idle-missing-session-guard.md](./host/mark-idle-missing-session-guard.md) |
-| 19.3 | Adapter 异常退出后 Host 存活 | — (端到端不变量) | — (内部行为) | [host/adapter-abnormal-exit-resilience.md](./host/adapter-abnormal-exit-resilience.md) |
+| 14.1 | unhandledRejection 守卫 | — (进程级) | — (内部行为) | [host/unhandled-rejection-guard.md](./host/unhandled-rejection-guard.md) |
+| 14.2 | markIdle 缺失 session 守卫 | — (内部) | — (内部行为) | [host/mark-idle-missing-session-guard.md](./host/mark-idle-missing-session-guard.md) |
+| 14.3 | Adapter 异常退出后 Host 存活 | — (端到端不变量) | — (内部行为) | [host/adapter-abnormal-exit-resilience.md](./host/adapter-abnormal-exit-resilience.md) |
 
 ---
 
@@ -269,6 +226,21 @@
 |---|------|--------|------|
 | A4.1 | Progressive turns（流式 turn 输出） | 逐步 emit turn 而非结束时一次性 | [adapter/adapter-hermes-progressive-turns.md](./adapter/adapter-hermes-progressive-turns.md) |
 | A4.2 | Turn token usage | 每个 turn 带 token 统计 | [adapter/adapter-hermes-turn-token-usage.md](./adapter/adapter-hermes-turn-token-usage.md) |
+
+---
+
+# CLI Command Reference
+
+| Command Group | Subcommands |
+|--------------|-------------|
+| `sumeru server` | `start`, `stop`, `restart`, `status` |
+| `sumeru adapter` | `list`, `get`, `models` |
+| `sumeru provider` | `list`, `add`, `update`, `remove` |
+| `sumeru model` | `list`, `add`, `update`, `remove` |
+| `sumeru prototype` | `list`, `remove` |
+| `sumeru persona` | `list`, `get`, `add`, `remove` |
+| `sumeru session` | `list`, `add`, `send`, `turns`, `logs`, `stop`, `remove`, `exec`, `reset`, `snapshot`, `model` |
+| `sumeru search` | *(top-level command)* |
 
 ---
 

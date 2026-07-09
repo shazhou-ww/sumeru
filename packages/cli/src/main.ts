@@ -635,6 +635,87 @@ cli
 		}
 	});
 
+// ─── persona ─────────────────────────────────────────────────────────────
+
+cli.command("persona").describe("Manage personas (system prompts)");
+
+cli
+	.command("persona")
+	.command("list")
+	.describe("List personas")
+	.returns(listSchema, "")
+	.action(async (_args, _flags, ctx) => {
+		const client = await getClient();
+		try {
+			const envelope = await client.listPersonas();
+			const lines = (envelope.value as Array<Record<string, unknown>>).map(
+				(p) => `[${p.name}]\n${p.instructions ?? ""}\n`,
+			);
+			ctx.stdout(lines.length > 0 ? lines.join("\n") : "(empty)\n");
+			return undefined;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("persona")
+	.command("get")
+	.describe("Get persona details")
+	.arg("name")
+	.returns(
+		z.object({ name: z.string(), instructions: z.string() }),
+		"{{name}}: {{instructions}}",
+	)
+	.action(async (args, _flags, ctx) => {
+		const client = await getClient();
+		try {
+			const envelope = await client.getPersona(args.name);
+			return envelope.value;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("persona")
+	.command("add")
+	.describe("Create a persona")
+	.arg("name")
+	.flag("instructions", { type: "string", description: "System prompt text" })
+	.returns(nameSchema, "{{name}}")
+	.action(async (args, flags, ctx) => {
+		const instructions = flags.instructions as string | undefined;
+		if (!instructions) {
+			ctx.error("--instructions is required");
+		}
+		const client = await getClient();
+		try {
+			const envelope = await client.addPersona(args.name, {
+				instructions: instructions!,
+			});
+			return { name: envelope.value.name };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("persona")
+	.command("remove")
+	.describe("Delete a persona")
+	.arg("name")
+	.returns(messageSchema, "{{message}}")
+	.action(async (args, _flags, ctx) => {
+		const client = await getClient();
+		try {
+			await client.removePersona(args.name);
+			return { message: `Persona '${args.name}' deleted.` };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
 // ─── session ─────────────────────────────────────────────────────────────
 
 cli

@@ -12,7 +12,7 @@ tags: [session, create, model, e2e]
 2. 解析 `model` → 三态 model override 解析（见下文）
 3. 解析 `project` → 验证路径在 workspaceRoot 内
 4. 启动容器 → Docker Compose up
-5. 初始化 adapter → 发送 init config（含 persona skills / model / defaults）
+5. 初始化 adapter → 发送 init config（含 persona instructions / model / defaults）
 6. 投递 task → 作为第一条 user message 发送
 
 ## Model 解析三态
@@ -35,6 +35,17 @@ model (string) → sqliteStore.getModel(id) → Model.provider → sqliteStore.g
 
 若 Model 或 Provider 不存在，抛 `model_not_found` / `provider_not_found` 错误。
 
+## 参数行为
+
+- `task` parameter is optional. When null, session starts in idle state (no message sent).
+- `project` parameter is optional. When null, no volume is mounted.
+
+## 持久化
+
+- Session metadata is persisted to SQLite on creation (id, prototype, project, task, model, status, containerName, createdAt)
+- On host restart, persisted sessions are restored as idle. Resume reattaches to existing stopped containers.
+- session delete: removes from SQLite + removes JSONL log + docker rm container
+
 ## 请求格式
 
 ```http
@@ -56,7 +67,7 @@ Session 创建要求以下实体在 SQLite 中预先存在：
 
 1. **Provider** — `POST /providers/:name` 创建
 2. **Model** — `POST /models/:id` 创建，引用已有 Provider
-3. **Persona** — `POST /personas/:name` 创建，可引用已有 Skills
+3. **Persona** — `POST /personas/:name` 创建（纯 system prompt 文本）
 4. **Prototype** — `POST /prototypes/:name` 创建，引用已有 Persona + Model
 
 ## 成功响应

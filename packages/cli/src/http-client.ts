@@ -171,11 +171,11 @@ export type HostClient = {
 	getPersona(name: string): Promise<Envelope<Persona>>;
 	addPersona(
 		name: string,
-		body: { instructions: string; skills: Array<string> },
+		body: { instructions: string },
 	): Promise<Envelope<Persona>>;
 	updatePersona(
 		name: string,
-		body: { instructions?: string; skills?: Array<string> },
+		body: { instructions?: string },
 	): Promise<Envelope<Persona>>;
 	removePersona(name: string): Promise<void>;
 

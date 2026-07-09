@@ -99,7 +99,7 @@ curl -s "http://localhost:3000/search?q=test&session="
 
 ## Then — 400 invalid_request
 ```json
-{ "type": "@sumeru/error", "value": { "code": "invalid_request", "message": "session parameter must not be empty" } }
+{ "type": "@sumeru/error", "value": { "code": "invalid_request", "message": "Query parameter session must be a non-empty string when provided" } }
 ```
 
 ---
@@ -119,6 +119,6 @@ curl -s "http://localhost:3000/search?q=deployment"
 ## Notes
 - `q` parameter is required and must be non-empty
 - `session` parameter is optional — absent/null means search all sessions
-- `session` parameter if present must not be empty string
+- `session` parameter if present must not be empty string — returns 400 invalid_request (not silently ignored)
 - Results are returned as hit objects with sessionId and content snippet
 - CLI: `sumeru search <query> [--session <id>]`

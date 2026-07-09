@@ -11,13 +11,44 @@ tags: [cli, errors, ux, error-handling]
 | Component | 说明 |
 |-----------|------|
 | HostClientError | Wraps connection and HTTP errors from host |
-| handleClientError() | Extracts code + message for display |
-| ctx.error() | Prints message and exits process |
+| handleClientError() | Extracts message for display |
+| process.stderr | All error output goes to stderr as plain text |
 
 ### Output Format
 
+All errors are printed as plain text to **stderr**:
+
 ```
-<code>: <message>
+Error: <message>
+```
+
+- No JSON envelope on errors
+- No error codes prefixed
+- No stack traces in normal operation
+
+### E_USAGE Errors
+
+For usage errors (bad command, missing required arguments), the CLI:
+1. Prints `Error: <message>` to stderr
+2. Also prints relevant help/usage information to **stdout**
+
+```
+Error: Missing required argument: prototype
+
+Usage: sumeru session add <prototype> [--project <p>] [--task <t>]
+```
+
+### Version
+
+```bash
+sumeru --version   # prints version string, e.g. "0.1.0"
+sumeru -v          # same as --version
+```
+
+### No Arguments (Help)
+
+```bash
+sumeru             # shows help with command descriptions to stdout
 ```
 
 ---
@@ -32,8 +63,9 @@ sumeru session list
 
 ## Then — friendly connection error (not raw ECONNREFUSED)
 ```
-connection_error: Cannot connect to host at localhost:3000
+Error: Cannot connect to host at 127.0.0.1:7900
 ```
+- Output goes to stderr
 - No stack trace
 - No raw Node.js error
 - HostClientError wraps the connection failure
@@ -47,7 +79,7 @@ sumeru prototype list
 
 ## Then — same friendly error
 ```
-connection_error: Cannot connect to host at localhost:3000
+Error: Cannot connect to host at 127.0.0.1:7900
 ```
 
 ---
@@ -62,10 +94,10 @@ sumeru session get nonexistent-id
 
 ## Then — session_not_found error
 ```
-session_not_found: Session not found
+Error: Session not found
 ```
 - No stack trace
-- Clean single-line output
+- Clean single-line output to stderr
 
 ---
 
@@ -76,7 +108,7 @@ sumeru prototype get nonexistent
 
 ## Then — prototype_not_found error
 ```
-prototype_not_found: Prototype not found
+Error: Prototype not found
 ```
 
 ---
@@ -86,11 +118,15 @@ prototype_not_found: Prototype not found
 sumeru session add
 ```
 
-## Then — usage hint
+## Then — usage hint (E_USAGE)
+stderr:
 ```
-Usage: sumeru session add <prototype>
+Error: Missing required argument: prototype
 ```
-- CLI uses ctx.error() to print and exit
+stdout:
+```
+Usage: sumeru session add <prototype> [--project <p>] [--task <t>]
+```
 - No crash, no stack trace
 
 ---
@@ -100,7 +136,12 @@ Usage: sumeru session add <prototype>
 sumeru prototype add
 ```
 
-## Then — usage hint
+## Then — usage hint (E_USAGE)
+stderr:
+```
+Error: Missing required argument: name
+```
+stdout:
 ```
 Usage: sumeru prototype add <name>
 ```
@@ -114,7 +155,7 @@ sumeru session model sess-001 invalid-format
 
 ## Then — format error
 ```
-model_invalid_format: Invalid model ID "invalid-format". Expected format: provider:name
+Error: Invalid model ID "invalid-format". Expected format: provider:name
 ```
 
 ---
@@ -126,7 +167,7 @@ sumeru session model sess-001 fake:nonexistent
 
 ## Then — model_not_found error
 ```
-model_not_found: Model not found
+Error: Model not found
 ```
 
 ---
@@ -136,11 +177,14 @@ model_not_found: Model not found
 sumeru session bogus
 ```
 
-## Then — help suggestion
+## Then — help suggestion (E_USAGE)
+stderr:
 ```
-Unknown command: bogus
-
-Available commands: list, get, add, remove, model
+Error: Unknown command: bogus
+```
+stdout:
+```
+Available commands: list, add, send, turns, logs, stop, remove, exec, reset, snapshot, model
 ```
 
 ---
@@ -152,16 +196,57 @@ sumeru session list
 
 ## Then — timeout error (not raw error)
 ```
-connection_error: Request timed out connecting to host at localhost:3000
+Error: Request timed out connecting to host at 127.0.0.1:7900
+```
+
+---
+
+## When — sumeru with no arguments
+```bash
+sumeru
+```
+
+## Then — help output to stdout
+```
+Usage: sumeru <command> [options]
+
+Commands:
+  server    Manage the host server process
+  adapter   View available adapters
+  provider  Manage LLM providers
+  model     Manage model configurations
+  prototype Manage session prototypes
+  persona   Manage personas
+  session   Manage and interact with sessions
+  search    Search session content
+
+Options:
+  --version, -v  Show version
+  --help, -h     Show help
+```
+
+---
+
+## When — sumeru --version
+```bash
+sumeru --version
+```
+
+## Then — version string to stdout
+```
+0.1.0
 ```
 
 ---
 
 ## Notes
-- All CLI commands use handleClientError() to normalize error output
+- All CLI errors output plain text to stderr: `Error: <message>`
+- No JSON envelope on error output
+- E_USAGE errors (bad command, missing args) additionally print relevant help to stdout
+- `sumeru --version` / `-v` prints version string to stdout
+- `sumeru` (no args) shows help with command descriptions to stdout
 - HostClientError wraps both connection errors and HTTP error responses
-- Output format is always `<code>: <message>` — one line, no stack traces
-- Missing arguments trigger usage hints via ctx.error() which prints and exits
+- Missing arguments trigger E_USAGE with help output
 - Connection errors (ECONNREFUSED, ETIMEDOUT) are caught and wrapped
-- HTTP error responses (4xx, 5xx) extract the error envelope code + message
+- HTTP error responses (4xx, 5xx) extract the error message from the response body
 - The goal is: users never see raw Node.js errors or stack traces in normal operation

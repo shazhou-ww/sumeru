@@ -27,7 +27,7 @@ prerequisites:
    # Persona（冲突目标）
    curl -s -X POST http://127.0.0.1:7901/personas/tc-conflict \
      -H 'Content-Type: application/json' \
-     -d '{"instructions":"Conflict test persona.","skills":[]}'
+     -d '{"instructions":"Conflict test persona."}'
 
    # Prototype 引用该 Persona（删除保护测试）
    curl -s -X POST http://127.0.0.1:7901/prototypes/tc-dep-proto \
@@ -41,41 +41,34 @@ prerequisites:
    ```bash
    curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:7901/personas/tc-conflict \
      -H 'Content-Type: application/json' \
-     -d '{"instructions":"Another.","skills":[]}'
+     -d '{"instructions":"Another."}'
    ```
 
-2. 引用不存在的 skill（400）：
-   ```bash
-   curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:7901/personas/tc-bad-skill \
-     -H 'Content-Type: application/json' \
-     -d '{"instructions":"Bad skill ref.","skills":["ghost-skill"]}'
-   ```
-
-3. 缺少 instructions 字段（400）：
+2. 缺少 instructions 字段（400）：
    ```bash
    curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:7901/personas/tc-no-inst \
      -H 'Content-Type: application/json' \
-     -d '{"skills":[]}'
+     -d '{}'
    ```
 
-4. GET 不存在的 persona（404）：
+3. GET 不存在的 persona（404）：
    ```bash
    curl -s -w '\n%{http_code}' http://127.0.0.1:7901/personas/tc-ghost
    ```
 
-5. PUT 不存在的 persona（404）：
+4. PUT 不存在的 persona（404）：
    ```bash
    curl -s -w '\n%{http_code}' -X PUT http://127.0.0.1:7901/personas/tc-ghost \
      -H 'Content-Type: application/json' \
-     -d '{"instructions":"Updated.","skills":[]}'
+     -d '{"instructions":"Updated."}'
    ```
 
-6. DELETE 被 prototype 引用的 persona（409 persona_in_use）：
+5. DELETE 被 prototype 引用的 persona（409 persona_in_use）：
    ```bash
    curl -s -w '\n%{http_code}' -X DELETE http://127.0.0.1:7901/personas/tc-conflict
    ```
 
-7. DELETE 不存在的 persona（404）：
+6. DELETE 不存在的 persona（404）：
    ```bash
    curl -s -w '\n%{http_code}' -X DELETE http://127.0.0.1:7901/personas/tc-ghost
    ```
@@ -83,12 +76,11 @@ prerequisites:
 ## Expected
 
 - [ ] Step 1 返回 409，`error` = `persona_exists`
-- [ ] Step 2 返回 400，`error` = `skills_not_found`，message 含 `ghost-skill`
-- [ ] Step 3 返回 400，`error` = `invalid_body`，message 含 `instructions`
+- [ ] Step 2 返回 400，`error` = `invalid_body`，message 含 `instructions`
+- [ ] Step 3 返回 404，`error` = `persona_not_found`
 - [ ] Step 4 返回 404，`error` = `persona_not_found`
-- [ ] Step 5 返回 404，`error` = `persona_not_found`
-- [ ] Step 6 返回 409，`error` = `persona_in_use`，message 含 `tc-dep-proto`
-- [ ] Step 7 返回 404，`error` = `persona_not_found`
+- [ ] Step 5 返回 409，`error` = `persona_in_use`，message 含 `tc-dep-proto`
+- [ ] Step 6 返回 404，`error` = `persona_not_found`
 
 ## Cleanup
 
@@ -101,5 +93,4 @@ curl -s -X DELETE http://127.0.0.1:7901/providers/tc-provider
 
 ## Failure Signals
 
-- Step 2 返回 201 → skill 引用校验未实现
-- Step 6 返回 204 → 删除保护未实现，Prototype 将引用已删除的 Persona
+- Step 5 返回 204 → 删除保护未实现，Prototype 将引用已删除的 Persona

@@ -25,11 +25,11 @@ prerequisites:
 
 ## Steps
 
-1. 创建 Persona（无 skills）：
+1. 创建 Persona：
    ```bash
    curl -s -w '\n%{http_code}' -X POST http://127.0.0.1:7901/personas/tc-persona \
      -H 'Content-Type: application/json' \
-     -d '{"instructions":"A test agent for e2e verification.","skills":[]}'
+     -d '{"instructions":"A test agent for e2e verification."}'
    ```
 
 2. 列出 Persona：
@@ -46,7 +46,7 @@ prerequisites:
    ```bash
    curl -s -w '\n%{http_code}' -X PUT http://127.0.0.1:7901/personas/tc-persona \
      -H 'Content-Type: application/json' \
-     -d '{"instructions":"Updated instructions for testing.","skills":[]}'
+     -d '{"instructions":"Updated instructions for testing."}'
    ```
 
 5. 验证更新生效：
@@ -69,7 +69,6 @@ prerequisites:
 - [ ] Step 1 返回 201，`type` = `@sumeru/persona`
 - [ ] Step 1 `value.name` = `tc-persona`
 - [ ] Step 1 `value.instructions` 为创建时的文本
-- [ ] Step 1 `value.skills` = `[]`
 - [ ] Step 1 `value.createdAt` 和 `value.updatedAt` 为 ISO 时间字符串
 - [ ] Step 2 列表中包含 `tc-persona`
 - [ ] Step 3 返回 200，字段正确

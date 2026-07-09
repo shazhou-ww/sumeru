@@ -51,7 +51,7 @@ prerequisites:
 - [ ] Step 2 `value.message` = `q parameter must not be empty`
 - [ ] Step 3 返回 400，`type` = `@sumeru/error`
 - [ ] Step 3 `value.code` = `invalid_request`
-- [ ] Step 3 `value.message` = `session parameter must not be empty`
+- [ ] Step 3 `value.message` = `Query parameter session must be a non-empty string when provided`
 
 ## Failure Signals
 

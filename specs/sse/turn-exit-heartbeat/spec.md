@@ -116,6 +116,42 @@ HTTP 状态码 `404`。
 
 ---
 
+## Scenario 6: 多轮 SSE 事件回放 (Multi-Round Replay)
+
+**Given** 一个 session 经历了多轮执行（create → exit → resume → exit），SSE buffer 中包含多个 turn 和 exit 事件
+
+**When** 客户端连接 `GET /sessions/:id/events` 回放缓冲事件
+
+**Then** ALL events are replayed in order. The connection only closes after the LAST exit event in the buffer (not the first).
+
+When replaying buffered events for a session with multiple rounds (create → exit → resume → exit), ALL events are replayed. The connection only closes after the LAST exit event in the buffer (not the first). This ensures session logs shows complete multi-round history.
+
+示例缓冲区内容：
+```
+id: 1
+event: turn
+data: {"id":1,"role":"assistant","content":"Round 1 response","toolCalls":[],...}
+
+id: 2
+event: exit
+data: {"type":"complete","message":"Round 1 done",...}
+
+id: 3
+event: turn
+data: {"id":3,"role":"assistant","content":"Round 2 response","toolCalls":[],...}
+
+id: 4
+event: exit
+data: {"type":"complete","message":"Round 2 done",...}
+
+```
+
+- 回放时按序发送所有 4 个事件
+- 遇到 id:2 的 exit 事件时 **不** 关闭连接（因为不是最后一个 exit）
+- 仅在发送 id:4（最后一个 exit）后调用 `res.end()` 关闭连接
+
+---
+
 ## 实现要点
 
 | 关注项 | 行为 |
@@ -124,3 +160,4 @@ HTTP 状态码 `404`。
 | TCP_NODELAY | `res.socket?.setNoDelay(true)` — 降低延迟 |
 | 资源清理 | 客户端断开 (`req.on('close')`) 时清除 heartbeat timer 和 subscription |
 | exit 后清理 | 发送 exit 事件后同时 `res.end()` + `cleanup()` |
+| 多轮回放 | replay 时仅在 buffer 中最后一个 exit 事件后关闭连接 |

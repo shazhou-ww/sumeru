@@ -130,6 +130,33 @@ GET /sessions/ses-ghost/turns
 
 ---
 
+## User Turns
+
+GET /sessions/:id/turns now returns user turns (role=user) in addition to assistant and tool turns.
+
+### UserTurn type
+
+```typescript
+type UserTurn = {
+  id: number;
+  role: "user";
+  content: string;
+  timestamp: string; // ISO 8601
+}
+```
+
+### Query parameter: `system=true`
+
+Query parameter `system=true` includes system prompt turns (rendered as role=user with [system] prefix).
+
+```http
+GET /sessions/ses-abc/turns?system=true
+```
+
+When `system=true`, the system prompt is included as the first turn with `role: "user"` and content prefixed with `[system]`.
+
+---
+
 ## 实现细节
 
 | 行为 | 说明 |
@@ -139,5 +166,7 @@ GET /sessions/ses-ghost/turns
 | `after` 校验 | 必须为非负整数（`/^\d+$/`），且为安全整数（`Number.isSafeInteger`） |
 | Session 不存在 | 返回 `404` + `session_not_found` |
 | 空 `after` | 等同于不带参数，返回全部 Turn |
+| Turn 类型 | `AssistantTurn \| ToolTurn \| UserTurn`，由 `role` 区分 |
+| `system` 参数 | `?system=true` 时在响应开头插入 system prompt turn |
 
 源码参考：`packages/host/src/handlers/turns.ts`
