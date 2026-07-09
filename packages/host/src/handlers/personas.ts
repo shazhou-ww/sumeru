@@ -62,44 +62,16 @@ export function createPersonasHandler(hostConfig: LoadedHostConfig) {
 					);
 					return;
 				}
-				const skills = body.skills ?? [];
-				const missing = findMissingSkills(store, skills);
-				if (missing.length > 0) {
-					writeJson(
-						res,
-						400,
-						errorEnvelope(
-							"skills_not_found",
-							`Missing skills: ${missing.join(", ")}`,
-						),
-					);
-					return;
-				}
 				try {
 					const persona = store.createPersona({
 						name,
 						instructions: body.instructions,
-						skills,
 					});
 					writeJson(res, 201, personaEnvelope(persona));
 				} catch (err) {
 					writePersonaError(res, err);
 				}
 			} else {
-				if (body.skills !== undefined) {
-					const missing = findMissingSkills(store, body.skills);
-					if (missing.length > 0) {
-						writeJson(
-							res,
-							400,
-							errorEnvelope(
-								"skills_not_found",
-								`Missing skills: ${missing.join(", ")}`,
-							),
-						);
-						return;
-					}
-				}
 				try {
 					const persona = store.updatePersona(name, body);
 					if (persona === null) {
@@ -159,12 +131,10 @@ export function createPersonasHandler(hostConfig: LoadedHostConfig) {
 
 type PersonaBody = {
 	instructions: string;
-	skills: Array<string>;
 };
 
 type PersonaUpdateBody = {
 	instructions: string | undefined;
-	skills: Array<string> | undefined;
 };
 
 async function readPersonaBody(
@@ -198,40 +168,10 @@ async function readPersonaBody(
 	} else {
 		instructions = instructionsRaw;
 	}
-	const skillsRaw = obj.skills;
-	let skills: Array<string> | undefined;
-	if (skillsRaw === undefined) {
-		skills = mode === "add" ? [] : undefined;
-	} else if (skillsRaw === null) {
-		throw new Error('Field "skills" must be an array');
-	} else if (!Array.isArray(skillsRaw)) {
-		throw new Error('Field "skills" must be an array');
-	} else {
-		skills = [];
-		for (const item of skillsRaw) {
-			if (typeof item !== "string") {
-				throw new Error('Field "skills" must contain only strings');
-			}
-			skills.push(item);
-		}
-	}
 	if (mode === "add") {
-		return { instructions: instructions as string, skills: skills ?? [] };
+		return { instructions: instructions as string };
 	}
-	return { instructions, skills };
-}
-
-function findMissingSkills(
-	store: LoadedHostConfig["sqliteStore"],
-	skillNames: Array<string>,
-): Array<string> {
-	const missing: Array<string> = [];
-	for (const name of skillNames) {
-		if (!store.skillExists(name)) {
-			missing.push(name);
-		}
-	}
-	return missing;
+	return { instructions };
 }
 
 function writePersonaError(res: ServerResponse, err: unknown): void {

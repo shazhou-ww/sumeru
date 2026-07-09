@@ -230,11 +230,7 @@ describe("session-manager", () => {
 
 	function seedDb(hostConfig: {
 		sqliteStore: {
-			createPersona: (input: {
-				name: string;
-				instructions: string;
-				skills: Array<string>;
-			}) => unknown;
+			createPersona: (input: { name: string; instructions: string }) => unknown;
 			createProvider: (input: {
 				name: string;
 				apiType: string;
@@ -270,7 +266,6 @@ describe("session-manager", () => {
 		hostConfig.sqliteStore.createPersona({
 			name: "default-persona",
 			instructions: "You are a worker.",
-			skills: [],
 		});
 	}
 
@@ -720,11 +715,13 @@ describe("session-manager", () => {
 		await waitUntil(() => manager.getSession(created.id)?.status === "idle");
 
 		const turns = manager.getSessionTurns(created.id, null);
-		expect(turns).toHaveLength(1);
-		expect(turns[0]?.role).toBe("assistant");
+		expect(turns).toHaveLength(2);
+		expect(turns[0]?.role).toBe("user");
 		expect(turns[0]?.id).toBe(0);
+		expect(turns[1]?.role).toBe("assistant");
+		expect(turns[1]?.id).toBe(1);
 
-		const after = manager.getSessionTurns(created.id, 0);
+		const after = manager.getSessionTurns(created.id, 1);
 		expect(after).toEqual([]);
 	});
 

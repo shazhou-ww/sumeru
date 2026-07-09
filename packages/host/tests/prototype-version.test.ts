@@ -239,7 +239,6 @@ describe("prototype lazy re-init", () => {
 		hostConfig.sqliteStore.createPersona({
 			name: "persona-v1",
 			instructions: "Version one.",
-			skills: [],
 		});
 		const { transport, initCount } = createInitTrackingTransport();
 		const manager = createSessionManager({ hostConfig, transport });
@@ -271,7 +270,6 @@ describe("prototype lazy re-init", () => {
 		hostConfig.sqliteStore.createPersona({
 			name: "persona-v2",
 			instructions: "Version two.",
-			skills: [],
 		});
 		prototype.prototype.persona = "persona-v2";
 		prototype.prototypeHash = await computePrototypeHash(

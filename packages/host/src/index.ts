@@ -3,7 +3,6 @@ export {
 	expandEnvVars,
 	extractImageFromCompose,
 	loadHostConfig,
-	loadPrototypeInitSkills,
 	mergeSessionEnv,
 	reloadPrototypeInConfig,
 	removePrototypeFromConfig,

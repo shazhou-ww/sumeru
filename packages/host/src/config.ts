@@ -1,13 +1,12 @@
 import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve as pathResolve, sep } from "node:path";
-import type { ProviderMode, SkillContent } from "@sumeru/adapter-core";
+import type { ProviderMode } from "@sumeru/adapter-core";
 import type {
 	CustomProvider,
 	Extension,
 	HostConfig,
 	ModelConfig,
-	Persona,
 	ProviderApiType,
 } from "@sumeru/core";
 import { parse as parseYaml } from "yaml";
@@ -154,18 +153,6 @@ async function loadAllPrototypes(input: {
 		merged.set(name, mergeDockerWithYaml(dockerInfo, yamlInfo));
 	}
 	return merged;
-}
-
-export function loadPrototypeInitSkills(
-	sqliteStore: SqliteStore,
-	persona: Persona,
-): Array<SkillContent> {
-	const skills: Array<SkillContent> = [];
-	for (const skillName of persona.skills) {
-		const skill = sqliteStore.getSkill(skillName);
-		skills.push({ name: skillName, content: skill?.content ?? "" });
-	}
-	return skills;
 }
 
 const DEFAULT_ENDPOINTS: Record<ProviderApiType, string> = {

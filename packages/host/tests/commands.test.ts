@@ -78,7 +78,6 @@ function seedDb(hostConfig: Awaited<ReturnType<typeof loadHostConfig>>): void {
 	hostConfig.sqliteStore.createPersona({
 		name: "default-persona",
 		instructions: "You are a worker.",
-		skills: [],
 	});
 }
 

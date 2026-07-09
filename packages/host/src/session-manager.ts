@@ -15,7 +15,6 @@ import type {
 import { getProviderMode } from "./adapter-registry.js";
 import {
 	extractImageFromCompose,
-	loadPrototypeInitSkills,
 	mergeSessionEnv,
 	resolveProjectPath,
 	resolveSessionModel,
@@ -85,7 +84,11 @@ export type SessionManager = {
 	getSseBuffer(id: string): SseBuffer;
 	getEventLog(id: string): EventLog;
 	getHistory(id: string, limit: number, offset: number): HistoryValue;
-	getSessionTurns(id: string, after: number | null): Array<Turn>;
+	getSessionTurns(
+		id: string,
+		after: number | null,
+		options?: { includeSystem?: boolean },
+	): Array<Turn>;
 	hostRoot(): HostRootSnapshot;
 	destroyAll(): Promise<void>;
 };
@@ -885,13 +888,9 @@ export function createSessionManager(input: {
 		if (persona === null) {
 			throw new Error(`persona_not_found:${prototype.prototype.persona}`);
 		}
-		const skills = loadPrototypeInitSkills(
-			input.hostConfig.sqliteStore,
-			persona,
-		);
 		return {
 			instructions: persona.instructions,
-			skills,
+			skills: [],
 			model,
 		};
 	}
@@ -917,14 +916,20 @@ export function createSessionManager(input: {
 		};
 	}
 
-	function getSessionTurns(id: string, after: number | null): Array<Turn> {
+	function getSessionTurns(
+		id: string,
+		after: number | null,
+		options?: { includeSystem?: boolean },
+	): Array<Turn> {
 		const record = sessions.get(id);
 		if (record === undefined) {
 			throw new Error("session_not_found");
 		}
 		const total = recorder.getTurnTotal(id);
 		const records = recorder.getTurns(id, total, 0);
-		const turns = turnRecordsToV3(records);
+		const turns = turnRecordsToV3(records, {
+			includeSystem: options?.includeSystem,
+		});
 		if (after === null) {
 			return turns;
 		}

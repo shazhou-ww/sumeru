@@ -73,9 +73,6 @@ cli.command("adapter").describe("Query adapter registry");
 cli.command("provider").describe("Manage LLM providers");
 cli.command("model").describe("Manage LLM models");
 cli.command("prototype").describe("Manage agent prototypes");
-cli.command("extension").describe("Manage Docker extensions");
-cli.command("persona").describe("Manage agent personas");
-cli.command("skill").describe("Manage skills");
 cli.command("session").describe("Manage agent sessions");
 
 // ─── server ──────────────────────────────────────────────────────────────
@@ -638,262 +635,6 @@ cli
 		}
 	});
 
-// ─── extension ───────────────────────────────────────────────────────────
-
-cli
-	.command("extension")
-	.command("list")
-	.describe("List extensions")
-	.returns(listSchema, "")
-	.action(async (_args, flags, ctx) => {
-		const client = await getClient();
-		try {
-			const envelope = await client.listExtensions();
-			ctx.stdout(
-				formatTable(envelope.value as Array<Record<string, unknown>>, ["name"]),
-			);
-			return undefined;
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("extension")
-	.command("get")
-	.describe("Get an extension by name")
-	.arg("name")
-	.returns(
-		z.object({
-			name: z.string(),
-			description: z.string(),
-			dockerfile: z.string(),
-		}),
-		"{{name}} — {{description}}",
-	)
-	.action(async (args, flags, ctx) => {
-		const client = await getClient();
-		try {
-			const envelope = await client.getExtension(args.name);
-			const v = envelope.value;
-			return {
-				name: v.name,
-				description: v.description,
-				dockerfile: v.dockerfile,
-			};
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("extension")
-	.command("put")
-	.describe("Create or update an extension")
-	.arg("name")
-	.flag("description", { type: "string" })
-	.flag("dockerfile", { type: "string" })
-	.returns(nameSchema, "{{name}}")
-	.action(async (args, flags, ctx) => {
-		const dockerfile = flags.dockerfile as string | undefined;
-		if (!dockerfile) {
-			ctx.error(
-				"Usage: sumeru extension put <name> --dockerfile <instructions> [--description <desc>]",
-			);
-		}
-		const client = await getClient();
-		try {
-			const envelope = await client.upsertExtension(args.name, {
-				description: (flags.description as string) ?? "",
-				dockerfile: dockerfile!,
-			});
-			return { name: envelope.value.name };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("extension")
-	.command("remove")
-	.describe("Remove an extension")
-	.arg("name")
-	.returns(messageSchema, "{{message}}")
-	.action(async (args, flags, ctx) => {
-		const client = await getClient();
-		try {
-			await client.removeExtension(args.name);
-			return { message: `removed extension ${args.name}` };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-// ─── persona ─────────────────────────────────────────────────────────────
-
-cli
-	.command("persona")
-	.command("list")
-	.describe("List personas")
-	.returns(listSchema, "")
-	.action(async (_args, flags, ctx) => {
-		const client = await getClient();
-		try {
-			const envelope = await client.listPersonas();
-			ctx.stdout(
-				formatTable(envelope.value as Array<Record<string, unknown>>, ["name"]),
-			);
-			return undefined;
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("persona")
-	.command("get")
-	.describe("Get a persona by name")
-	.arg("name")
-	.returns(
-		z.object({ name: z.string(), skills: z.array(z.string()) }),
-		"{{name}} skills=[{{skills}}]",
-	)
-	.action(async (args, flags, ctx) => {
-		const client = await getClient();
-		try {
-			const envelope = await client.getPersona(args.name);
-			const v = envelope.value;
-			return { name: v.name, skills: v.skills };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("persona")
-	.command("add")
-	.describe("Register a new persona")
-	.arg("name")
-	.flag("instructions", { type: "string" })
-	.flag("skills", { type: "string" })
-	.returns(nameSchema, "{{name}}")
-	.action(async (args, flags, ctx) => {
-		const instructions = (flags.instructions as string) ?? "";
-		const skillsRaw = (flags.skills as string) ?? "";
-		const skills = skillsRaw.length > 0 ? skillsRaw.split(",") : [];
-		const client = await getClient();
-		try {
-			const envelope = await client.addPersona(args.name, {
-				instructions,
-				skills,
-			});
-			return { name: envelope.value.name };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("persona")
-	.command("update")
-	.describe("Update a persona")
-	.arg("name")
-	.flag("instructions", { type: "string" })
-	.flag("skills", { type: "string" })
-	.returns(nameSchema, "{{name}}")
-	.action(async (args, flags, ctx) => {
-		const body: Record<string, unknown> = {};
-		if (flags.instructions !== undefined)
-			body.instructions = flags.instructions;
-		if (flags.skills !== undefined)
-			body.skills = (flags.skills as string).split(",");
-		const client = await getClient();
-		try {
-			const envelope = await client.updatePersona(
-				args.name,
-				body as Parameters<typeof client.updatePersona>[1],
-			);
-			return { name: envelope.value.name };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("persona")
-	.command("remove")
-	.describe("Remove a persona")
-	.arg("name")
-	.returns(messageSchema, "{{message}}")
-	.action(async (args, flags, ctx) => {
-		const client = await getClient();
-		try {
-			await client.removePersona(args.name);
-			return { message: `removed persona ${args.name}` };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-// ─── skill ───────────────────────────────────────────────────────────────
-
-cli
-	.command("skill")
-	.command("get")
-	.describe("Get a skill by name")
-	.arg("name")
-	.returns(
-		z.object({ name: z.string(), content: z.string() }),
-		"{{name}}\n{{content}}",
-		{ defaultFormat: "text" },
-	)
-	.action(async (args, flags, ctx) => {
-		const client = await getClient();
-		try {
-			const envelope = await client.getSkill(args.name);
-			return envelope.value;
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("skill")
-	.command("put")
-	.describe("Create or update a skill")
-	.arg("name")
-	.flag("content", { type: "string" })
-	.returns(nameSchema, "{{name}}")
-	.action(async (args, flags, ctx) => {
-		const content = flags.content as string | undefined;
-		if (!content) {
-			ctx.error("Usage: sumeru skill put <name> --content <text>");
-		}
-		const client = await getClient();
-		try {
-			const envelope = await client.putSkill(args.name, content!);
-			return { name: envelope.value.name };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("skill")
-	.command("remove")
-	.describe("Remove a skill")
-	.arg("name")
-	.returns(messageSchema, "{{message}}")
-	.action(async (args, flags, ctx) => {
-		const client = await getClient();
-		try {
-			await client.removeSkill(args.name);
-			return { message: `removed skill ${args.name}` };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
 // ─── session ─────────────────────────────────────────────────────────────
 
 cli
@@ -1081,24 +822,26 @@ cli
 	.describe("List turns for a session")
 	.arg("id")
 	.flag("after", { type: "number" })
+	.flag("system", { type: "boolean", description: "Include system prompt" })
 	.returns(listSchema, "")
 	.action(async (args, flags, ctx) => {
 		const after = flags.after !== undefined ? Number(flags.after) : undefined;
+		const system = Boolean(flags.system);
 		const client = await getClient();
 		try {
-			const envelope = await client.getTurns(args.id, { after });
-			const rows = envelope.value.map((turn) => {
-				const raw =
-					turn.role === "assistant"
+			const envelope = await client.getTurns(args.id, { after, system });
+			const lines = envelope.value.map((turn) => {
+				const role = turn.role;
+				const ts = turn.timestamp ?? "";
+				const content =
+					role === "assistant" || role === "user"
 						? turn.content
-						: turn.role === "tool"
+						: role === "tool"
 							? turn.result
 							: "";
-				const flat = raw.replace(/[\n\r\t]+/g, " ").trim();
-				const content = flat.length > 80 ? `${flat.slice(0, 77)}...` : flat;
-				return { id: turn.id, role: turn.role, content };
+				return `[${role}] ${ts}\n${content}\n`;
 			});
-			ctx.stdout(formatTable(rows, ["id", "role", "content"]));
+			ctx.stdout(lines.length > 0 ? lines.join("\n") : "(empty)\n");
 			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);

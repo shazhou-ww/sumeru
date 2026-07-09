@@ -78,18 +78,6 @@ export function createSkillsHandler(hostConfig: LoadedHostConfig) {
 				);
 				return;
 			}
-			const references = store.findPersonasReferencingSkill(name);
-			if (references.length > 0) {
-				writeJson(
-					res,
-					409,
-					errorEnvelope(
-						"skill_referenced",
-						`Skill ${name} is referenced by personas: ${references.join(", ")}`,
-					),
-				);
-				return;
-			}
 			store.deleteSkill(name);
 			res.statusCode = 204;
 			res.end();

@@ -134,11 +134,7 @@ describe("adapter abnormal exit resilience (#177)", () => {
 
 	function seedDb(hostConfig: {
 		sqliteStore: {
-			createPersona: (input: {
-				name: string;
-				instructions: string;
-				skills: Array<string>;
-			}) => unknown;
+			createPersona: (input: { name: string; instructions: string }) => unknown;
 			createProvider: (input: {
 				name: string;
 				apiType: string;
@@ -174,7 +170,6 @@ describe("adapter abnormal exit resilience (#177)", () => {
 		hostConfig.sqliteStore.createPersona({
 			name: "default-persona",
 			instructions: "You are a worker.",
-			skills: [],
 		});
 	}
 

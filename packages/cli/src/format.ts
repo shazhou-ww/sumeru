@@ -136,9 +136,12 @@ export function formatPersonaTable(personas: Array<Persona>): string {
 	return formatTable(personas, [
 		{ header: "NAME", width: 20, value: (row) => row.name },
 		{
-			header: "SKILLS",
+			header: "INSTRUCTIONS",
 			width: 40,
-			value: (row) => row.skills.join(", ") || "(none)",
+			value: (row) =>
+				row.instructions.length > 40
+					? `${row.instructions.slice(0, 37)}...`
+					: row.instructions,
 		},
 		{ header: "UPDATED", width: 24, value: (row) => row.updatedAt },
 	]);

@@ -173,7 +173,6 @@ describe("resource partial update routes", () => {
 					"/personas/worker-persona",
 					JSON.stringify({
 						instructions: "Original instructions",
-						skills: ["demo"],
 					}),
 				)
 			).status,
@@ -189,7 +188,6 @@ describe("resource partial update routes", () => {
 		expect(envelopeValue(partialPersona.body)).toMatchObject({
 			name: "worker-persona",
 			instructions: "Updated instructions",
-			skills: ["demo"],
 		});
 
 		expect(

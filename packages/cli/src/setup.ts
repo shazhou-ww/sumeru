@@ -288,7 +288,6 @@ dockerfile: |
 				name: "default",
 				instructions:
 					"You are a senior software engineer. Write clean, well-tested code following best practices. Use strict TypeScript types, prefer functions over classes, write tests before implementation (TDD). Report results with test pass count and key outputs.",
-				skills: ["sumeru"],
 			});
 			actions.push('created persona "default"');
 		}

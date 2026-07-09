@@ -1,13 +1,20 @@
 import type { TurnValue, WireToolCall } from "@sumeru/adapter-core";
-import type { AssistantTurn, ToolCall, ToolTurn, Turn } from "@sumeru/core";
+import type {
+	AssistantTurn,
+	ToolCall,
+	ToolTurn,
+	Turn,
+	UserTurn,
+} from "@sumeru/core";
 
 export function turnRecordsToV3(
 	records: Array<{ value: TurnValue }>,
+	options?: { includeSystem?: boolean },
 ): Array<Turn> {
 	let nextId = 0;
 	const turns: Array<Turn> = [];
 	for (const record of records) {
-		const mapped = wireTurnsToV3(record.value, nextId);
+		const mapped = wireTurnsToV3(record.value, nextId, options);
 		nextId = mapped.nextId;
 		turns.push(...mapped.turns);
 	}
@@ -17,12 +24,31 @@ export function turnRecordsToV3(
 export function wireTurnsToV3(
 	wire: TurnValue,
 	startId: number,
+	options?: { includeSystem?: boolean },
 ): { turns: Array<Turn>; nextId: number } {
 	if (wire.role === "system") {
+		if (options?.includeSystem) {
+			const systemTurn: UserTurn = {
+				id: startId,
+				role: "user",
+				content: `[system] ${wire.content}`,
+				timestamp: wire.timestamp,
+			};
+			return { turns: [systemTurn], nextId: startId + 1 };
+		}
 		return { turns: [], nextId: startId };
 	}
 	if (wire.role === "user") {
-		return { turns: [], nextId: startId };
+		const userTurn: UserTurn = {
+			id: startId,
+			role: "user",
+			content: wire.content,
+			timestamp: wire.timestamp,
+		};
+		return {
+			turns: [userTurn],
+			nextId: startId + 1,
+		};
 	}
 	if (wire.role === "tool") {
 		// Progressive tool turn emitted independently by the adapter (#182).

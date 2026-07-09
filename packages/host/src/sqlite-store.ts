@@ -132,12 +132,10 @@ export type UpdateModelInput = {
 export type CreatePersonaInput = {
 	name: string;
 	instructions: string;
-	skills: Array<string>;
 };
 
 export type UpdatePersonaInput = {
 	instructions: string | undefined;
-	skills: Array<string> | undefined;
 };
 
 export type CreateSkillInput = {
@@ -186,7 +184,6 @@ export type SqliteStore = {
 	listPersonas(): Array<Persona>;
 	updatePersona(name: string, input: UpdatePersonaInput): Persona | null;
 	deletePersona(name: string): boolean;
-	findPersonasReferencingSkill(skillName: string): Array<string>;
 	createSkill(input: CreateSkillInput): Skill;
 	getSkill(name: string): Skill | null;
 	listSkills(): Array<Skill>;
@@ -222,7 +219,6 @@ type ModelRow = {
 type PersonaRow = {
 	name: string;
 	instructions: string;
-	skills: string;
 	created_at: string;
 	updated_at: string;
 };
@@ -488,15 +484,13 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 
 		createPersona(input) {
 			const now = new Date().toISOString();
-			const skillsJson = JSON.stringify(input.skills);
 			db.prepare(
-				`INSERT INTO personas (name, instructions, skills, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
-			).run(input.name, input.instructions, skillsJson, now, now);
+				`INSERT INTO personas (name, instructions, created_at, updated_at)
+         VALUES (?, ?, ?, ?)`,
+			).run(input.name, input.instructions, now, now);
 			return rowToPersona({
 				name: input.name,
 				instructions: input.instructions,
-				skills: skillsJson,
 				created_at: now,
 				updated_at: now,
 			});
@@ -526,19 +520,14 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 				input.instructions === undefined
 					? existing.instructions
 					: input.instructions;
-			const skillsJson =
-				input.skills === undefined
-					? existing.skills
-					: JSON.stringify(input.skills);
 			db.prepare(
 				`UPDATE personas
-         SET instructions = ?, skills = ?, updated_at = ?
+         SET instructions = ?, updated_at = ?
          WHERE name = ?`,
-			).run(instructions, skillsJson, now, name);
+			).run(instructions, now, name);
 			return rowToPersona({
 				...existing,
 				instructions,
-				skills: skillsJson,
 				updated_at: now,
 			});
 		},
@@ -548,20 +537,6 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 				.prepare("DELETE FROM personas WHERE name = ?")
 				.run(name);
 			return result.changes > 0;
-		},
-
-		findPersonasReferencingSkill(skillName) {
-			const rows = db
-				.prepare("SELECT name, skills FROM personas")
-				.all() as Array<{ name: string; skills: string }>;
-			const result: Array<string> = [];
-			for (const row of rows) {
-				const skills = parseSkillsJson(row.skills);
-				if (skills.includes(skillName)) {
-					result.push(row.name);
-				}
-			}
-			return result;
 		},
 
 		createSkill(input) {
@@ -712,7 +687,6 @@ function rowToPersona(row: PersonaRow): Persona {
 	return {
 		name: row.name,
 		instructions: row.instructions,
-		skills: parseSkillsJson(row.skills),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -725,17 +699,6 @@ function rowToSkill(row: SkillRow): Skill {
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
-}
-
-function parseSkillsJson(raw: string): Array<string> {
-	if (raw.length === 0 || raw === "[]") return [];
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		if (!Array.isArray(parsed)) return [];
-		return parsed.filter((item): item is string => typeof item === "string");
-	} catch {
-		return [];
-	}
 }
 
 function serializeModelConfig(model: ModelConfig): string {

@@ -52,7 +52,9 @@ export function createTurnsHandler(manager: SessionManager) {
 			after = parsed;
 		}
 
-		const turns = manager.getSessionTurns(id, after);
+		const includeSystem = query.get("system") === "true";
+
+		const turns = manager.getSessionTurns(id, after, { includeSystem });
 		writeJson(res, 200, turnListEnvelope(turns));
 	};
 }

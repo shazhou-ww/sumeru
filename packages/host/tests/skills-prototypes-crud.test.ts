@@ -136,7 +136,6 @@ describe("skills and prototypes CRUD routes", () => {
 			"/personas/worker-persona",
 			JSON.stringify({
 				instructions: "Worker agent",
-				skills: ["demo"],
 			}),
 		);
 		expect(createPersona.status).toBe(201);
@@ -189,12 +188,10 @@ describe("skills and prototypes CRUD routes", () => {
 			(missingPersona.body as { value: { error: string } }).value.error,
 		).toBe("persona_not_found");
 
-		const deleteBlocked = await request(server, "DELETE", "/skills/demo");
-		expect(deleteBlocked.status).toBe(409);
+		const deleteSkill = await request(server, "DELETE", "/skills/demo");
+		expect(deleteSkill.status).toBe(204);
 
 		await request(server, "DELETE", "/prototypes/worker");
 		await request(server, "DELETE", "/personas/worker-persona");
-		const deleteSkill = await request(server, "DELETE", "/skills/demo");
-		expect(deleteSkill.status).toBe(204);
 	});
 });

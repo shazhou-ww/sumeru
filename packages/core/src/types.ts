@@ -56,7 +56,6 @@ export type Skill = {
 export type Persona = {
 	name: string;
 	instructions: string;
-	skills: Array<string>;
 	createdAt: string;
 	updatedAt: string;
 };
@@ -144,7 +143,14 @@ export type ToolTurn = {
 	durationMs: number;
 	timestamp: string;
 };
-export type Turn = AssistantTurn | ToolTurn;
+export type UserTurn = {
+	id: number;
+	role: "user";
+	content: string;
+	timestamp: string;
+};
+
+export type Turn = AssistantTurn | ToolTurn | UserTurn;
 
 // === Host 配置 ===
 export type HostConfig = {

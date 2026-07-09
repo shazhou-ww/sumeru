@@ -211,7 +211,7 @@ export type HostClient = {
 	): Promise<Envelope<HistoryValue>>;
 	getTurns(
 		id: string,
-		options?: { after?: number },
+		options?: { after?: number; system?: boolean },
 	): Promise<Envelope<Array<Turn>>>;
 	exportSession(id: string): Promise<ReadableStream<Uint8Array>>;
 
@@ -611,6 +611,9 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			const params = new URLSearchParams();
 			if (turnsOptions?.after !== undefined) {
 				params.set("after", String(turnsOptions.after));
+			}
+			if (turnsOptions?.system === true) {
+				params.set("system", "true");
 			}
 			const qs = params.toString();
 			const path = `/sessions/${encodeURIComponent(id)}/turns${qs ? `?${qs}` : ""}`;
