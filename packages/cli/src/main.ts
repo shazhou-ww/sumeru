@@ -82,7 +82,7 @@ function parseModelId(id: string): { provider: string; name: string } {
 
 // ─── CLI definition ──────────────────────────────────────────────────────
 
-const cli = createCLI({ name: "sumeru", version: "0.3.1" });
+const cli = createCLI({ name: "sumeru", version: "0.3.2" });
 
 // ─── Group descriptions (shown in top-level --help) ─────────────────────
 
@@ -1355,7 +1355,7 @@ const argv = process.argv.slice(2);
 
 // Handle --version / -v before CLI dispatch
 if (argv.includes("--version") || argv.includes("-v")) {
-	process.stdout.write("sumeru 0.3.1\n");
+	process.stdout.write("sumeru 0.3.2\n");
 	process.exit(0);
 }
 

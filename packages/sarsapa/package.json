@@ -1,7 +1,7 @@
 {
   "name": "@sumeru/sarsapa",
   "description": "Sarsapa \u2014 Sumeru \u7684\u82a5\u5b50 worker agent (\u5355 session \u8f7b\u91cf native agent)",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
