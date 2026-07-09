@@ -82,7 +82,19 @@ function parseModelId(id: string): { provider: string; name: string } {
 
 // ─── CLI definition ──────────────────────────────────────────────────────
 
-const cli = createCLI({ name: "sumeru", version: "0.3.0" });
+const cli = createCLI({ name: "sumeru", version: "0.3.1" });
+
+// ─── Group descriptions (shown in top-level --help) ─────────────────────
+
+cli.command("server").describe("Manage the host process");
+cli.command("adapter").describe("Query adapter registry");
+cli.command("provider").describe("Manage LLM providers");
+cli.command("model").describe("Manage LLM models");
+cli.command("prototype").describe("Manage agent prototypes");
+cli.command("extension").describe("Manage Docker extensions");
+cli.command("persona").describe("Manage agent personas");
+cli.command("skill").describe("Manage skills");
+cli.command("session").describe("Manage agent sessions");
 
 // ─── setup ───────────────────────────────────────────────────────────────
 
@@ -1340,6 +1352,13 @@ registerPrototypeRmCommand(cli);
 // ─── Run ─────────────────────────────────────────────────────────────────
 
 const argv = process.argv.slice(2);
+
+// Handle --version / -v before CLI dispatch
+if (argv.includes("--version") || argv.includes("-v")) {
+	process.stdout.write("sumeru 0.3.1\n");
+	process.exit(0);
+}
+
 const modelExitCode = await runSessionModelCommand(argv);
 if (modelExitCode !== null) {
 	process.exit(modelExitCode);
