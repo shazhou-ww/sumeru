@@ -1,29 +1,21 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from "node:child_process";
-import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
-import type { CliContext, CommandAction, ParsedFlags } from "@ocas/cli-kit";
+import type { CliContext } from "@ocas/cli-kit";
 import { createCLI } from "@ocas/cli-kit";
 import { z } from "zod";
-import {
-	ApiClientError,
-	createApiClient,
-	resolveApiBaseUrl,
-} from "./api-client.js";
+import { ApiClientError, createApiClient } from "./api-client.js";
 import { parseEnvFlagsFromArgv } from "./env-flags.js";
 import { formatExtensionTable } from "./format.js";
 import { createHostClient, HostClientError } from "./http-client.js";
+import { getClient, resolveBaseUrl } from "./lazy.js";
 import { runSessionModelCommand } from "./model-cmd.js";
 import {
 	isProcessAlive,
 	readPidFile,
 	removePidFile,
 	resolvePidFilePath,
-	writePidFile,
 } from "./pid-file.js";
 import { registerPrototypeRmCommand } from "./prototype-cmd.js";
 import { registerSessionRmCommand } from "./session-cmd.js";
-import { runSetup } from "./setup.js";
 
 // ─── Shared schemas ─────────────────────────────────────────────────────
 
@@ -42,27 +34,13 @@ const statusSchema = z.object({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
-function resolveBaseUrl(flags: ParsedFlags): string {
-	const host =
-		(flags.host as string | undefined) ??
-		process.env.SUMERU_HOST ??
-		"127.0.0.1";
-	const portRaw =
-		(flags.port as string | undefined) ?? process.env.SUMERU_PORT ?? "7900";
-	const port = Number.parseInt(portRaw, 10);
-	if (!Number.isFinite(port) || port < 0) {
-		throw new Error("Invalid port");
-	}
-	return `http://${host}:${String(port)}`;
-}
-
 function handleClientError(err: unknown, ctx: CliContext): never {
 	if (err instanceof HostClientError) {
 		ctx.error(`${err.code}: ${err.message}`);
 	}
 	const msg = err instanceof Error ? err.message : String(err);
 	if (msg === "fetch failed" || msg.includes("ECONNREFUSED")) {
-		ctx.error(`Host not reachable. Start it with: sumeru server start`);
+		ctx.error("Could not connect to host");
 	}
 	ctx.error(msg);
 }
@@ -100,115 +78,21 @@ cli.command("persona").describe("Manage agent personas");
 cli.command("skill").describe("Manage skills");
 cli.command("session").describe("Manage agent sessions");
 
-// ─── setup ───────────────────────────────────────────────────────────────
-
-cli
-	.command("setup")
-	.describe("Initialize ~/.sumeru with config, prototype, and SQLite data")
-	.flag("provider", { type: "string" })
-	.flag("api-key", { type: "string" })
-	.flag("model", { type: "string" })
-	.flag("api-type", { type: "string" })
-	.flag("base-url", { type: "string" })
-	.flag("root-dir", { type: "string" })
-	.returns(messageSchema, "{{message}}")
-	.action(async (_args, flags, ctx) => {
-		const provider = flags.provider as string | undefined;
-		const apiKey = flags["api-key"] as string | undefined;
-		const model = flags.model as string | undefined;
-		if (!provider || !apiKey || !model) {
-			ctx.error(
-				"Usage: sumeru setup --provider <name> --api-key <key> --model <model-name>",
-			);
-		}
-		await runSetup({
-			provider: provider!,
-			apiKey: apiKey!,
-			model: model!,
-			apiType: (flags["api-type"] as string) ?? null,
-			baseUrl: (flags["base-url"] as string) ?? null,
-			rootDir: (flags["root-dir"] as string) ?? null,
-		});
-		return { message: "Setup complete" };
-	});
-
 // ─── server ──────────────────────────────────────────────────────────────
 
 cli
 	.command("server")
 	.command("start")
 	.describe("Start the host process in the background")
-	.flag("config", { type: "string", alias: "c" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
-	.action(async (_args, flags, ctx) => {
-		const configPath = (flags.config ?? flags.c) as string | undefined;
-		const host =
-			(flags.host as string | undefined) ??
-			process.env.SUMERU_HOST ??
-			"127.0.0.1";
-		const portRaw =
-			(flags.port as string | undefined) ?? process.env.SUMERU_PORT ?? "7900";
-		const pidFilePath = resolvePidFilePath();
-		const existingPid = readPidFile(pidFilePath);
-		if (existingPid !== null && isProcessAlive(existingPid)) {
-			ctx.error(
-				`Host already running (pid ${String(existingPid)}). Stop it first with \`sumeru server stop\`.`,
-			);
+	.action(async (_args, _flags, ctx) => {
+		try {
+			await getClient();
+			return { message: `Host running at ${resolveBaseUrl()}` };
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			ctx.error(msg);
 		}
-		if (existingPid !== null) {
-			removePidFile(pidFilePath);
-		}
-
-		const hostBin = process.env.SUMERU_HOST_BIN ?? null;
-		const rootDir =
-			configPath !== undefined
-				? resolve(dirname(configPath))
-				: resolve(homedir(), ".sumeru");
-
-		let child: ReturnType<typeof spawn>;
-		if (hostBin !== null) {
-			child = spawn(hostBin, [rootDir], {
-				stdio: "ignore",
-				env: {
-					...process.env,
-					SUMERU_HOST: host,
-					SUMERU_PORT: portRaw,
-				},
-				detached: true,
-			});
-		} else {
-			// Find host dist relative to CLI package
-			const hostMain = resolve(
-				dirname(new URL(import.meta.url).pathname),
-				"../../host/dist/main.js",
-			);
-			child = spawn("node", [hostMain, rootDir], {
-				stdio: "ignore",
-				env: {
-					...process.env,
-					SUMERU_HOST: host,
-					SUMERU_PORT: portRaw,
-				},
-				detached: true,
-			});
-		}
-
-		if (child.pid === undefined) {
-			ctx.error(
-				`Could not spawn ${hostBin}. Start the host manually:\n\n` +
-					`  SUMERU_HOST=${host} SUMERU_PORT=${portRaw} ${hostBin} ${rootDir}`,
-			);
-		}
-
-		writePidFile(pidFilePath, child.pid!);
-		child.unref();
-		return {
-			message:
-				`Started host pid ${String(child.pid)} (${hostBin} ${rootDir})\n` +
-				`PID file: ${pidFilePath}`,
-		};
 	});
 
 cli
@@ -245,14 +129,12 @@ cli
 	.command("server")
 	.command("status")
 	.describe("Show host status")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(
 		statusSchema,
 		"{{name}} {{version}} running={{running}} queued={{queued}} idle={{idle}}",
 	)
-	.action(async (_args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+	.action(async (_args, _flags, ctx) => {
+		const client = createHostClient({ baseUrl: resolveBaseUrl() });
 		try {
 			const envelope = await client.getRoot();
 			const v = envelope.value;
@@ -275,11 +157,9 @@ cli
 	.command("adapter")
 	.command("list")
 	.describe("List registered adapters")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(listSchema, "", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "yaml" })
 	.action(async (_args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.listAdapters();
 			return envelope.value;
@@ -293,8 +173,6 @@ cli
 	.command("get")
 	.describe("Get an adapter by name")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(
 		z.object({
 			name: z.string(),
@@ -304,7 +182,7 @@ cli
 		"{{name}} ({{providerMode}}) credential={{credentialEnv}}",
 	)
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.getAdapter(args.name);
 			const v = envelope.value;
@@ -323,11 +201,9 @@ cli
 	.command("models")
 	.describe("List built-in models for an adapter")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(listSchema, "", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "yaml" })
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.listAdapterModels(args.name);
 			return envelope.value;
@@ -342,11 +218,9 @@ cli
 	.command("provider")
 	.command("list")
 	.describe("List registered providers")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(listSchema, "", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "yaml" })
 	.action(async (_args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.listProviders();
 			return envelope.value;
@@ -360,8 +234,6 @@ cli
 	.command("get")
 	.describe("Get a provider by name")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(
 		z.object({
 			name: z.string(),
@@ -371,7 +243,7 @@ cli
 		"{{name}} ({{apiType}}) {{baseUrl}}",
 	)
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.getProvider(args.name);
 			const v = envelope.value;
@@ -389,8 +261,6 @@ cli
 	.flag("api-type", { type: "string" })
 	.flag("base-url", { type: "string" })
 	.flag("api-key", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(nameSchema, "{{name}}")
 	.action(async (args, flags, ctx) => {
 		const apiType = flags["api-type"] as string | undefined;
@@ -404,7 +274,7 @@ cli
 		if (apiType !== "anthropic" && apiType !== "openai") {
 			ctx.error('Flag --api-type must be "anthropic" or "openai"');
 		}
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.addProvider(args.name, {
 				apiType: apiType as "anthropic" | "openai",
@@ -425,15 +295,13 @@ cli
 	.flag("api-type", { type: "string" })
 	.flag("base-url", { type: "string" })
 	.flag("api-key", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(nameSchema, "{{name}}")
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
 		if (flags["api-type"] !== undefined) body.apiType = flags["api-type"];
 		if (flags["base-url"] !== undefined) body.baseUrl = flags["base-url"];
 		if (flags["api-key"] !== undefined) body.apiKey = flags["api-key"];
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.updateProvider(
 				args.name,
@@ -450,11 +318,9 @@ cli
 	.command("remove")
 	.describe("Remove a provider")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			await client.removeProvider(args.name);
 			return { message: `removed provider ${args.name}` };
@@ -470,11 +336,9 @@ cli
 	.command("list")
 	.describe("List registered models")
 	.flag("provider", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(listSchema, "", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "yaml" })
 	.action(async (_args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const provider = flags.provider as string | undefined;
 			const envelope = await client.listModels(provider);
@@ -489,14 +353,12 @@ cli
 	.command("get")
 	.describe("Get a model by provider:name")
 	.arg("id")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(
 		z.object({ name: z.string(), provider: z.string(), model: z.string() }),
 		"{{provider}}:{{name}} {{model}}",
 	)
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const { provider, name } = parseModelId(args.id);
 			const envelope = await client.getModel(provider, name);
@@ -516,8 +378,6 @@ cli
 	.flag("context-window", { type: "number" })
 	.flag("no-tool-use", { type: "boolean" })
 	.flag("no-streaming", { type: "boolean" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(idSchema, "{{id}}")
 	.action(async (args, flags, ctx) => {
 		const apiModel = flags.model as string | undefined;
@@ -530,7 +390,7 @@ cli
 			flags["context-window"] !== undefined
 				? Number(flags["context-window"])
 				: null;
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const { provider, name } = parseModelId(args.id);
 			const envelope = await client.upsertModel(provider, name, {
@@ -555,8 +415,6 @@ cli
 	.flag("context-window", { type: "number" })
 	.flag("no-tool-use", { type: "boolean" })
 	.flag("no-streaming", { type: "boolean" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(idSchema, "{{id}}")
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
@@ -567,7 +425,7 @@ cli
 			body.toolUse = !flags["no-tool-use"];
 		if (flags["no-streaming"] !== undefined)
 			body.streaming = !flags["no-streaming"];
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const { provider, name } = parseModelId(args.id);
 			const envelope = await client.upsertModel(
@@ -586,11 +444,9 @@ cli
 	.command("remove")
 	.describe("Remove a model")
 	.arg("id")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const { provider, name } = parseModelId(args.id);
 			await client.removeModel(provider, name);
@@ -606,11 +462,9 @@ cli
 	.command("prototype")
 	.command("list")
 	.describe("List prototypes")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(listSchema, "", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "yaml" })
 	.action(async (_args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.listPrototypes();
 			return envelope.value;
@@ -624,8 +478,6 @@ cli
 	.command("get")
 	.describe("Get a prototype by name")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(
 		z.object({
 			name: z.string(),
@@ -636,7 +488,7 @@ cli
 		"{{name}} persona={{persona}} model={{model}} adapter={{adapter}}",
 	)
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.getPrototype(args.name);
 			const p = envelope.value;
@@ -659,8 +511,6 @@ cli
 	.flag("model", { type: "string" })
 	.flag("adapter", { type: "string" })
 	.flag("persona", { type: "string", default: "default" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(nameSchema, "{{name}}")
 	.action(async (args, flags, ctx) => {
 		const model = flags.model as string | undefined;
@@ -671,7 +521,7 @@ cli
 				"Usage: sumeru prototype add <name> --model <model-id> --adapter <adapter-name> [--persona <name>]",
 			);
 		}
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.addPrototype(args.name, {
 				persona,
@@ -692,15 +542,13 @@ cli
 	.flag("model", { type: "string" })
 	.flag("adapter", { type: "string" })
 	.flag("persona", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(nameSchema, "{{name}}")
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
 		if (flags.model !== undefined) body.model = flags.model;
 		if (flags.adapter !== undefined) body.adapter = flags.adapter;
 		if (flags.persona !== undefined) body.persona = flags.persona;
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.updatePrototype(
 				args.name,
@@ -717,11 +565,9 @@ cli
 	.command("remove")
 	.describe("Remove a prototype")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			await client.removePrototype(args.name);
 			return { message: `removed prototype ${args.name}` };
@@ -736,11 +582,9 @@ cli
 	.command("extension")
 	.command("list")
 	.describe("List extensions")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
 	.action(async (_args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.listExtensions();
 			ctx.stdout(formatExtensionTable(envelope.value) + "\n");
@@ -755,8 +599,6 @@ cli
 	.command("get")
 	.describe("Get an extension by name")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(
 		z.object({
 			name: z.string(),
@@ -766,7 +608,7 @@ cli
 		"{{name}} — {{description}}",
 	)
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.getExtension(args.name);
 			const v = envelope.value;
@@ -787,8 +629,6 @@ cli
 	.arg("name")
 	.flag("description", { type: "string" })
 	.flag("dockerfile", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(nameSchema, "{{name}}")
 	.action(async (args, flags, ctx) => {
 		const dockerfile = flags.dockerfile as string | undefined;
@@ -797,7 +637,7 @@ cli
 				"Usage: sumeru extension put <name> --dockerfile <instructions> [--description <desc>]",
 			);
 		}
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.upsertExtension(args.name, {
 				description: (flags.description as string) ?? "",
@@ -814,11 +654,9 @@ cli
 	.command("remove")
 	.describe("Remove an extension")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			await client.removeExtension(args.name);
 			return { message: `removed extension ${args.name}` };
@@ -833,11 +671,9 @@ cli
 	.command("persona")
 	.command("list")
 	.describe("List personas")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(listSchema, "", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "yaml" })
 	.action(async (_args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.listPersonas();
 			return envelope.value;
@@ -851,14 +687,12 @@ cli
 	.command("get")
 	.describe("Get a persona by name")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(
 		z.object({ name: z.string(), skills: z.array(z.string()) }),
 		"{{name}} skills=[{{skills}}]",
 	)
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.getPersona(args.name);
 			const v = envelope.value;
@@ -875,14 +709,12 @@ cli
 	.arg("name")
 	.flag("instructions", { type: "string" })
 	.flag("skills", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(nameSchema, "{{name}}")
 	.action(async (args, flags, ctx) => {
 		const instructions = (flags.instructions as string) ?? "";
 		const skillsRaw = (flags.skills as string) ?? "";
 		const skills = skillsRaw.length > 0 ? skillsRaw.split(",") : [];
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.addPersona(args.name, {
 				instructions,
@@ -901,8 +733,6 @@ cli
 	.arg("name")
 	.flag("instructions", { type: "string" })
 	.flag("skills", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(nameSchema, "{{name}}")
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
@@ -910,7 +740,7 @@ cli
 			body.instructions = flags.instructions;
 		if (flags.skills !== undefined)
 			body.skills = (flags.skills as string).split(",");
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.updatePersona(
 				args.name,
@@ -927,11 +757,9 @@ cli
 	.command("remove")
 	.describe("Remove a persona")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			await client.removePersona(args.name);
 			return { message: `removed persona ${args.name}` };
@@ -947,15 +775,13 @@ cli
 	.command("get")
 	.describe("Get a skill by name")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(
 		z.object({ name: z.string(), content: z.string() }),
 		"{{name}}\n{{content}}",
 		{ defaultFormat: "text" },
 	)
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.getSkill(args.name);
 			return envelope.value;
@@ -970,15 +796,13 @@ cli
 	.describe("Create or update a skill")
 	.arg("name")
 	.flag("content", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(nameSchema, "{{name}}")
 	.action(async (args, flags, ctx) => {
 		const content = flags.content as string | undefined;
 		if (!content) {
 			ctx.error("Usage: sumeru skill put <name> --content <text>");
 		}
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.putSkill(args.name, content!);
 			return { name: envelope.value.name };
@@ -992,11 +816,9 @@ cli
 	.command("remove")
 	.describe("Remove a skill")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			await client.removeSkill(args.name);
 			return { message: `removed skill ${args.name}` };
@@ -1011,11 +833,9 @@ cli
 	.command("session")
 	.command("list")
 	.describe("List sessions")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(listSchema, "", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "yaml" })
 	.action(async (_args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.listSessions();
 			return envelope.value;
@@ -1029,14 +849,12 @@ cli
 	.command("get")
 	.describe("Get session details")
 	.arg("id")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(
 		z.object({ id: z.string(), prototype: z.string(), status: z.string() }),
 		"{{id}} {{prototype}} [{{status}}]",
 	)
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.getSession(args.id);
 			const v = envelope.value;
@@ -1054,8 +872,6 @@ cli
 	.flag("project", { type: "string" })
 	.flag("task", { type: "string" })
 	.flag("env", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(idSchema, "{{id}}")
 	.action(async (args, flags, ctx) => {
 		const project = flags.project as string | undefined;
@@ -1072,7 +888,7 @@ cli
 			const msg = err instanceof Error ? err.message : String(err);
 			ctx.error(msg);
 		}
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.addSession({
 				prototype: args.prototype,
@@ -1092,11 +908,9 @@ cli
 	.command("stop")
 	.describe("Stop a running session")
 	.arg("id")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			await client.stopSession(args.id);
 			return { message: `stopped ${args.id}` };
@@ -1110,11 +924,9 @@ cli
 	.command("remove")
 	.describe("Delete a session")
 	.arg("id")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			await client.removeSession(args.id);
 			return { message: `deleted ${args.id}` };
@@ -1131,8 +943,6 @@ cli
 	.arg("message")
 	.flag("model", { type: "string" })
 	.flag("env", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
 		let env: Record<string, string> | null = null;
@@ -1143,7 +953,7 @@ cli
 			ctx.error(msg);
 		}
 		const model = (flags.model as string | undefined) ?? null;
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.submitMessage(args.id, {
 				content: args.message,
@@ -1164,12 +974,10 @@ cli
 	.describe("Stream session events")
 	.arg("id")
 	.flag("follow", { type: "boolean", alias: "f" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
 		const follow = Boolean(flags.follow);
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 
 		let gotExit = false;
 		const printEvent = (event: string, data: string): void => {
@@ -1199,12 +1007,10 @@ cli
 	.describe("List turns for a session")
 	.arg("id")
 	.flag("after", { type: "number" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
-	.returns(listSchema, "", { defaultFormat: "text" })
+	.returns(listSchema, "", { defaultFormat: "yaml" })
 	.action(async (args, flags, ctx) => {
 		const after = flags.after !== undefined ? Number(flags.after) : undefined;
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.getTurns(args.id, { after });
 			return envelope.value;
@@ -1220,8 +1026,6 @@ cli
 	.command("exec")
 	.describe("Run a shell command in a session container")
 	.arg("id")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const separator = process.argv.indexOf("--");
@@ -1233,12 +1037,7 @@ cli
 			ctx.error("Usage: sumeru session exec <id> -- <command...>");
 		}
 		const command = parts.join(" ");
-		const api = createApiClient(
-			resolveApiBaseUrl({
-				host: flags.host as string | undefined,
-				port: flags.port as string | undefined,
-			}),
-		);
+		const api = createApiClient(resolveBaseUrl());
 		try {
 			const result = await api.postCommand(args.id, {
 				type: "exec",
@@ -1275,17 +1074,10 @@ cli
 	.describe("Reset a session context, optionally with a new persona")
 	.arg("id")
 	.flag("persona", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
 		const persona = (flags.persona as string | undefined) ?? null;
-		const api = createApiClient(
-			resolveApiBaseUrl({
-				host: flags.host as string | undefined,
-				port: flags.port as string | undefined,
-			}),
-		);
+		const api = createApiClient(resolveBaseUrl());
 		try {
 			await api.postCommand(args.id, { type: "reset", persona });
 			return { message: `reset ${args.id}` };
@@ -1306,16 +1098,9 @@ cli
 	.describe("Snapshot a session into a new prototype image")
 	.arg("id")
 	.arg("name")
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(messageSchema, "{{message}}")
 	.action(async (args, flags, ctx) => {
-		const api = createApiClient(
-			resolveApiBaseUrl({
-				host: flags.host as string | undefined,
-				port: flags.port as string | undefined,
-			}),
-		);
+		const api = createApiClient(resolveBaseUrl());
 		try {
 			const result = await api.postCommand(args.id, {
 				type: "snapshot",
@@ -1346,15 +1131,13 @@ cli
 	.describe("Full-text search across sessions")
 	.arg("query")
 	.flag("session", { type: "string" })
-	.flag("host", { type: "string" })
-	.flag("port", { type: "string" })
 	.returns(
 		z.object({ query: z.string(), hits: z.number() }),
 		"{{query}} — {{hits}} hits",
 	)
 	.action(async (args, flags, ctx) => {
 		const sessionFilter = (flags.session as string | undefined) ?? undefined;
-		const client = createHostClient({ baseUrl: resolveBaseUrl(flags) });
+		const client = await getClient();
 		try {
 			const envelope = await client.search(args.query, {
 				session: sessionFilter,
