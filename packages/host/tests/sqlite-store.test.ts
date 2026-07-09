@@ -210,4 +210,38 @@ describe("sqlite-store", () => {
 		expect(store.getSkill("test-skill")).toBeNull();
 		expect(store.deleteSkill("missing")).toBe(false);
 	});
+
+	it("runs session persistence lifecycle", () => {
+		store = openDatabase(":memory:");
+
+		store.persistSession({
+			id: "ses_01ABCDEF",
+			prototype: "claude-code",
+			project: "demo",
+			task: "hello",
+			model: {
+				provider: "anthropic",
+				name: "claude-sonnet-4",
+				apiKey: "sk-test",
+			},
+			status: "idle",
+			image: "example:latest",
+			containerName: "container-ses-01abcdef",
+			createdAt: "2026-06-27T00:00:00.000Z",
+			exit: null,
+		});
+
+		const listed = store.listPersistedSessions();
+		expect(listed).toHaveLength(1);
+		expect(listed[0]?.id).toBe("ses_01ABCDEF");
+		expect(listed[0]?.prototype).toBe("claude-code");
+		expect(listed[0]?.project).toBe("demo");
+		expect(listed[0]?.task).toBe("hello");
+		expect(listed[0]?.model.name).toBe("claude-sonnet-4");
+		expect(listed[0]?.status).toBe("idle");
+		expect(listed[0]?.containerName).toBe("container-ses-01abcdef");
+
+		store.removeSession("ses_01ABCDEF");
+		expect(store.listPersistedSessions()).toHaveLength(0);
+	});
 });

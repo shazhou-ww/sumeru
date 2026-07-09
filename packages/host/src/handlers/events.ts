@@ -44,13 +44,22 @@ export function createEventsHandler(manager: SessionManager) {
 
 		const replayFrom = lastEventId ?? 0;
 		let watermark = replayFrom;
-		for (const evt of buffer.eventsAfter(replayFrom)) {
+		const replayEvents = buffer.eventsAfter(replayFrom);
+		for (const evt of replayEvents) {
 			writeRawSseEvent(res, evt);
 			watermark = evt.id;
-			if (evt.event === "exit") {
-				res.end();
-				return;
-			}
+		}
+
+		// If the last replayed event is an exit and there's nothing more coming
+		// (buffer caught up), close the connection.
+		const lastReplayed = replayEvents[replayEvents.length - 1];
+		if (
+			lastReplayed !== undefined &&
+			lastReplayed.event === "exit" &&
+			lastReplayed.id >= buffer.latest()
+		) {
+			res.end();
+			return;
 		}
 
 		let unsubscribe: (() => void) | null = null;

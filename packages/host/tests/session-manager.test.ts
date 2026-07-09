@@ -353,6 +353,43 @@ describe("session-manager", () => {
 		expect(calls.some((call) => call.startsWith("rm:"))).toBe(true);
 	});
 
+	it("restores persisted sessions as idle after host restart (#252)", async () => {
+		const rootDir = setup();
+		const hostConfig = await loadHostConfig(rootDir);
+		seedDb(hostConfig);
+		const { transport, calls } = createInteractiveTransport();
+		const manager = createSessionManager({ hostConfig, transport });
+
+		const created = await manager.createSession(
+			createSessionBody({ task: null }),
+		);
+		await waitUntil(() => manager.getSession(created.id)?.status === "idle");
+		const upCallsBeforeRestart = calls.filter((call) =>
+			call.startsWith("up:"),
+		).length;
+
+		const restarted = createSessionManager({ hostConfig, transport });
+		const restored = restarted.getSession(created.id);
+		expect(restored).not.toBeNull();
+		expect(restored?.status).toBe("idle");
+		expect(restored?.containerId).toBe(created.containerId);
+		expect(restored?.prototype).toBe("claude-code");
+		expect(restarted.listSessions()).toHaveLength(1);
+
+		calls.length = 0;
+		await restarted.submitMessage(created.id, {
+			messageId: "msg_restart_test",
+			content: "resume after restart",
+			env: null,
+			model: null,
+		});
+		await waitUntil(() => restarted.getSession(created.id)?.status === "idle");
+		expect(calls.some((call) => call.startsWith("start:"))).toBe(false);
+		expect(calls.some((call) => call.startsWith("exec:"))).toBe(true);
+		expect(upCallsBeforeRestart).toBe(1);
+		expect(calls.filter((call) => call.startsWith("up:")).length).toBe(0);
+	});
+
 	it("creates session with task=null → idle without sending message", async () => {
 		const rootDir = setup();
 		const hostConfig = await loadHostConfig(rootDir);

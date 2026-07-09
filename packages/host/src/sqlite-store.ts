@@ -1,13 +1,16 @@
 import { DatabaseSync } from "node:sqlite";
 import type {
+	ExitSignal,
 	Model,
+	ModelConfig,
 	Persona,
 	Provider,
 	ProviderApiType,
+	SessionStatus,
 	Skill,
 } from "@sumeru/core";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS providers (
@@ -49,6 +52,21 @@ CREATE TABLE IF NOT EXISTS skills (
   content TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+`;
+
+const MIGRATION_V4 = `
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY NOT NULL,
+  prototype TEXT NOT NULL,
+  project TEXT,
+  task TEXT,
+  model TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'idle',
+  image TEXT,
+  containerName TEXT,
+  createdAt TEXT NOT NULL,
+  exit TEXT
 );
 `;
 
@@ -131,6 +149,21 @@ export type UpdateSkillInput = {
 	content: string;
 };
 
+export type PersistSessionInput = {
+	id: string;
+	prototype: string;
+	project: string | null;
+	task: string | null;
+	model: ModelConfig;
+	status: SessionStatus;
+	image: string;
+	containerName: string | null;
+	createdAt: string;
+	exit: ExitSignal | null;
+};
+
+export type PersistedSession = PersistSessionInput;
+
 export type SqliteStore = {
 	close(): void;
 	createProvider(input: CreateProviderInput): Provider;
@@ -160,6 +193,9 @@ export type SqliteStore = {
 	updateSkill(name: string, input: UpdateSkillInput): Skill | null;
 	deleteSkill(name: string): boolean;
 	skillExists(name: string): boolean;
+	persistSession(session: PersistSessionInput): void;
+	removeSession(id: string): void;
+	listPersistedSessions(): Array<PersistedSession>;
 };
 
 type ProviderRow = {
@@ -198,6 +234,19 @@ type SkillRow = {
 	updated_at: string;
 };
 
+type SessionRow = {
+	id: string;
+	prototype: string;
+	project: string | null;
+	task: string | null;
+	model: string;
+	status: string;
+	image: string | null;
+	containerName: string | null;
+	createdAt: string;
+	exit: string | null;
+};
+
 export function maskApiKey(key: string | null): string | null {
 	if (key === null) return null;
 	if (key.length <= 8) return `${key}****`;
@@ -233,6 +282,9 @@ CREATE TABLE IF NOT EXISTS schema_version (
 		}
 		if (current < 3) {
 			db.exec(MIGRATION_V3);
+		}
+		if (current < 4) {
+			db.exec(MIGRATION_V4);
 		}
 		if (row === undefined) {
 			db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
@@ -567,6 +619,36 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 				.get(name);
 			return row !== undefined;
 		},
+
+		persistSession(session) {
+			db.prepare(
+				`INSERT OR REPLACE INTO sessions
+         (id, prototype, project, task, model, status, image, containerName, createdAt, exit)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			).run(
+				session.id,
+				session.prototype,
+				session.project,
+				session.task,
+				serializeModelConfig(session.model),
+				session.status,
+				session.image,
+				session.containerName,
+				session.createdAt,
+				session.exit === null ? null : JSON.stringify(session.exit),
+			);
+		},
+
+		removeSession(id) {
+			db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+		},
+
+		listPersistedSessions() {
+			const rows = db
+				.prepare("SELECT * FROM sessions ORDER BY createdAt")
+				.all() as Array<SessionRow>;
+			return rows.map(rowToPersistedSession);
+		},
 	};
 }
 
@@ -654,4 +736,67 @@ function parseSkillsJson(raw: string): Array<string> {
 	} catch {
 		return [];
 	}
+}
+
+function serializeModelConfig(model: ModelConfig): string {
+	return JSON.stringify(model);
+}
+
+function parseModelConfig(raw: string): ModelConfig {
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (
+			typeof parsed !== "object" ||
+			parsed === null ||
+			Array.isArray(parsed)
+		) {
+			throw new Error("invalid_model_config");
+		}
+		const record = parsed as Record<string, unknown>;
+		if (typeof record.name !== "string") {
+			throw new Error("invalid_model_config");
+		}
+		return {
+			provider: record.provider as ModelConfig["provider"],
+			name: record.name,
+			apiKey:
+				typeof record.apiKey === "string" || record.apiKey === null
+					? record.apiKey
+					: null,
+		};
+	} catch {
+		throw new Error("invalid_model_config");
+	}
+}
+
+function parseExitSignal(raw: string | null): ExitSignal | null {
+	if (raw === null || raw.length === 0) return null;
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (
+			typeof parsed !== "object" ||
+			parsed === null ||
+			Array.isArray(parsed)
+		) {
+			return null;
+		}
+		return parsed as ExitSignal;
+	} catch {
+		return null;
+	}
+}
+
+function rowToPersistedSession(row: SessionRow): PersistedSession {
+	return {
+		id: row.id,
+		prototype: row.prototype,
+		project: row.project,
+		task: row.task,
+		model: parseModelConfig(row.model),
+		status: row.status as SessionStatus,
+		image: row.image ?? "",
+		containerName: row.containerName,
+		createdAt: row.createdAt,
+		exit: parseExitSignal(row.exit),
+	};
 }

@@ -4,7 +4,7 @@ import { createCLI } from "@ocas/cli-kit";
 import { z } from "zod";
 import { ApiClientError, createApiClient } from "./api-client.js";
 import { parseEnvFlagsFromArgv } from "./env-flags.js";
-import { formatExtensionTable } from "./format.js";
+import { formatTable } from "./format-table.js";
 import { createHostClient, HostClientError } from "./http-client.js";
 import { getClient, resolveBaseUrl } from "./lazy.js";
 import { runSessionModelCommand } from "./model-cmd.js";
@@ -157,12 +157,19 @@ cli
 	.command("adapter")
 	.command("list")
 	.describe("List registered adapters")
-	.returns(listSchema, "", { defaultFormat: "yaml" })
+	.returns(listSchema, "")
 	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listAdapters();
-			return envelope.value;
+			ctx.stdout(
+				formatTable(envelope.value as Array<Record<string, unknown>>, [
+					"name",
+					"providerMode",
+					"credentialEnv",
+				]),
+			);
+			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -201,12 +208,19 @@ cli
 	.command("models")
 	.describe("List built-in models for an adapter")
 	.arg("name")
-	.returns(listSchema, "", { defaultFormat: "yaml" })
+	.returns(listSchema, "")
 	.action(async (args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listAdapterModels(args.name);
-			return envelope.value;
+			ctx.stdout(
+				formatTable(envelope.value as Array<Record<string, unknown>>, [
+					"id",
+					"name",
+					"contextWindow",
+				]),
+			);
+			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -218,12 +232,19 @@ cli
 	.command("provider")
 	.command("list")
 	.describe("List registered providers")
-	.returns(listSchema, "", { defaultFormat: "yaml" })
+	.returns(listSchema, "")
 	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listProviders();
-			return envelope.value;
+			ctx.stdout(
+				formatTable(envelope.value as Array<Record<string, unknown>>, [
+					"name",
+					"apiType",
+					"baseUrl",
+				]),
+			);
+			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -336,13 +357,22 @@ cli
 	.command("list")
 	.describe("List registered models")
 	.flag("provider", { type: "string" })
-	.returns(listSchema, "", { defaultFormat: "yaml" })
+	.returns(listSchema, "")
 	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const provider = flags.provider as string | undefined;
 			const envelope = await client.listModels(provider);
-			return envelope.value;
+			const rows = envelope.value.map((m) => ({
+				id: `${m.provider}:${m.name}`,
+				provider: m.provider,
+				model: m.model,
+				contextWindow: m.contextWindow,
+			}));
+			ctx.stdout(
+				formatTable(rows, ["id", "provider", "model", "contextWindow"]),
+			);
+			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -462,12 +492,20 @@ cli
 	.command("prototype")
 	.command("list")
 	.describe("List prototypes")
-	.returns(listSchema, "", { defaultFormat: "yaml" })
+	.returns(listSchema, "")
 	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listPrototypes();
-			return envelope.value;
+			ctx.stdout(
+				formatTable(envelope.value as Array<Record<string, unknown>>, [
+					"name",
+					"adapter",
+					"model",
+					"persona",
+				]),
+			);
+			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -582,12 +620,14 @@ cli
 	.command("extension")
 	.command("list")
 	.describe("List extensions")
-	.returns(listSchema, "{{items}}", { defaultFormat: "text" })
+	.returns(listSchema, "")
 	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listExtensions();
-			ctx.stdout(formatExtensionTable(envelope.value) + "\n");
+			ctx.stdout(
+				formatTable(envelope.value as Array<Record<string, unknown>>, ["name"]),
+			);
 			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
@@ -671,12 +711,15 @@ cli
 	.command("persona")
 	.command("list")
 	.describe("List personas")
-	.returns(listSchema, "", { defaultFormat: "yaml" })
+	.returns(listSchema, "")
 	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listPersonas();
-			return envelope.value;
+			ctx.stdout(
+				formatTable(envelope.value as Array<Record<string, unknown>>, ["name"]),
+			);
+			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -833,12 +876,24 @@ cli
 	.command("session")
 	.command("list")
 	.describe("List sessions")
-	.returns(listSchema, "", { defaultFormat: "yaml" })
+	.returns(listSchema, "")
 	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listSessions();
-			return envelope.value;
+			ctx.stdout(
+				formatTable(
+					(envelope.value as Array<Record<string, unknown>>).map((s) => ({
+						...s,
+						task:
+							typeof s.task === "string" && s.task.length > 50
+								? `${s.task.slice(0, 47)}...`
+								: s.task,
+					})),
+					["id", "prototype", "status", "task"],
+				),
+			);
+			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -1007,13 +1062,25 @@ cli
 	.describe("List turns for a session")
 	.arg("id")
 	.flag("after", { type: "number" })
-	.returns(listSchema, "", { defaultFormat: "yaml" })
+	.returns(listSchema, "")
 	.action(async (args, flags, ctx) => {
 		const after = flags.after !== undefined ? Number(flags.after) : undefined;
 		const client = await getClient();
 		try {
 			const envelope = await client.getTurns(args.id, { after });
-			return envelope.value;
+			const rows = envelope.value.map((turn) => {
+				const raw =
+					turn.role === "assistant"
+						? turn.content
+						: turn.role === "tool"
+							? turn.result
+							: "";
+				const flat = raw.replace(/[\n\r\t]+/g, " ").trim();
+				const content = flat.length > 80 ? `${flat.slice(0, 77)}...` : flat;
+				return { id: turn.id, role: turn.role, content };
+			});
+			ctx.stdout(formatTable(rows, ["id", "role", "content"]));
+			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}

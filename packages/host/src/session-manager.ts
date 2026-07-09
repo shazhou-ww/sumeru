@@ -31,7 +31,7 @@ import {
 	type RunCommandResult,
 	runSessionCommand,
 } from "./session-commands.js";
-import { maskApiKey } from "./sqlite-store.js";
+import { maskApiKey, type PersistSessionInput } from "./sqlite-store.js";
 import {
 	createSseBuffer,
 	type SseBuffer,
@@ -108,6 +108,50 @@ export function createSessionManager(input: {
 	const startedAt = Date.now();
 	const recorder =
 		input.recorder ?? createOcasRecorder(input.hostConfig.dataDir);
+
+	restorePersistedSessions();
+
+	function restorePersistedSessions(): void {
+		const persisted = input.hostConfig.sqliteStore.listPersistedSessions();
+		for (const row of persisted) {
+			const prototype = input.hostConfig.prototypes.get(row.prototype);
+			if (prototype === undefined) {
+				continue;
+			}
+			const projectResolution = resolveProjectPath(
+				input.hostConfig.config.workspaceRoot,
+				row.project,
+			);
+			const projectPath = projectResolution.ok
+				? projectResolution.projectPath
+				: null;
+			const record: ManagedSession = {
+				id: row.id,
+				prototype: row.prototype,
+				model: row.model,
+				image: row.image,
+				project: row.project,
+				task: row.task,
+				status: "idle",
+				exit: null,
+				tokenUsage: null,
+				createdAt: row.createdAt,
+				containerId: row.containerName,
+				projectName: projectNameFromSessionId(row.id),
+				composePath: prototype.composePath,
+				imageTag: prototype.imageTag,
+				initVersion: null,
+				projectPath,
+				sessionEnv: {},
+			};
+			sessions.set(row.id, record);
+			adapters.set(row.id, createAdapterRuntime());
+		}
+	}
+
+	function persistManagedSession(record: ManagedSession): void {
+		input.hostConfig.sqliteStore.persistSession(toPersistSessionInput(record));
+	}
 
 	function listSessions(): Array<SessionInfo> {
 		return [...sessions.values()].map((record) => {
@@ -219,6 +263,7 @@ export function createSessionManager(input: {
 				sessionEnv,
 			};
 			sessions.set(id, record);
+			persistManagedSession(record);
 			await ensureAdapterReady(id, record);
 			if (body.task !== null) {
 				await sendTask(id, record, body.task as string);
@@ -236,6 +281,7 @@ export function createSessionManager(input: {
 					// best-effort cleanup
 				}
 				sessions.delete(id);
+				input.hostConfig.sqliteStore.removeSession(id);
 			}
 			releaseRunningSlot();
 			if (isDockerImageMissingError(err)) {
@@ -282,6 +328,7 @@ export function createSessionManager(input: {
 		await destroyContainer(record);
 		sessions.delete(id);
 		adapters.delete(id);
+		input.hostConfig.sqliteStore.removeSession(id);
 		recorder.clear(id);
 		if (wasRunning) {
 			releaseRunningSlot();
@@ -929,6 +976,21 @@ export function createSessionManager(input: {
 		getSessionTurns,
 		hostRoot,
 		destroyAll,
+	};
+}
+
+function toPersistSessionInput(record: ManagedSession): PersistSessionInput {
+	return {
+		id: record.id,
+		prototype: record.prototype,
+		project: record.project,
+		task: record.task,
+		model: record.model,
+		status: record.status,
+		image: record.image,
+		containerName: record.containerId,
+		createdAt: record.createdAt,
+		exit: record.exit,
 	};
 }
 
