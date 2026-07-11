@@ -310,9 +310,12 @@ cli
 	.command("add")
 	.describe("Register a new provider")
 	.arg("name", "Provider name")
-	.flag("api-type", { type: "string" })
-	.flag("base-url", { type: "string" })
-	.flag("api-key", { type: "string" })
+	.flag("api-type", {
+		type: "string",
+		description: "API type (openai or anthropic)",
+	})
+	.flag("base-url", { type: "string", description: "Provider base URL" })
+	.flag("api-key", { type: "string", description: "API key" })
 	.returns(nameSchema, "Created provider {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const apiType = flags["api-type"] as string | undefined;
@@ -345,9 +348,12 @@ cli
 	.command("update")
 	.describe("Update a provider")
 	.arg("name", "Provider name")
-	.flag("api-type", { type: "string" })
-	.flag("base-url", { type: "string" })
-	.flag("api-key", { type: "string" })
+	.flag("api-type", {
+		type: "string",
+		description: "API type (openai or anthropic)",
+	})
+	.flag("base-url", { type: "string", description: "Provider base URL" })
+	.flag("api-key", { type: "string", description: "API key" })
 	.returns(nameSchema, "Updated provider {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
@@ -388,7 +394,7 @@ cli
 	.command("model")
 	.command("list")
 	.describe("List registered models")
-	.flag("provider", { type: "string" })
+	.flag("provider", { type: "string", description: "Filter by provider" })
 	.returns(listSchema, {
 		text: (value) =>
 			formatTable(value as Array<Record<string, unknown>>, [
@@ -443,10 +449,13 @@ cli
 	.command("add")
 	.describe("Register a new model")
 	.arg("id", "Model ID (provider:name)")
-	.flag("model", { type: "string" })
-	.flag("context-window", { type: "number" })
-	.flag("no-tool-use", { type: "boolean" })
-	.flag("no-streaming", { type: "boolean" })
+	.flag("model", { type: "string", description: "API model name" })
+	.flag("context-window", {
+		type: "number",
+		description: "Context window size",
+	})
+	.flag("no-tool-use", { type: "boolean", description: "Disable tool use" })
+	.flag("no-streaming", { type: "boolean", description: "Disable streaming" })
 	.returns(idSchema, "Created model {{id}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const apiModel = flags.model as string | undefined;
@@ -481,10 +490,13 @@ cli
 	.command("update")
 	.describe("Update a model")
 	.arg("id", "Model ID (provider:name)")
-	.flag("model", { type: "string" })
-	.flag("context-window", { type: "number" })
-	.flag("no-tool-use", { type: "boolean" })
-	.flag("no-streaming", { type: "boolean" })
+	.flag("model", { type: "string", description: "API model name" })
+	.flag("context-window", {
+		type: "number",
+		description: "Context window size",
+	})
+	.flag("no-tool-use", { type: "boolean", description: "Disable tool use" })
+	.flag("no-streaming", { type: "boolean", description: "Disable streaming" })
 	.returns(idSchema, "Updated model {{id}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
@@ -587,9 +599,13 @@ cli
 	.command("add")
 	.describe("Register a new prototype")
 	.arg("name", "Prototype name")
-	.flag("model", { type: "string" })
-	.flag("adapter", { type: "string" })
-	.flag("persona", { type: "string", default: "default" })
+	.flag("model", { type: "string", description: "Model ID (provider:name)" })
+	.flag("adapter", { type: "string", description: "Adapter name" })
+	.flag("persona", {
+		type: "string",
+		default: "default",
+		description: "Persona name",
+	})
 	.returns(nameSchema, "Created prototype {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const model = flags.model as string | undefined;
@@ -620,9 +636,9 @@ cli
 	.command("update")
 	.describe("Update a prototype")
 	.arg("name", "Prototype name")
-	.flag("model", { type: "string" })
-	.flag("adapter", { type: "string" })
-	.flag("persona", { type: "string" })
+	.flag("model", { type: "string", description: "Model ID (provider:name)" })
+	.flag("adapter", { type: "string", description: "Adapter name" })
+	.flag("persona", { type: "string", description: "Persona name" })
 	.returns(nameSchema, "Updated prototype {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
@@ -799,9 +815,12 @@ cli
 	.command("add")
 	.describe("Create a new session")
 	.arg("prototype", "Prototype to use")
-	.flag("project", { type: "string" })
-	.flag("task", { type: "string" })
-	.flag("env", { type: "string" })
+	.flag("project", { type: "string", description: "Project directory path" })
+	.flag("task", { type: "string", description: "Initial task message" })
+	.flag("env", {
+		type: "string",
+		description: "Environment variables (KEY=VALUE)",
+	})
 	.returns(idSchema, "Created session {{id}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const project = (flags.project as string | undefined) ?? null;
@@ -866,8 +885,14 @@ cli
 	.describe("Send a message to a session")
 	.arg("id", "Session ID")
 	.arg("message", "Message text")
-	.flag("model", { type: "string" })
-	.flag("env", { type: "string" })
+	.flag("model", {
+		type: "string",
+		description: "Override model for this message",
+	})
+	.flag("env", {
+		type: "string",
+		description: "Environment variables (KEY=VALUE)",
+	})
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		let env: Record<string, string> | null = null;
@@ -898,7 +923,11 @@ cli
 	.command("logs")
 	.describe("Stream session events")
 	.arg("id", "Session ID")
-	.flag("follow", { type: "boolean", alias: "f" })
+	.flag("follow", {
+		type: "boolean",
+		alias: "f",
+		description: "Follow (stream) events",
+	})
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const follow = Boolean(flags.follow);
@@ -931,7 +960,7 @@ cli
 	.command("turns")
 	.describe("List turns for a session")
 	.arg("id", "Session ID")
-	.flag("after", { type: "number" })
+	.flag("after", { type: "number", description: "Show turns after this ID" })
 	.flag("system", { type: "boolean", description: "Include system prompt" })
 	.returns(listSchema, {
 		text: (value) => {
@@ -1018,7 +1047,7 @@ cli
 	.command("reset")
 	.describe("Reset a session context, optionally with a new persona")
 	.arg("id", "Session ID")
-	.flag("persona", { type: "string" })
+	.flag("persona", { type: "string", description: "New persona to apply" })
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const persona = (flags.persona as string | undefined) ?? null;
