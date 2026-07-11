@@ -91,11 +91,9 @@ function parseSessionCommand(body: unknown): SessionCommand | null {
 			return { type: "exec", command };
 		}
 		case "model": {
-			const provider = body.provider;
 			const model = body.model;
-			if (typeof provider !== "string" || provider.length === 0) return null;
 			if (typeof model !== "string" || model.length === 0) return null;
-			return { type: "model", provider, model };
+			return { type: "model", model };
 		}
 		case "install-skill": {
 			const name = body.name;

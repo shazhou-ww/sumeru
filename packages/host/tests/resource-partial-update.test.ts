@@ -136,8 +136,9 @@ describe("resource partial update routes", () => {
 				await request(
 					server,
 					"PUT",
-					"/providers/test-prov/models/test-model",
+					"/models/test-model",
 					JSON.stringify({
+						provider: "test-prov",
 						model: "claude-sonnet-4",
 						contextWindow: 128000,
 						toolUse: true,
@@ -151,7 +152,7 @@ describe("resource partial update routes", () => {
 		const partialModel = await request(
 			server,
 			"PUT",
-			"/providers/test-prov/models/test-model",
+			"/models/test-model",
 			JSON.stringify({ model: "claude-opus-4" }),
 		);
 		expect(partialModel.status).toBe(200);
@@ -199,7 +200,7 @@ describe("resource partial update routes", () => {
 					JSON.stringify({
 						name: "worker",
 						persona: "worker-persona",
-						model: "test-prov:test-model",
+						model: "test-model",
 						adapter: "sarsapa",
 						defaults: null,
 					}),
@@ -217,7 +218,7 @@ describe("resource partial update routes", () => {
 		expect(envelopeValue(partialPrototype.body)).toMatchObject({
 			name: "worker",
 			persona: "worker-persona",
-			model: "test-prov:test-model",
+			model: "test-model",
 			adapter: "claude-code",
 			defaults: null,
 		});

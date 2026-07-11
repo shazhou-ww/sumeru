@@ -96,7 +96,7 @@ describe("mergeDockerWithYaml", () => {
 			prototype: {
 				name: "codex",
 				persona: "default-persona",
-				model: "test-provider:default-model",
+				model: "default-model",
 				adapter: "codex",
 				extensions: ["ext-a"],
 				defaults: null,
@@ -111,7 +111,7 @@ describe("mergeDockerWithYaml", () => {
 		expect(merged.imageTag).toBe("sumeru/codex:dev");
 		expect(merged.yamlPath).toBe(yaml.yamlPath);
 		expect(merged.prototype.persona).toBe("default-persona");
-		expect(merged.prototype.model).toBe("test-provider:default-model");
+		expect(merged.prototype.model).toBe("default-model");
 		expect(merged.prototype.extensions).toEqual(["ext-a"]);
 	});
 });
@@ -122,7 +122,7 @@ describe("snapshotImageLabels", () => {
 			snapshotImageLabels({
 				name: "my-snapshot",
 				persona: "default-persona",
-				model: "test-provider:default-model",
+				model: "default-model",
 				adapter: "claude-code",
 				extensions: null,
 				defaults: null,
@@ -130,7 +130,7 @@ describe("snapshotImageLabels", () => {
 		).toEqual({
 			"sumeru.harness": "claude-code",
 			"sumeru.persona": "default-persona",
-			"sumeru.model": "test-provider:default-model",
+			"sumeru.model": "default-model",
 		});
 	});
 });

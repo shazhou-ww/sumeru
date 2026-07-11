@@ -5,7 +5,7 @@ export type CommandAcceptedValue = {
 
 export type CommandResultValue =
 	| { type: "exec"; stdout: string; stderr: string; exitCode: number }
-	| { type: "model"; provider: string; model: string }
+	| { type: "model"; model: string }
 	| { type: "install-skill"; name: string }
 	| { type: "reset" }
 	| { type: "snapshot"; name: string; image: string };
@@ -19,7 +19,7 @@ export type SessionCommand =
 			model: string | null;
 	  }
 	| { type: "exec"; command: string }
-	| { type: "model"; provider: string; model: string }
+	| { type: "model"; model: string }
 	| { type: "reset"; persona: string | null }
 	| { type: "snapshot"; name: string };
 

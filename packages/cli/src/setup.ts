@@ -96,7 +96,7 @@ export async function runSetup(input: SetupInput): Promise<void> {
 	}
 
 	const modelName = deriveModelId(input.model);
-	const modelRef = `${input.provider}:${modelName}`;
+	const modelRef = modelName;
 	const isUpdate = existsSync(join(rootDir, "host.yaml"));
 	const actions: Array<string> = [];
 
@@ -258,9 +258,10 @@ dockerfile: |
 		}
 
 		// Model: update if exists, create if not
-		const existingModel = store.getModel(input.provider, modelName);
+		const existingModel = store.getModel(modelName);
 		if (existingModel !== null) {
-			store.updateModel(input.provider, modelName, {
+			store.upsertModel(modelName, {
+				provider: input.provider,
 				model: input.model,
 				contextWindow: null,
 				toolUse: true,
@@ -269,9 +270,8 @@ dockerfile: |
 			});
 			actions.push(`updated model "${modelRef}"`);
 		} else {
-			store.createModel({
+			store.upsertModel(modelName, {
 				provider: input.provider,
-				name: modelName,
 				model: input.model,
 				contextWindow: null,
 				toolUse: true,

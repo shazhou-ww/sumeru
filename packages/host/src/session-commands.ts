@@ -76,7 +76,6 @@ export async function runSessionCommand(input: {
 			const resolved = resolveModelCommand(
 				input.hostConfig,
 				record,
-				input.command.provider,
 				input.command.model,
 			);
 			await emitSessionFrame(input.transport, input.hostConfig, record, {
@@ -92,7 +91,6 @@ export async function runSessionCommand(input: {
 				mode: "sync",
 				value: {
 					type: "model",
-					provider: input.command.provider,
 					model: input.command.model,
 				},
 			};
@@ -248,15 +246,14 @@ async function readSessionFrameResponse(
 function resolveModelCommand(
 	hostConfig: LoadedHostConfig,
 	record: ManagedSession,
-	provider: string,
-	model: string,
+	modelRef: string,
 ): ManagedSession["model"] {
 	const prototypeInfo = hostConfig.prototypes.get(record.prototype);
 	const adapterName = prototypeInfo?.prototype.adapter ?? record.prototype;
 	return resolveSessionModel(
 		hostConfig.sqliteStore,
 		prototypeInfo?.prototype.model ?? null,
-		`${provider}:${model}`,
+		modelRef,
 		getProviderMode(adapterName),
 		hostConfig.config.defaults?.model ?? null,
 	);

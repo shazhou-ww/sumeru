@@ -41,7 +41,7 @@ function writePrototypeFixture(
 		[
 			"name: claude-code",
 			`persona: ${options.persona ?? "default-persona"}`,
-			`model: ${options.model ?? "test-provider:default-model"}`,
+			`model: ${options.model ?? "default-model"}`,
 			`adapter: ${options.adapter ?? "claude-code"}`,
 		].join("\n"),
 	);
@@ -147,7 +147,7 @@ describe("computePrototypeHash", () => {
 			[
 				"name: claude-code",
 				"persona: persona-v2",
-				"model: test-provider:default-model",
+				"model: default-model",
 				"adapter: claude-code",
 			].join("\n"),
 		);
@@ -166,7 +166,7 @@ describe("computePrototypeHash", () => {
 		tempDirs.push(rootDir);
 		writeV3HostFixture(rootDir);
 		const { yamlPath, skillsDir } = writePrototypeFixture(rootDir, {
-			model: "test-provider:model-v1",
+			model: "model-v1",
 		});
 		const hostConfig = await loadHostConfig(rootDir);
 		const prototype = hostConfig.prototypes.get("claude-code");
@@ -181,11 +181,11 @@ describe("computePrototypeHash", () => {
 			[
 				"name: claude-code",
 				"persona: default-persona",
-				"model: test-provider:model-v2",
+				"model: model-v2",
 				"adapter: claude-code",
 			].join("\n"),
 		);
-		prototype.prototype.model = "test-provider:model-v2";
+		prototype.prototype.model = "model-v2";
 		const second = await computePrototypeHash(
 			yamlPath,
 			skillsDir,
@@ -227,8 +227,7 @@ describe("prototype lazy re-init", () => {
 			baseUrl: null,
 			apiKey: "sk-test",
 		});
-		hostConfig.sqliteStore.createModel({
-			name: "default-model",
+		hostConfig.sqliteStore.upsertModel("default-model", {
 			provider: "test-provider",
 			model: "claude-sonnet-4",
 			contextWindow: null,
@@ -263,7 +262,7 @@ describe("prototype lazy re-init", () => {
 			[
 				"name: claude-code",
 				"persona: persona-v2",
-				"model: test-provider:default-model",
+				"model: default-model",
 				"adapter: claude-code",
 			].join("\n"),
 		);

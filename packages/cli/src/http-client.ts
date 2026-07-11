@@ -159,11 +159,11 @@ export type HostClient = {
 
 	// Models
 	listModels(provider?: string): Promise<Envelope<Array<Model>>>;
-	getModel(provider: string, name: string): Promise<Envelope<Model>>;
+	getModel(name: string): Promise<Envelope<Model>>;
 	upsertModel(
-		provider: string,
 		name: string,
 		body: {
+			provider?: string;
 			model?: string;
 			contextWindow?: number | null;
 			toolUse?: boolean;
@@ -171,7 +171,7 @@ export type HostClient = {
 			metadata?: Record<string, unknown> | null;
 		},
 	): Promise<Envelope<Model>>;
-	removeModel(provider: string, name: string): Promise<void>;
+	removeModel(name: string): Promise<void>;
 
 	// Personas
 	listPersonas(): Promise<Envelope<Array<Persona>>>;
@@ -448,26 +448,24 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			const { json } = await requestJson<Array<Model>>("GET", path, null);
 			return json;
 		},
-		async getModel(provider, name) {
+		async getModel(name) {
 			const { json } = await requestJson<Model>(
 				"GET",
-				`/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(name)}`,
+				`/models/${encodeURIComponent(name)}`,
 				null,
 			);
 			return json;
 		},
-		async upsertModel(provider, name, body) {
+		async upsertModel(name, body) {
 			const { json } = await requestJson<Model>(
 				"PUT",
-				`/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(name)}`,
+				`/models/${encodeURIComponent(name)}`,
 				body,
 			);
 			return json;
 		},
-		async removeModel(provider, name) {
-			await requestDelete(
-				`/providers/${encodeURIComponent(provider)}/models/${encodeURIComponent(name)}`,
-			);
+		async removeModel(name) {
+			await requestDelete(`/models/${encodeURIComponent(name)}`);
 		},
 
 		// Personas

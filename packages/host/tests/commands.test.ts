@@ -43,7 +43,7 @@ function writeHostFixture(rootDir: string): void {
 		[
 			"name: claude-code",
 			"persona: default-persona",
-			"model: test-provider:default-model",
+			"model: default-model",
 			"adapter: claude-code",
 		].join("\n"),
 	);
@@ -66,8 +66,7 @@ function seedDb(hostConfig: Awaited<ReturnType<typeof loadHostConfig>>): void {
 		baseUrl: "https://example.test",
 		apiKey: "sk-test-key",
 	});
-	hostConfig.sqliteStore.createModel({
-		name: "default-model",
+	hostConfig.sqliteStore.upsertModel("default-model", {
 		provider: "test-provider",
 		model: "claude-sonnet-4",
 		contextWindow: null,
@@ -326,7 +325,6 @@ describe("POST /sessions/:id/commands", () => {
 			`/sessions/${created.id}/commands`,
 			JSON.stringify({
 				type: "model",
-				provider: "test-provider",
 				model: "default-model",
 			}),
 		);
@@ -335,7 +333,6 @@ describe("POST /sessions/:id/commands", () => {
 			type: "@sumeru/command-result",
 			value: {
 				type: "model",
-				provider: "test-provider",
 				model: "default-model",
 			},
 		});

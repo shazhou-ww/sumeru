@@ -31,17 +31,13 @@ export function createModelsHandler(hostConfig: LoadedHostConfig) {
 			res: ServerResponse,
 			params: Record<string, string>,
 		): void {
-			const provider = params.name ?? "";
-			const modelName = params.modelName ?? "";
-			const model = store.getModel(provider, modelName);
+			const name = params.name ?? "";
+			const model = store.getModel(name);
 			if (model === null) {
 				writeJson(
 					res,
 					404,
-					errorEnvelope(
-						"model_not_found",
-						`Model ${provider}:${modelName} not found`,
-					),
+					errorEnvelope("model_not_found", `Model ${name} not found`),
 				);
 				return;
 			}
@@ -53,16 +49,7 @@ export function createModelsHandler(hostConfig: LoadedHostConfig) {
 			res: ServerResponse,
 			params: Record<string, string>,
 		): Promise<void> {
-			const provider = params.name ?? "";
-			const modelName = params.modelName ?? "";
-			if (store.getProvider(provider) === null) {
-				writeJson(
-					res,
-					404,
-					errorEnvelope("provider_not_found", `Provider ${provider} not found`),
-				);
-				return;
-			}
+			const name = params.name ?? "";
 			let body: ModelUpdateBody;
 			try {
 				body = await readModelBody(req);
@@ -71,51 +58,55 @@ export function createModelsHandler(hostConfig: LoadedHostConfig) {
 				writeJson(res, 400, errorEnvelope("invalid_body", message));
 				return;
 			}
-			const existing = store.getModel(provider, modelName);
+			const existing = store.getModel(name);
 			if (existing === null) {
-				if (body.model === undefined) {
+				if (body.provider === undefined || body.model === undefined) {
 					writeJson(
 						res,
 						400,
 						errorEnvelope(
 							"invalid_body",
-							'Field "model" is required for new model',
+							'Fields "provider" and "model" are required for new model',
 						),
 					);
 					return;
 				}
-				try {
-					const model = store.createModel({
-						provider,
-						name: modelName,
-						model: body.model,
-						contextWindow: body.contextWindow ?? null,
-						toolUse: body.toolUse ?? true,
-						streaming: body.streaming ?? true,
-						metadata: body.metadata ?? null,
-					});
-					writeJson(res, 201, modelEnvelope(model));
-				} catch (err) {
-					writeModelError(res, err);
+				if (store.getProvider(body.provider) === null) {
+					writeJson(
+						res,
+						404,
+						errorEnvelope(
+							"provider_not_found",
+							`Provider ${body.provider} not found`,
+						),
+					);
+					return;
 				}
-			} else {
-				try {
-					const model = store.updateModel(provider, modelName, body);
-					if (model === null) {
-						writeJson(
-							res,
-							404,
-							errorEnvelope(
-								"model_not_found",
-								`Model ${provider}:${modelName} not found`,
-							),
-						);
-						return;
-					}
-					writeJson(res, 200, modelEnvelope(model));
-				} catch (err) {
-					writeModelError(res, err);
+			} else if (body.provider !== undefined) {
+				if (store.getProvider(body.provider) === null) {
+					writeJson(
+						res,
+						404,
+						errorEnvelope(
+							"provider_not_found",
+							`Provider ${body.provider} not found`,
+						),
+					);
+					return;
 				}
+			}
+			try {
+				const model = store.upsertModel(name, {
+					provider: body.provider,
+					model: body.model,
+					contextWindow: body.contextWindow,
+					toolUse: body.toolUse,
+					streaming: body.streaming,
+					metadata: body.metadata,
+				});
+				writeJson(res, existing === null ? 201 : 200, modelEnvelope(model));
+			} catch (err) {
+				writeModelError(res, err);
 			}
 		},
 
@@ -124,31 +115,23 @@ export function createModelsHandler(hostConfig: LoadedHostConfig) {
 			res: ServerResponse,
 			params: Record<string, string>,
 		): void {
-			const provider = params.name ?? "";
-			const modelName = params.modelName ?? "";
-			if (store.getModel(provider, modelName) === null) {
+			const name = params.name ?? "";
+			if (!store.removeModel(name)) {
 				writeJson(
 					res,
 					404,
-					errorEnvelope(
-						"model_not_found",
-						`Model ${provider}:${modelName} not found`,
-					),
+					errorEnvelope("model_not_found", `Model ${name} not found`),
 				);
 				return;
 			}
-			try {
-				store.deleteModel(provider, modelName);
-				res.statusCode = 204;
-				res.end();
-			} catch (err) {
-				writeModelError(res, err);
-			}
+			res.statusCode = 204;
+			res.end();
 		},
 	};
 }
 
 type ModelUpdateBody = {
+	provider: string | undefined;
 	model: string | undefined;
 	contextWindow: number | null | undefined;
 	toolUse: boolean | undefined;
@@ -162,6 +145,15 @@ async function readModelBody(req: IncomingMessage): Promise<ModelUpdateBody> {
 		throw new Error("Request body must be a JSON object");
 	}
 	const obj = body as Record<string, unknown>;
+	const providerRaw = obj.provider;
+	let provider: string | undefined;
+	if (providerRaw === undefined) {
+		provider = undefined;
+	} else if (typeof providerRaw !== "string" || providerRaw.length === 0) {
+		throw new Error('Field "provider" must be a non-empty string');
+	} else {
+		provider = providerRaw;
+	}
 	const modelRaw = obj.model;
 	let model: string | undefined;
 	if (modelRaw === undefined) {
@@ -185,7 +177,7 @@ async function readModelBody(req: IncomingMessage): Promise<ModelUpdateBody> {
 			: parseBooleanField(obj.streaming, "streaming");
 	const metadata =
 		obj.metadata === undefined ? undefined : parseMetadataField(obj.metadata);
-	return { model, contextWindow, toolUse, streaming, metadata };
+	return { provider, model, contextWindow, toolUse, streaming, metadata };
 }
 
 function parseOptionalNumber(value: unknown, field: string): number | null {

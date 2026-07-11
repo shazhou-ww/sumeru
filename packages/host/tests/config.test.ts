@@ -172,8 +172,7 @@ describe("resolveSessionModel", () => {
 			baseUrl: "http://localhost:8080",
 			apiKey: "sk-proxy-key",
 		});
-		store.createModel({
-			name: "default-model",
+		store.upsertModel("default-model", {
 			provider: "my-anthropic",
 			model: "claude-sonnet-4",
 			contextWindow: null,
@@ -181,8 +180,7 @@ describe("resolveSessionModel", () => {
 			streaming: true,
 			metadata: null,
 		});
-		store.createModel({
-			name: "proxy-model",
+		store.upsertModel("proxy-model", {
 			provider: "local-proxy",
 			model: "gpt-4o",
 			contextWindow: 128000,
@@ -195,12 +193,7 @@ describe("resolveSessionModel", () => {
 
 	it("uses prototype model when override is null", () => {
 		const s = seedStore();
-		const config = resolveSessionModel(
-			s,
-			"my-anthropic:default-model",
-			null,
-			"custom-only",
-		);
+		const config = resolveSessionModel(s, "default-model", null, "custom-only");
 		expect(config.name).toBe("claude-sonnet-4");
 		expect(config.apiKey).toBe("sk-real-key-1234");
 		expect(typeof config.provider).toBe("object");
@@ -215,8 +208,8 @@ describe("resolveSessionModel", () => {
 		const s = seedStore();
 		const config = resolveSessionModel(
 			s,
-			"my-anthropic:default-model",
-			"local-proxy:proxy-model",
+			"default-model",
+			"proxy-model",
 			"custom-only",
 		);
 		expect(config.name).toBe("gpt-4o");
@@ -231,7 +224,7 @@ describe("resolveSessionModel", () => {
 		const s = seedStore();
 		const config = resolveSessionModel(
 			s,
-			"my-anthropic:default-model",
+			"default-model",
 			{
 				provider: {
 					name: "custom",
@@ -263,15 +256,27 @@ describe("resolveSessionModel", () => {
 	it("throws when model id is not found", () => {
 		const s = seedStore();
 		expect(() =>
-			resolveSessionModel(s, "my-anthropic:missing-model", null, "custom-only"),
-		).toThrow("model_not_found:my-anthropic:missing-model");
+			resolveSessionModel(s, "missing-model", null, "custom-only"),
+		).toThrow("model_not_found:missing-model");
 	});
 
-	it("throws when model id has invalid format", () => {
+	it("passes through unknown model as builtin for both mode", () => {
 		const s = seedStore();
-		expect(() =>
-			resolveSessionModel(s, "default-model", null, "custom-only"),
-		).toThrow("model_invalid_format:default-model (expected provider:name)");
+		const config = resolveSessionModel(s, "unknown-builtin", null, "both");
+		expect(config.name).toBe("unknown-builtin");
+		if (typeof config.provider === "object") {
+			expect(config.provider.name).toBe("builtin");
+		}
+	});
+
+	it("resolves builtin prefix models", () => {
+		const s = seedStore();
+		const config = resolveSessionModel(s, ":sonnet", null, "custom-only");
+		expect(config.name).toBe("sonnet");
+		if (typeof config.provider === "object") {
+			expect(config.provider.name).toBe("builtin");
+		}
+		expect(config.apiKey).toBeNull();
 	});
 
 	it("uses default openai endpoint when baseUrl is null", () => {
@@ -282,8 +287,7 @@ describe("resolveSessionModel", () => {
 			baseUrl: null,
 			apiKey: "sk-oai",
 		});
-		store.createModel({
-			name: "oai-model",
+		store.upsertModel("oai-model", {
 			provider: "openai-default",
 			model: "gpt-4o-mini",
 			contextWindow: null,
@@ -291,12 +295,7 @@ describe("resolveSessionModel", () => {
 			streaming: true,
 			metadata: null,
 		});
-		const config = resolveSessionModel(
-			store,
-			"openai-default:oai-model",
-			null,
-			"custom-only",
-		);
+		const config = resolveSessionModel(store, "oai-model", null, "custom-only");
 		if (typeof config.provider === "object") {
 			expect(config.provider.endpoint).toBe("https://api.openai.com/v1");
 		}

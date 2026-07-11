@@ -45,23 +45,6 @@ function handleClientError(err: unknown, ctx: CliContext): never {
 	ctx.error(msg);
 }
 
-function parseModelId(id: string): { provider: string; name: string } {
-	const idx = id.indexOf(":");
-	if (idx === -1) {
-		throw new Error(
-			`Invalid model ID "${id}". Expected format: provider:name (e.g., copilot:claude-sonnet-4)`,
-		);
-	}
-	const provider = id.slice(0, idx);
-	const name = id.slice(idx + 1);
-	if (provider.length === 0 || name.length === 0) {
-		throw new Error(
-			`Invalid model ID "${id}". Expected format: provider:name (e.g., copilot:claude-sonnet-4)`,
-		);
-	}
-	return { provider, name };
-}
-
 // ─── CLI definition ──────────────────────────────────────────────────────
 
 const cli = createCLI({ name: "sumeru", version: "0.3.2" });
@@ -417,7 +400,7 @@ cli
 	.returns(listSchema, {
 		text: (value) =>
 			formatTable(value as Array<Record<string, unknown>>, [
-				"id",
+				"name",
 				"provider",
 				"model",
 				"contextWindow",
@@ -428,13 +411,12 @@ cli
 		try {
 			const provider = flags.provider as string | undefined;
 			const envelope = await client.listModels(provider);
-			const rows = envelope.value.map((m) => ({
-				id: `${m.provider}:${m.name}`,
+			return envelope.value.map((m) => ({
+				name: m.name,
 				provider: m.provider,
 				model: m.model,
 				contextWindow: m.contextWindow,
 			}));
-			return rows;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -443,8 +425,8 @@ cli
 cli
 	.command("model")
 	.command("get")
-	.describe("Get a model by provider:name")
-	.arg("id", "Model ID (provider:name)")
+	.describe("Get a model by name")
+	.arg("name", "Model registry name")
 	.returns(
 		z.object({ name: z.string(), provider: z.string(), model: z.string() }),
 		"",
@@ -453,10 +435,9 @@ cli
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
-			const { provider, name } = parseModelId(args.id);
-			const envelope = await client.getModel(provider, name);
+			const envelope = await client.getModel(args.name);
 			const v = envelope.value;
-			ctx.stdout(`${v.provider}:${v.name} → ${v.model}\n`);
+			ctx.stdout(`${v.name} (${v.provider}) → ${v.model}\n`);
 			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
@@ -467,7 +448,8 @@ cli
 	.command("model")
 	.command("add")
 	.describe("Register a new model")
-	.arg("id", "Model ID (provider:name)")
+	.arg("name", "Model registry name")
+	.flag("provider", { type: "string", description: "Provider name" })
 	.flag("model", { type: "string", description: "API model name" })
 	.flag("context-window", {
 		type: "number",
@@ -475,12 +457,13 @@ cli
 	})
 	.flag("no-tool-use", { type: "boolean", description: "Disable tool use" })
 	.flag("no-streaming", { type: "boolean", description: "Disable streaming" })
-	.returns(idSchema, "Created model {{id}}", { defaultFormat: "text" })
+	.returns(nameSchema, "Created model {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
+		const provider = flags.provider as string | undefined;
 		const apiModel = flags.model as string | undefined;
-		if (!apiModel) {
+		if (!provider || !apiModel) {
 			ctx.error(
-				"Usage: sumeru model add <provider:name> --model <api-model> [--context-window N] [--no-tool-use] [--no-streaming]",
+				"Usage: sumeru model add <name> --provider <provider> --model <api-model> [--context-window N] [--no-tool-use] [--no-streaming]",
 			);
 		}
 		const contextWindow =
@@ -489,8 +472,9 @@ cli
 				: null;
 		const client = await getClient();
 		try {
-			const { provider, name } = parseModelId(args.id);
-			const envelope = await client.upsertModel(provider, name, {
+			const envelope = await client.upsertModel(args.name, {
+				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
+				provider: provider!,
 				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
 				model: apiModel!,
 				contextWindow,
@@ -498,7 +482,7 @@ cli
 				streaming: !flags["no-streaming"],
 				metadata: null,
 			});
-			return { id: `${envelope.value.provider}:${envelope.value.name}` };
+			return { name: envelope.value.name };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -508,7 +492,8 @@ cli
 	.command("model")
 	.command("update")
 	.describe("Update a model")
-	.arg("id", "Model ID (provider:name)")
+	.arg("name", "Model registry name")
+	.flag("provider", { type: "string", description: "Provider name" })
 	.flag("model", { type: "string", description: "API model name" })
 	.flag("context-window", {
 		type: "number",
@@ -516,9 +501,10 @@ cli
 	})
 	.flag("no-tool-use", { type: "boolean", description: "Disable tool use" })
 	.flag("no-streaming", { type: "boolean", description: "Disable streaming" })
-	.returns(idSchema, "Updated model {{id}}", { defaultFormat: "text" })
+	.returns(nameSchema, "Updated model {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
+		if (flags.provider !== undefined) body.provider = flags.provider;
 		if (flags.model !== undefined) body.model = flags.model;
 		if (flags["context-window"] !== undefined)
 			body.contextWindow = Number(flags["context-window"]);
@@ -528,13 +514,11 @@ cli
 			body.streaming = !flags["no-streaming"];
 		const client = await getClient();
 		try {
-			const { provider, name } = parseModelId(args.id);
 			const envelope = await client.upsertModel(
-				provider,
-				name,
-				body as Parameters<typeof client.upsertModel>[2],
+				args.name,
+				body as Parameters<typeof client.upsertModel>[1],
 			);
-			return { id: `${envelope.value.provider}:${envelope.value.name}` };
+			return { name: envelope.value.name };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -544,14 +528,13 @@ cli
 	.command("model")
 	.command("remove")
 	.describe("Remove a model")
-	.arg("id", "Model ID (provider:name)")
+	.arg("name", "Model registry name")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
-			const { provider, name } = parseModelId(args.id);
-			await client.removeModel(provider, name);
-			return { message: `Removed model ${args.id}` };
+			await client.removeModel(args.name);
+			return { message: `Removed model ${args.name}` };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -618,7 +601,7 @@ cli
 	.command("add")
 	.describe("Register a new prototype")
 	.arg("name", "Prototype name")
-	.flag("model", { type: "string", description: "Model ID (provider:name)" })
+	.flag("model", { type: "string", description: "Model registry name" })
 	.flag("adapter", { type: "string", description: "Adapter name" })
 	.flag("persona", {
 		type: "string",
@@ -632,7 +615,7 @@ cli
 		const persona = (flags.persona as string) ?? "default";
 		if (!model || !adapter) {
 			ctx.error(
-				"Usage: sumeru prototype add <name> --model <model-id> --adapter <adapter-name> [--persona <name>]",
+				"Usage: sumeru prototype add <name> --model <model-name> --adapter <adapter-name> [--persona <name>]",
 			);
 		}
 		const client = await getClient();
@@ -655,7 +638,7 @@ cli
 	.command("update")
 	.describe("Update a prototype")
 	.arg("name", "Prototype name")
-	.flag("model", { type: "string", description: "Model ID (provider:name)" })
+	.flag("model", { type: "string", description: "Model registry name" })
 	.flag("adapter", { type: "string", description: "Adapter name" })
 	.flag("persona", { type: "string", description: "Persona name" })
 	.returns(nameSchema, "Updated prototype {{name}}", { defaultFormat: "text" })

@@ -30,7 +30,7 @@ function writeHostFixture(rootDir: string, maxRunning = 2): void {
 		[
 			"name: claude-code",
 			"persona: default-persona",
-			"model: test-provider:default-model",
+			"model: default-model",
 			"adapter: claude-code",
 		].join("\n"),
 	);
@@ -237,15 +237,17 @@ describe("session-manager", () => {
 				baseUrl: string | null;
 				apiKey: string;
 			}) => unknown;
-			createModel: (input: {
-				name: string;
-				provider: string;
-				model: string;
-				contextWindow: number | null;
-				toolUse: boolean;
-				streaming: boolean;
-				metadata: null;
-			}) => unknown;
+			upsertModel: (
+				name: string,
+				input: {
+					provider: string;
+					model: string;
+					contextWindow: number | null;
+					toolUse: boolean;
+					streaming: boolean;
+					metadata: null;
+				},
+			) => unknown;
 		};
 	}): void {
 		hostConfig.sqliteStore.createProvider({
@@ -254,8 +256,7 @@ describe("session-manager", () => {
 			baseUrl: null,
 			apiKey: "sk-test",
 		});
-		hostConfig.sqliteStore.createModel({
-			name: "default-model",
+		hostConfig.sqliteStore.upsertModel("default-model", {
 			provider: "test-provider",
 			model: "claude-sonnet-4",
 			contextWindow: null,

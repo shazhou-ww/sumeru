@@ -81,8 +81,7 @@ describe("sqlite-store", () => {
 			apiKey: "sk-test",
 		});
 
-		const created = store.createModel({
-			name: "gpt-4o-mini",
+		const created = store.upsertModel("gpt-4o-mini", {
 			provider: "openai-proxy",
 			model: "gpt-4o-mini",
 			contextWindow: 128000,
@@ -98,37 +97,30 @@ describe("sqlite-store", () => {
 		expect(created.streaming).toBe(true);
 		expect(created.metadata).toEqual({ tier: "fast" });
 
-		const fetched = store.getModel("openai-proxy", "gpt-4o-mini");
+		const fetched = store.getModel("gpt-4o-mini");
 		expect(fetched?.model).toBe("gpt-4o-mini");
 
 		const listed = store.listModels();
 		expect(listed).toHaveLength(1);
 
-		const updated = store.updateModel("openai-proxy", "gpt-4o-mini", {
+		const updated = store.upsertModel("gpt-4o-mini", {
 			model: "gpt-4o",
-			contextWindow: undefined,
 			toolUse: false,
-			streaming: undefined,
-			metadata: undefined,
 		});
-		expect(updated?.model).toBe("gpt-4o");
-		expect(updated?.contextWindow).toBe(128000);
-		expect(updated?.toolUse).toBe(false);
-		expect(updated?.streaming).toBe(true);
-		expect(updated?.metadata).toEqual({ tier: "fast" });
+		expect(updated.model).toBe("gpt-4o");
+		expect(updated.contextWindow).toBe(128000);
+		expect(updated.toolUse).toBe(false);
+		expect(updated.streaming).toBe(true);
+		expect(updated.metadata).toEqual({ tier: "fast" });
 
-		const clearedMetadata = store.updateModel("openai-proxy", "gpt-4o-mini", {
-			model: undefined,
-			contextWindow: undefined,
-			toolUse: undefined,
-			streaming: undefined,
+		const clearedMetadata = store.upsertModel("gpt-4o-mini", {
 			metadata: null,
 		});
-		expect(clearedMetadata?.metadata).toBeNull();
+		expect(clearedMetadata.metadata).toBeNull();
 
-		expect(store.deleteModel("openai-proxy", "gpt-4o-mini")).toBe(true);
-		expect(store.getModel("openai-proxy", "gpt-4o-mini")).toBeNull();
-		expect(store.deleteModel("openai-proxy", "missing")).toBe(false);
+		expect(store.removeModel("gpt-4o-mini")).toBe(true);
+		expect(store.getModel("gpt-4o-mini")).toBeNull();
+		expect(store.removeModel("missing")).toBe(false);
 	});
 
 	it("rejects provider delete when models reference it", () => {
@@ -139,8 +131,7 @@ describe("sqlite-store", () => {
 			baseUrl: null,
 			apiKey: null,
 		});
-		store.createModel({
-			name: "claude-sonnet",
+		store.upsertModel("claude-sonnet", {
 			provider: "in-use",
 			model: "claude-sonnet-4",
 			contextWindow: null,

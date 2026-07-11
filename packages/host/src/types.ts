@@ -115,7 +115,7 @@ export type SessionCommand =
 			model: SessionModelOverride;
 	  }
 	| { type: "exec"; command: string }
-	| { type: "model"; provider: string; model: string }
+	| { type: "model"; model: string }
 	| {
 			type: "install-skill";
 			name: string;
@@ -132,7 +132,7 @@ export type CommandAcceptedValue = {
 
 export type CommandResultValue =
 	| { type: "exec"; stdout: string; stderr: string; exitCode: number }
-	| { type: "model"; provider: string; model: string }
+	| { type: "model"; model: string }
 	| { type: "install-skill"; name: string }
 	| { type: "reset" }
 	| { type: "snapshot"; name: string; image: string };

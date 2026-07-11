@@ -132,26 +132,19 @@ async function upsertPrototype(
 		return;
 	}
 	if (prototype.model !== null) {
-		const parsed = parseModelReference(prototype.model);
-		if (parsed === null) {
-			writeJson(
-				res,
-				400,
-				errorEnvelope(
-					"model_not_found",
-					`Model ${prototype.model} not found (expected provider:name)`,
-				),
-			);
-			return;
-		}
-		const model = hostConfig.sqliteStore.getModel(parsed.provider, parsed.name);
-		if (model === null) {
-			writeJson(
-				res,
-				400,
-				errorEnvelope("model_not_found", `Model ${prototype.model} not found`),
-			);
-			return;
+		if (!prototype.model.startsWith(":")) {
+			const model = hostConfig.sqliteStore.getModel(prototype.model);
+			if (model === null && manifest.providerMode === "custom-only") {
+				writeJson(
+					res,
+					400,
+					errorEnvelope(
+						"model_not_found",
+						`Model ${prototype.model} not found`,
+					),
+				);
+				return;
+			}
 		}
 	} else if (manifest.providerMode !== "builtin-only") {
 		writeJson(
@@ -234,15 +227,4 @@ function writePrototypeError(res: ServerResponse, err: unknown): void {
 		return;
 	}
 	writeJson(res, 500, errorEnvelope("internal_error", message));
-}
-
-function parseModelReference(
-	ref: string,
-): { provider: string; name: string } | null {
-	const colonIdx = ref.indexOf(":");
-	if (colonIdx === -1) return null;
-	const provider = ref.slice(0, colonIdx);
-	const name = ref.slice(colonIdx + 1);
-	if (provider.length === 0 || name.length === 0) return null;
-	return { provider, name };
 }

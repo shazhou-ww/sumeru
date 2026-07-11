@@ -20,9 +20,9 @@ export type Provider = {
 	updatedAt: string;
 };
 export type Model = {
-	name: string;
-	provider: string;
-	model: string;
+	name: string; // user-chosen registry name (the ID)
+	provider: string; // associated provider name
+	model: string; // API model name on the provider side
 	contextWindow: number | null;
 	toolUse: boolean;
 	streaming: boolean;

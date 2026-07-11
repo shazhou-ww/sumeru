@@ -239,14 +239,11 @@ describe("providers endpoints", () => {
 		if (address === null || typeof address === "string") {
 			throw new Error("server not listening");
 		}
-		await fetch(
-			`http://127.0.0.1:${address.port}/providers/test-prov/models/my-model`,
-			{
-				method: "PUT",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ model: "gpt-4" }),
-			},
-		);
+		await fetch(`http://127.0.0.1:${address.port}/models/my-model`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ provider: "test-prov", model: "gpt-4" }),
+		});
 
 		const result = await request(server, "GET", "/models?provider=test-prov");
 		expect(result.status).toBe(200);

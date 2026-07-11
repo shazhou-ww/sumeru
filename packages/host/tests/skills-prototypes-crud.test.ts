@@ -119,8 +119,9 @@ describe("skills and prototypes CRUD routes", () => {
 		const createModel = await request(
 			server,
 			"PUT",
-			"/providers/test-prov/models/test-model",
+			"/models/test-model",
 			JSON.stringify({
+				provider: "test-prov",
 				model: "claude-sonnet-4",
 				contextWindow: null,
 				toolUse: true,
@@ -147,7 +148,7 @@ describe("skills and prototypes CRUD routes", () => {
 			JSON.stringify({
 				name: "worker",
 				persona: "worker-persona",
-				model: "test-prov:test-model",
+				model: "test-model",
 				adapter: "sarsapa",
 				defaults: null,
 			}),
@@ -161,7 +162,7 @@ describe("skills and prototypes CRUD routes", () => {
 			JSON.stringify({
 				name: "bad-adapter",
 				persona: "worker-persona",
-				model: "test-prov:test-model",
+				model: "test-model",
 				adapter: "missing-adapter",
 				defaults: null,
 			}),
@@ -178,7 +179,7 @@ describe("skills and prototypes CRUD routes", () => {
 			JSON.stringify({
 				name: "bad",
 				persona: "missing",
-				model: "test-prov:test-model",
+				model: "test-model",
 				adapter: "sarsapa",
 				defaults: null,
 			}),

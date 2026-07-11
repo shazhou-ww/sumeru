@@ -181,38 +181,48 @@ export function resolveSessionModel(
 	if (override !== null && typeof override !== "string") {
 		return { provider: override.provider, name: override.name, apiKey: null };
 	}
-	const modelId =
+
+	const ref =
 		typeof override === "string"
 			? override
 			: (prototypeModelId ?? defaultModel);
-	if (modelId === null) {
+	if (ref === null) {
 		throw new Error("model_required");
 	}
 
-	const colonIdx = modelId.indexOf(":");
-	if (colonIdx === -1) {
-		throw new Error(`model_invalid_format:${modelId} (expected provider:name)`);
+	if (ref.startsWith(":")) {
+		return {
+			provider: { name: "builtin", endpoint: "", apiType: "openai" },
+			name: ref.slice(1),
+			apiKey: null,
+		};
 	}
-	const providerName = modelId.slice(0, colonIdx);
-	const modelName = modelId.slice(colonIdx + 1);
 
-	const model = sqliteStore.getModel(providerName, modelName);
-	if (model === null) {
-		throw new Error(`model_not_found:${modelId}`);
+	const model = sqliteStore.getModel(ref);
+	if (model !== null) {
+		const provider = sqliteStore.getProvider(model.provider);
+		if (provider === null) {
+			throw new Error(`provider_not_found:${model.provider}`);
+		}
+		const apiKey = sqliteStore.getProviderApiKey(model.provider);
+		const endpoint =
+			provider.baseUrl ?? DEFAULT_ENDPOINTS[provider.apiType] ?? null;
+		const custom: CustomProvider = {
+			name: provider.name,
+			endpoint: endpoint ?? DEFAULT_ENDPOINTS.anthropic,
+			apiType: provider.apiType,
+		};
+		return { provider: custom, name: model.model, apiKey };
 	}
-	const provider = sqliteStore.getProvider(model.provider);
-	if (provider === null) {
-		throw new Error(`provider_not_found:${model.provider}`);
+
+	if (providerMode === "custom-only") {
+		throw new Error(`model_not_found:${ref}`);
 	}
-	const apiKey = sqliteStore.getProviderApiKey(model.provider);
-	const endpoint =
-		provider.baseUrl ?? DEFAULT_ENDPOINTS[provider.apiType] ?? null;
-	const custom: CustomProvider = {
-		name: provider.name,
-		endpoint: endpoint ?? DEFAULT_ENDPOINTS.anthropic,
-		apiType: provider.apiType,
+	return {
+		provider: { name: "builtin", endpoint: "", apiType: "openai" },
+		name: ref,
+		apiKey: null,
 	};
-	return { provider: custom, name: model.model, apiKey };
 }
 
 export type ResolveProjectResult =
@@ -435,7 +445,7 @@ function parseHostDefaults(
 	if (obj.model !== undefined && obj.model !== null) {
 		if (typeof obj.model !== "string" || obj.model.length === 0) {
 			throw new Error(
-				`Config ${path} field "defaults.model" must be a non-empty string (format: provider:name)`,
+				`Config ${path} field "defaults.model" must be a non-empty string (registry model name)`,
 			);
 		}
 		model = obj.model;

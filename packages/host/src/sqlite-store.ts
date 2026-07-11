@@ -10,7 +10,7 @@ import type {
 	Skill,
 } from "@sumeru/core";
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS providers (
@@ -70,6 +70,22 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 `;
 
+const MIGRATION_V5 = `
+DROP TABLE IF EXISTS models;
+CREATE TABLE models (
+  id TEXT PRIMARY KEY NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  context_window INTEGER,
+  tool_use INTEGER NOT NULL DEFAULT 1,
+  streaming INTEGER NOT NULL DEFAULT 1,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (provider) REFERENCES providers(name) ON DELETE RESTRICT
+);
+`;
+
 export class ProviderInUseError extends Error {
 	readonly providerName: string;
 	readonly modelCount: number;
@@ -111,22 +127,13 @@ export type UpdateProviderInput = {
 	apiKey: string | null | undefined;
 };
 
-export type CreateModelInput = {
-	name: string;
-	provider: string;
-	model: string;
-	contextWindow: number | null;
-	toolUse: boolean;
-	streaming: boolean;
-	metadata: Record<string, unknown> | null;
-};
-
-export type UpdateModelInput = {
-	model: string | undefined;
-	contextWindow: number | null | undefined;
-	toolUse: boolean | undefined;
-	streaming: boolean | undefined;
-	metadata: Record<string, unknown> | null | undefined;
+export type UpsertModelInput = {
+	provider?: string;
+	model?: string;
+	contextWindow?: number | null;
+	toolUse?: boolean;
+	streaming?: boolean;
+	metadata?: Record<string, unknown> | null;
 };
 
 export type CreatePersonaInput = {
@@ -170,15 +177,10 @@ export type SqliteStore = {
 	listProviders(): Array<Provider>;
 	updateProvider(name: string, input: UpdateProviderInput): Provider | null;
 	deleteProvider(name: string): boolean;
-	createModel(input: CreateModelInput): Model;
-	getModel(provider: string, name: string): Model | null;
+	getModel(name: string): Model | null;
 	listModels(provider?: string): Array<Model>;
-	updateModel(
-		provider: string,
-		name: string,
-		input: UpdateModelInput,
-	): Model | null;
-	deleteModel(provider: string, name: string): boolean;
+	upsertModel(name: string, input: UpsertModelInput): Model;
+	removeModel(name: string): boolean;
 	createPersona(input: CreatePersonaInput): Persona;
 	getPersona(name: string): Persona | null;
 	listPersonas(): Array<Persona>;
@@ -282,6 +284,9 @@ CREATE TABLE IF NOT EXISTS schema_version (
 		if (current < 4) {
 			db.exec(MIGRATION_V4);
 		}
+		if (current < 5) {
+			db.exec(MIGRATION_V5);
+		}
 		if (row === undefined) {
 			db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
 				SCHEMA_VERSION,
@@ -378,41 +383,8 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 			return result.changes > 0;
 		},
 
-		createModel(input) {
-			const now = new Date().toISOString();
-			const id = modelDbId(input.provider, input.name);
-			const metadataJson = serializeMetadata(input.metadata);
-			db.prepare(
-				`INSERT INTO models
-         (id, provider, model, context_window, tool_use, streaming, metadata, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			).run(
-				id,
-				input.provider,
-				input.model,
-				input.contextWindow,
-				input.toolUse ? 1 : 0,
-				input.streaming ? 1 : 0,
-				metadataJson,
-				now,
-				now,
-			);
-			return rowToModel({
-				id,
-				provider: input.provider,
-				model: input.model,
-				context_window: input.contextWindow,
-				tool_use: input.toolUse ? 1 : 0,
-				streaming: input.streaming ? 1 : 0,
-				metadata: metadataJson,
-				created_at: now,
-				updated_at: now,
-			});
-		},
-
-		getModel(provider, name) {
-			const id = modelDbId(provider, name);
-			const row = db.prepare("SELECT * FROM models WHERE id = ?").get(id) as
+		getModel(name) {
+			const row = db.prepare("SELECT * FROM models WHERE id = ?").get(name) as
 				| ModelRow
 				| undefined;
 			return row === undefined ? null : rowToModel(row);
@@ -430,13 +402,48 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 			return rows.map(rowToModel);
 		},
 
-		updateModel(provider, name, input) {
-			const id = modelDbId(provider, name);
+		upsertModel(name, input) {
 			const existing = db
 				.prepare("SELECT * FROM models WHERE id = ?")
-				.get(id) as ModelRow | undefined;
-			if (existing === undefined) return null;
+				.get(name) as ModelRow | undefined;
 			const now = new Date().toISOString();
+			if (existing === undefined) {
+				if (input.provider === undefined || input.model === undefined) {
+					throw new Error("provider and model are required for new model");
+				}
+				const contextWindow = input.contextWindow ?? null;
+				const toolUse = input.toolUse ?? true;
+				const streaming = input.streaming ?? true;
+				const metadataJson = serializeMetadata(input.metadata ?? null);
+				db.prepare(
+					`INSERT INTO models
+           (id, provider, model, context_window, tool_use, streaming, metadata, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				).run(
+					name,
+					input.provider,
+					input.model,
+					contextWindow,
+					toolUse ? 1 : 0,
+					streaming ? 1 : 0,
+					metadataJson,
+					now,
+					now,
+				);
+				return rowToModel({
+					id: name,
+					provider: input.provider,
+					model: input.model,
+					context_window: contextWindow,
+					tool_use: toolUse ? 1 : 0,
+					streaming: streaming ? 1 : 0,
+					metadata: metadataJson,
+					created_at: now,
+					updated_at: now,
+				});
+			}
+			const provider =
+				input.provider === undefined ? existing.provider : input.provider;
 			const model = input.model === undefined ? existing.model : input.model;
 			const contextWindow =
 				input.contextWindow === undefined
@@ -454,19 +461,21 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 					: serializeMetadata(input.metadata);
 			db.prepare(
 				`UPDATE models
-         SET model = ?, context_window = ?, tool_use = ?, streaming = ?, metadata = ?, updated_at = ?
+         SET provider = ?, model = ?, context_window = ?, tool_use = ?, streaming = ?, metadata = ?, updated_at = ?
          WHERE id = ?`,
 			).run(
+				provider,
 				model,
 				contextWindow,
 				toolUse ? 1 : 0,
 				streaming ? 1 : 0,
 				metadataJson,
 				now,
-				id,
+				name,
 			);
 			return rowToModel({
 				...existing,
+				provider,
 				model,
 				context_window: contextWindow,
 				tool_use: toolUse ? 1 : 0,
@@ -476,9 +485,8 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 			});
 		},
 
-		deleteModel(provider, name) {
-			const id = modelDbId(provider, name);
-			const result = db.prepare("DELETE FROM models WHERE id = ?").run(id);
+		removeModel(name) {
+			const result = db.prepare("DELETE FROM models WHERE id = ?").run(name);
 			return result.changes > 0;
 		},
 
@@ -638,18 +646,9 @@ function rowToProvider(row: ProviderRow): Provider {
 	};
 }
 
-function modelDbId(provider: string, name: string): string {
-	return `${provider}:${name}`;
-}
-
-function modelNameFromDbId(id: string): string {
-	const colonIdx = id.indexOf(":");
-	return colonIdx === -1 ? id : id.slice(colonIdx + 1);
-}
-
 function rowToModel(row: ModelRow): Model {
 	return {
-		name: modelNameFromDbId(row.id),
+		name: row.id,
 		provider: row.provider,
 		model: row.model,
 		contextWindow: row.context_window,
