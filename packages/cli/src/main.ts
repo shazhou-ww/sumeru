@@ -388,6 +388,25 @@ cli
 		}
 	});
 
+cli
+	.command("provider")
+	.command("models")
+	.describe("List models available from a provider")
+	.arg("name", "Provider name")
+	.returns(listSchema, {
+		text: (value) =>
+			formatTable(value as Array<Record<string, unknown>>, ["id", "owned_by"]),
+	})
+	.action(async (args, _flags, ctx) => {
+		const client = await getClient();
+		try {
+			const envelope = await client.listProviderModels(args.name);
+			return envelope.value;
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
 // ─── model ───────────────────────────────────────────────────────────────
 
 cli

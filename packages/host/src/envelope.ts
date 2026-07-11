@@ -77,6 +77,18 @@ export function adapterModelListEnvelope(
 	return envelope("@sumeru/adapter-model-list", models);
 }
 
+export type ProviderApiModel = {
+	id: string;
+	object: string;
+	owned_by: string;
+};
+
+export function providerModelListEnvelope(
+	models: Array<ProviderApiModel>,
+): Envelope<Array<ProviderApiModel>> {
+	return envelope("@sumeru/provider-model-list", models);
+}
+
 export function modelListEnvelope(
 	models: Array<Model>,
 ): Envelope<Array<Model>> {

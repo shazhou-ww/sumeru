@@ -90,6 +90,12 @@ export type BuiltinModel = {
 	contextWindow: number | null;
 };
 
+export type ProviderApiModel = {
+	id: string;
+	object: string;
+	owned_by: string;
+};
+
 export type HostClient = {
 	// Root
 	getRoot(): Promise<Envelope<HostRootValue>>;
@@ -149,6 +155,7 @@ export type HostClient = {
 		},
 	): Promise<Envelope<Provider>>;
 	removeProvider(name: string): Promise<void>;
+	listProviderModels(name: string): Promise<Envelope<Array<ProviderApiModel>>>;
 
 	// Models
 	listModels(provider?: string): Promise<Envelope<Array<Model>>>;
@@ -423,13 +430,21 @@ export function createHostClient(options: HostClientOptions): HostClient {
 		async removeProvider(name) {
 			await requestDelete(`/providers/${encodeURIComponent(name)}`);
 		},
+		async listProviderModels(name) {
+			const { json } = await requestJson<Array<ProviderApiModel>>(
+				"GET",
+				`/providers/${encodeURIComponent(name)}/models`,
+				null,
+			);
+			return json;
+		},
 
 		// Models
 		async listModels(provider) {
 			const path =
 				provider === undefined
 					? "/models"
-					: `/providers/${encodeURIComponent(provider)}/models`;
+					: `/models?provider=${encodeURIComponent(provider)}`;
 			const { json } = await requestJson<Array<Model>>("GET", path, null);
 			return json;
 		},

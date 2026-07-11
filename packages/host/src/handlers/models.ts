@@ -11,18 +11,18 @@ export function createModelsHandler(hostConfig: LoadedHostConfig) {
 	const store = hostConfig.sqliteStore;
 
 	return {
-		listAll(_req: IncomingMessage, res: ServerResponse): void {
-			const models = store.listModels();
-			writeJson(res, 200, modelListEnvelope(models));
-		},
-
-		list(
+		listAll(
 			_req: IncomingMessage,
 			res: ServerResponse,
-			params: Record<string, string>,
+			_params: Record<string, string>,
+			_path: string,
+			queryString: string,
 		): void {
-			const provider = params.name ?? "";
-			const models = store.listModels(provider);
+			const provider = new URLSearchParams(queryString).get("provider");
+			const models =
+				provider !== null && provider.length > 0
+					? store.listModels(provider)
+					: store.listModels();
 			writeJson(res, 200, modelListEnvelope(models));
 		},
 

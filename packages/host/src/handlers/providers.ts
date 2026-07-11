@@ -2,8 +2,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProviderApiType } from "@sumeru/core";
 import {
 	errorEnvelope,
+	type ProviderApiModel,
 	providerEnvelope,
 	providerListEnvelope,
+	providerModelListEnvelope,
 } from "../envelope.js";
 import { readJsonBody, writeJson } from "../http-utils.js";
 import { ProviderInUseError } from "../sqlite-store.js";
@@ -89,6 +91,78 @@ export function createProvidersHandler(hostConfig: LoadedHostConfig) {
 				} catch (err) {
 					writeProviderError(res, err);
 				}
+			}
+		},
+
+		async models(
+			_req: IncomingMessage,
+			res: ServerResponse,
+			params: Record<string, string>,
+		): Promise<void> {
+			const name = params.name ?? "";
+			const provider = store.getProvider(name);
+			if (provider === null) {
+				writeJson(
+					res,
+					404,
+					errorEnvelope("provider_not_found", `Provider ${name} not found`),
+				);
+				return;
+			}
+			const apiKey = store.getProviderApiKey(name);
+			if (apiKey === null || apiKey.length === 0) {
+				writeJson(
+					res,
+					400,
+					errorEnvelope("credential_missing", `Provider ${name} has no apiKey`),
+				);
+				return;
+			}
+			if (provider.baseUrl === null || provider.baseUrl.length === 0) {
+				writeJson(
+					res,
+					400,
+					errorEnvelope("base_url_missing", `Provider ${name} has no baseUrl`),
+				);
+				return;
+			}
+			const baseUrl = provider.baseUrl.replace(/\/$/, "");
+			try {
+				const response = await fetch(`${baseUrl}/models`, {
+					headers: { Authorization: `Bearer ${apiKey}` },
+				});
+				if (!response.ok) {
+					const text = await response.text().catch(() => "");
+					writeJson(
+						res,
+						502,
+						errorEnvelope(
+							"model_list_failed",
+							`Upstream API error ${response.status}: ${text}`,
+						),
+					);
+					return;
+				}
+				const payload = (await response.json()) as { data: unknown };
+				if (!Array.isArray(payload.data)) {
+					writeJson(
+						res,
+						502,
+						errorEnvelope(
+							"model_list_failed",
+							"Upstream response missing data array",
+						),
+					);
+					return;
+				}
+				writeJson(
+					res,
+					200,
+					providerModelListEnvelope(payload.data as Array<ProviderApiModel>),
+				);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				writeJson(res, 502, errorEnvelope("model_list_failed", message));
 			}
 		},
 

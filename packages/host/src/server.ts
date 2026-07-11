@@ -78,7 +78,7 @@ export function createHostHandler(input: {
 		.route("GET", "/providers/:name", providers.get)
 		.route("PUT", "/providers/:name", providers.upsert)
 		.route("DELETE", "/providers/:name", providers.remove)
-		.route("GET", "/providers/:name/models", models.list)
+		.route("GET", "/providers/:name/models", providers.models)
 		.route("GET", "/providers/:name/models/:modelName", models.get)
 		.route("PUT", "/providers/:name/models/:modelName", models.upsert)
 		.route("DELETE", "/providers/:name/models/:modelName", models.remove)
