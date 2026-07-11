@@ -199,7 +199,7 @@ cli
 	.command("adapter")
 	.command("get")
 	.describe("Get an adapter by name")
-	.arg("name")
+	.arg("name", "Adapter name")
 	.returns(
 		z.object({
 			name: z.string(),
@@ -228,7 +228,7 @@ cli
 	.command("adapter")
 	.command("models")
 	.describe("List built-in models for an adapter")
-	.arg("name")
+	.arg("name", "Adapter name")
 	.returns(listSchema, {
 		text: (value) =>
 			formatTable(value as Array<Record<string, unknown>>, [
@@ -284,7 +284,7 @@ cli
 	.command("provider")
 	.command("get")
 	.describe("Get a provider by name")
-	.arg("name")
+	.arg("name", "Provider name")
 	.returns(
 		z.object({
 			name: z.string(),
@@ -309,7 +309,7 @@ cli
 	.command("provider")
 	.command("add")
 	.describe("Register a new provider")
-	.arg("name")
+	.arg("name", "Provider name")
 	.flag("api-type", { type: "string" })
 	.flag("base-url", { type: "string" })
 	.flag("api-key", { type: "string" })
@@ -344,7 +344,7 @@ cli
 	.command("provider")
 	.command("update")
 	.describe("Update a provider")
-	.arg("name")
+	.arg("name", "Provider name")
 	.flag("api-type", { type: "string" })
 	.flag("base-url", { type: "string" })
 	.flag("api-key", { type: "string" })
@@ -370,7 +370,7 @@ cli
 	.command("provider")
 	.command("remove")
 	.describe("Remove a provider")
-	.arg("name")
+	.arg("name", "Provider name")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
@@ -419,7 +419,7 @@ cli
 	.command("model")
 	.command("get")
 	.describe("Get a model by provider:name")
-	.arg("id")
+	.arg("id", "Model ID (provider:name)")
 	.returns(
 		z.object({ name: z.string(), provider: z.string(), model: z.string() }),
 		"",
@@ -442,7 +442,7 @@ cli
 	.command("model")
 	.command("add")
 	.describe("Register a new model")
-	.arg("id")
+	.arg("id", "Model ID (provider:name)")
 	.flag("model", { type: "string" })
 	.flag("context-window", { type: "number" })
 	.flag("no-tool-use", { type: "boolean" })
@@ -480,7 +480,7 @@ cli
 	.command("model")
 	.command("update")
 	.describe("Update a model")
-	.arg("id")
+	.arg("id", "Model ID (provider:name)")
 	.flag("model", { type: "string" })
 	.flag("context-window", { type: "number" })
 	.flag("no-tool-use", { type: "boolean" })
@@ -513,7 +513,7 @@ cli
 	.command("model")
 	.command("remove")
 	.describe("Remove a model")
-	.arg("id")
+	.arg("id", "Model ID (provider:name)")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
@@ -555,7 +555,7 @@ cli
 	.command("prototype")
 	.command("get")
 	.describe("Get a prototype by name")
-	.arg("name")
+	.arg("name", "Prototype name")
 	.returns(
 		z.object({
 			name: z.string(),
@@ -586,7 +586,7 @@ cli
 	.command("prototype")
 	.command("add")
 	.describe("Register a new prototype")
-	.arg("name")
+	.arg("name", "Prototype name")
 	.flag("model", { type: "string" })
 	.flag("adapter", { type: "string" })
 	.flag("persona", { type: "string", default: "default" })
@@ -619,7 +619,7 @@ cli
 	.command("prototype")
 	.command("update")
 	.describe("Update a prototype")
-	.arg("name")
+	.arg("name", "Prototype name")
 	.flag("model", { type: "string" })
 	.flag("adapter", { type: "string" })
 	.flag("persona", { type: "string" })
@@ -645,7 +645,7 @@ cli
 	.command("prototype")
 	.command("remove")
 	.describe("Remove a prototype")
-	.arg("name")
+	.arg("name", "Prototype name")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
@@ -688,7 +688,7 @@ cli
 	.command("persona")
 	.command("get")
 	.describe("Get persona details")
-	.arg("name")
+	.arg("name", "Persona name")
 	.returns(
 		z.object({ name: z.string(), instructions: z.string() }),
 		"{{name}}: {{instructions}}",
@@ -708,7 +708,7 @@ cli
 	.command("persona")
 	.command("add")
 	.describe("Create a persona")
-	.arg("name")
+	.arg("name", "Persona name")
 	.flag("instructions", { type: "string", description: "System prompt text" })
 	.returns(nameSchema, "Created persona {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
@@ -732,7 +732,7 @@ cli
 	.command("persona")
 	.command("remove")
 	.describe("Delete a persona")
-	.arg("name")
+	.arg("name", "Persona name")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
@@ -777,7 +777,7 @@ cli
 	.command("session")
 	.command("get")
 	.describe("Get session details")
-	.arg("id")
+	.arg("id", "Session ID")
 	.returns(
 		z.object({ id: z.string(), prototype: z.string(), status: z.string() }),
 		"{{id}} {{prototype}} [{{status}}]",
@@ -798,7 +798,7 @@ cli
 	.command("session")
 	.command("add")
 	.describe("Create a new session")
-	.arg("prototype")
+	.arg("prototype", "Prototype to use")
 	.flag("project", { type: "string" })
 	.flag("task", { type: "string" })
 	.flag("env", { type: "string" })
@@ -832,7 +832,7 @@ cli
 	.command("session")
 	.command("stop")
 	.describe("Stop a running session")
-	.arg("id")
+	.arg("id", "Session ID")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
@@ -848,7 +848,7 @@ cli
 	.command("session")
 	.command("remove")
 	.describe("Delete a session")
-	.arg("id")
+	.arg("id", "Session ID")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
@@ -864,8 +864,8 @@ cli
 	.command("session")
 	.command("send")
 	.describe("Send a message to a session")
-	.arg("id")
-	.arg("message")
+	.arg("id", "Session ID")
+	.arg("message", "Message text")
 	.flag("model", { type: "string" })
 	.flag("env", { type: "string" })
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
@@ -897,7 +897,7 @@ cli
 	.command("session")
 	.command("logs")
 	.describe("Stream session events")
-	.arg("id")
+	.arg("id", "Session ID")
 	.flag("follow", { type: "boolean", alias: "f" })
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
@@ -930,7 +930,7 @@ cli
 	.command("session")
 	.command("turns")
 	.describe("List turns for a session")
-	.arg("id")
+	.arg("id", "Session ID")
 	.flag("after", { type: "number" })
 	.flag("system", { type: "boolean", description: "Include system prompt" })
 	.returns(listSchema, {
@@ -970,7 +970,7 @@ cli
 	.command("session")
 	.command("exec")
 	.describe("Run a shell command in a session container")
-	.arg("id")
+	.arg("id", "Session ID")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, _flags, ctx) => {
 		const separator = process.argv.indexOf("--");
@@ -1017,7 +1017,7 @@ cli
 	.command("session")
 	.command("reset")
 	.describe("Reset a session context, optionally with a new persona")
-	.arg("id")
+	.arg("id", "Session ID")
 	.flag("persona", { type: "string" })
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
@@ -1041,8 +1041,8 @@ cli
 	.command("session")
 	.command("snapshot")
 	.describe("Snapshot a session into a new prototype image")
-	.arg("id")
-	.arg("name")
+	.arg("id", "Session ID")
+	.arg("name", "Snapshot name")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, _flags, ctx) => {
 		const api = createApiClient(resolveBaseUrl());
@@ -1074,7 +1074,7 @@ cli
 cli
 	.command("search")
 	.describe("Full-text search across sessions")
-	.arg("query")
+	.arg("query", "Search query")
 	.flag("session", { type: "string" })
 	.returns(
 		z.object({ query: z.string(), hits: z.number() }),

@@ -19,7 +19,7 @@ function handleApiError(err: unknown, ctx: CliContext): never {
 type CliBuilder = {
 	command(name: string): CliBuilder;
 	describe(text: string): CliBuilder;
-	arg(name: string): CliBuilder;
+	arg(name: string, description?: string): CliBuilder;
 	flag(name: string, def: { type: string }): CliBuilder;
 	returns(
 		schema: z.ZodType,
@@ -40,7 +40,7 @@ export function registerPrototypeRmCommand(cli: CliBuilder): void {
 		.command("prototype")
 		.command("rm")
 		.describe("Remove a prototype")
-		.arg("name")
+		.arg("name", "Prototype name")
 		.flag("host", { type: "string" })
 		.flag("port", { type: "string" })
 		.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
