@@ -43,7 +43,7 @@ export function registerPrototypeRmCommand(cli: CliBuilder): void {
 		.arg("name")
 		.flag("host", { type: "string" })
 		.flag("port", { type: "string" })
-		.returns(messageSchema, "{{message}}")
+		.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 		.action(async (args, flags, ctx) => {
 			const api = createApiClient(
 				resolveApiBaseUrl({
@@ -53,7 +53,7 @@ export function registerPrototypeRmCommand(cli: CliBuilder): void {
 			);
 			try {
 				await api.delete(`/prototypes/${encodeURIComponent(args.name)}`);
-				return { message: `removed prototype ${args.name}` };
+				return { message: `Removed prototype ${args.name}` };
 			} catch (err) {
 				handleApiError(err, ctx);
 			}

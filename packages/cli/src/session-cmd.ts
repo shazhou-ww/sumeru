@@ -43,7 +43,7 @@ export function registerSessionRmCommand(cli: CliBuilder): void {
 		.arg("id")
 		.flag("host", { type: "string" })
 		.flag("port", { type: "string" })
-		.returns(messageSchema, "{{message}}")
+		.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 		.action(async (args, flags, ctx) => {
 			const api = createApiClient(
 				resolveApiBaseUrl({
@@ -53,7 +53,7 @@ export function registerSessionRmCommand(cli: CliBuilder): void {
 			);
 			try {
 				await api.delete(`/sessions/${encodeURIComponent(args.id)}`);
-				return { message: `deleted ${args.id}` };
+				return { message: `Removed session ${args.id}` };
 			} catch (err) {
 				handleApiError(err, ctx);
 			}
