@@ -202,7 +202,11 @@ export function createSessionManager(input: {
 		if (prototype === undefined) {
 			throw new Error("prototype_not_found");
 		}
-		if (prototype.composePath === null && prototype.imageTag === null) {
+		if (
+			prototype.composePath === null &&
+			prototype.imageTag === null &&
+			!prototype.prototype.adapter
+		) {
 			throw new Error("prototype_no_image");
 		}
 		const projectResolution = resolveProjectPath(
@@ -223,7 +227,7 @@ export function createSessionManager(input: {
 			prototype.imageTag ??
 			(prototype.composePath !== null
 				? await extractImageFromCompose(prototype.composePath)
-				: "unknown");
+				: `sumeru/${prototype.prototype.adapter}:dev`);
 		const sessionEnv = await mergeSessionEnv(
 			input.hostConfig.config.envFile,
 			body.env,
@@ -244,7 +248,7 @@ export function createSessionManager(input: {
 						})
 					: await input.transport.upFromImage({
 							containerName: projectName,
-							imageTag: prototype.imageTag as string,
+							imageTag: image,
 							workDir: input.hostConfig.rootDir,
 							projectPath: projectResolution.projectPath,
 							cacheDir: join(input.hostConfig.rootDir, "cache"),

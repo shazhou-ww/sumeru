@@ -9,7 +9,12 @@ RUN uv venv "$HERMES_VENV" --python 3.12 \
 	&& ln -sf "$HERMES_VENV/bin/hermes" /usr/local/bin/hermes \
 	&& chown -R node:node /opt/hermes-venv \
 	&& mkdir -p /home/node/.hermes && chown node:node /home/node/.hermes
-COPY --chown=node:node packages/ /opt/sumeru/
+COPY --chown=node:node packages/core/dist /opt/sumeru/core/dist
+COPY --chown=node:node packages/core/package.json /opt/sumeru/core/package.json
+COPY --chown=node:node packages/adapter-core/dist /opt/sumeru/adapter-core/dist
+COPY --chown=node:node packages/adapter-core/package.json /opt/sumeru/adapter-core/package.json
+COPY --chown=node:node packages/adapter-hermes/dist /opt/sumeru/adapter-hermes/dist
+COPY --chown=node:node packages/adapter-hermes/package.json /opt/sumeru/adapter-hermes/package.json
 RUN cd /opt/sumeru && mkdir -p node_modules/@sumeru \
 	&& ln -s /opt/sumeru/core node_modules/@sumeru/core \
 	&& ln -s /opt/sumeru/adapter-core node_modules/@sumeru/adapter-core \
