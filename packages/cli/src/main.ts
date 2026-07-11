@@ -1325,6 +1325,54 @@ if (argv.includes("--json")) {
 	process.exit(1);
 }
 
+// Handle session exec before CLI dispatch (-- separator confuses cli-kit parser)
+if (argv[0] === "session" && argv[1] === "exec") {
+	const separatorIdx = argv.indexOf("--");
+	const sessionId = argv[2];
+	if (!sessionId || sessionId.startsWith("-")) {
+		process.stdout.write("Usage: sumeru session exec <id> -- <command...>\n");
+		process.exit(1);
+	}
+	if (separatorIdx === -1 || separatorIdx < 3) {
+		process.stdout.write("Usage: sumeru session exec <id> -- <command...>\n");
+		process.exit(1);
+	}
+	const parts = argv.slice(separatorIdx + 1);
+	if (parts.length === 0) {
+		process.stdout.write("Usage: sumeru session exec <id> -- <command...>\n");
+		process.exit(1);
+	}
+	const { createApiClient } = await import("./api-client.js");
+	const { resolveBaseUrl } = await import("./lazy.js");
+	const command = parts.join(" ");
+	const api = createApiClient(resolveBaseUrl());
+	try {
+		const result = await api.postCommand(sessionId, {
+			type: "exec",
+			command,
+		});
+		if (result.mode !== "sync" || result.value.type !== "exec") {
+			process.stderr.write("Error: Expected sync exec result\n");
+			process.exit(1);
+		}
+		const execResult = result.value as {
+			type: "exec";
+			stdout: string;
+			stderr: string;
+			exitCode: number;
+		};
+		process.stdout.write(execResult.stdout);
+		if (execResult.stderr.length > 0) {
+			process.stderr.write(execResult.stderr);
+		}
+		process.exit(execResult.exitCode);
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		process.stderr.write(`Error: ${msg}\n`);
+		process.exit(1);
+	}
+}
+
 const modelExitCode = await runSessionModelCommand(argv);
 if (modelExitCode !== null) {
 	process.exit(modelExitCode);
