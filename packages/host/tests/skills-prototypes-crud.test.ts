@@ -124,8 +124,6 @@ describe("skills and prototypes CRUD routes", () => {
 				provider: "test-prov",
 				model: "claude-sonnet-4",
 				contextWindow: null,
-				toolUse: true,
-				streaming: true,
 				metadata: null,
 			}),
 		);

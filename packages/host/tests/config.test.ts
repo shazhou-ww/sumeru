@@ -176,16 +176,12 @@ describe("resolveSessionModel", () => {
 			provider: "my-anthropic",
 			model: "claude-sonnet-4",
 			contextWindow: null,
-			toolUse: true,
-			streaming: true,
 			metadata: null,
 		});
 		store.upsertModel("proxy-model", {
 			provider: "local-proxy",
 			model: "gpt-4o",
 			contextWindow: 128000,
-			toolUse: true,
-			streaming: true,
 			metadata: null,
 		});
 		return store;
@@ -291,8 +287,6 @@ describe("resolveSessionModel", () => {
 			provider: "openai-default",
 			model: "gpt-4o-mini",
 			contextWindow: null,
-			toolUse: true,
-			streaming: true,
 			metadata: null,
 		});
 		const config = resolveSessionModel(store, "oai-model", null, "custom-only");

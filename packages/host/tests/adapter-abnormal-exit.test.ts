@@ -147,8 +147,6 @@ describe("adapter abnormal exit resilience (#177)", () => {
 					provider: string;
 					model: string;
 					contextWindow: number | null;
-					toolUse: boolean;
-					streaming: boolean;
 					metadata: null;
 				},
 			) => unknown;
@@ -164,8 +162,6 @@ describe("adapter abnormal exit resilience (#177)", () => {
 			provider: "test-provider",
 			model: "claude-sonnet-4",
 			contextWindow: null,
-			toolUse: true,
-			streaming: true,
 			metadata: null,
 		});
 		hostConfig.sqliteStore.createPersona({

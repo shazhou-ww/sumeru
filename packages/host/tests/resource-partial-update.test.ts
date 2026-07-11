@@ -141,8 +141,6 @@ describe("resource partial update routes", () => {
 						provider: "test-prov",
 						model: "claude-sonnet-4",
 						contextWindow: 128000,
-						toolUse: true,
-						streaming: true,
 						metadata: { tier: "fast" },
 					}),
 				)
@@ -161,8 +159,6 @@ describe("resource partial update routes", () => {
 			provider: "test-prov",
 			model: "claude-opus-4",
 			contextWindow: 128000,
-			toolUse: true,
-			streaming: true,
 			metadata: { tier: "fast" },
 		});
 

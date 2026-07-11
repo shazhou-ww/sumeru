@@ -100,8 +100,6 @@ export function createModelsHandler(hostConfig: LoadedHostConfig) {
 					provider: body.provider,
 					model: body.model,
 					contextWindow: body.contextWindow,
-					toolUse: body.toolUse,
-					streaming: body.streaming,
 					metadata: body.metadata,
 				});
 				writeJson(res, existing === null ? 201 : 200, modelEnvelope(model));
@@ -134,8 +132,6 @@ type ModelUpdateBody = {
 	provider: string | undefined;
 	model: string | undefined;
 	contextWindow: number | null | undefined;
-	toolUse: boolean | undefined;
-	streaming: boolean | undefined;
 	metadata: Record<string, unknown> | null | undefined;
 };
 
@@ -167,30 +163,15 @@ async function readModelBody(req: IncomingMessage): Promise<ModelUpdateBody> {
 		obj.contextWindow === undefined
 			? undefined
 			: parseOptionalNumber(obj.contextWindow, "contextWindow");
-	const toolUse =
-		obj.toolUse === undefined
-			? undefined
-			: parseBooleanField(obj.toolUse, "toolUse");
-	const streaming =
-		obj.streaming === undefined
-			? undefined
-			: parseBooleanField(obj.streaming, "streaming");
 	const metadata =
 		obj.metadata === undefined ? undefined : parseMetadataField(obj.metadata);
-	return { provider, model, contextWindow, toolUse, streaming, metadata };
+	return { provider, model, contextWindow, metadata };
 }
 
 function parseOptionalNumber(value: unknown, field: string): number | null {
 	if (value === undefined || value === null) return null;
 	if (typeof value !== "number" || !Number.isFinite(value)) {
 		throw new Error(`Field "${field}" must be a finite number or null`);
-	}
-	return value;
-}
-
-function parseBooleanField(value: unknown, field: string): boolean {
-	if (typeof value !== "boolean") {
-		throw new Error(`Field "${field}" must be a boolean`);
 	}
 	return value;
 }

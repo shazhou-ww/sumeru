@@ -243,8 +243,6 @@ describe("session-manager", () => {
 					provider: string;
 					model: string;
 					contextWindow: number | null;
-					toolUse: boolean;
-					streaming: boolean;
 					metadata: null;
 				},
 			) => unknown;
@@ -260,8 +258,6 @@ describe("session-manager", () => {
 			provider: "test-provider",
 			model: "claude-sonnet-4",
 			contextWindow: null,
-			toolUse: true,
-			streaming: true,
 			metadata: null,
 		});
 		hostConfig.sqliteStore.createPersona({

@@ -231,8 +231,6 @@ describe("prototype lazy re-init", () => {
 			provider: "test-provider",
 			model: "claude-sonnet-4",
 			contextWindow: null,
-			toolUse: true,
-			streaming: true,
 			metadata: null,
 		});
 		hostConfig.sqliteStore.createPersona({

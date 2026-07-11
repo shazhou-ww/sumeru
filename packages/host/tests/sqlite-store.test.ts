@@ -85,16 +85,12 @@ describe("sqlite-store", () => {
 			provider: "openai-proxy",
 			model: "gpt-4o-mini",
 			contextWindow: 128000,
-			toolUse: true,
-			streaming: true,
 			metadata: { tier: "fast" },
 		});
 		expect(created.name).toBe("gpt-4o-mini");
 		expect(created.provider).toBe("openai-proxy");
 		expect(created.model).toBe("gpt-4o-mini");
 		expect(created.contextWindow).toBe(128000);
-		expect(created.toolUse).toBe(true);
-		expect(created.streaming).toBe(true);
 		expect(created.metadata).toEqual({ tier: "fast" });
 
 		const fetched = store.getModel("gpt-4o-mini");
@@ -105,12 +101,10 @@ describe("sqlite-store", () => {
 
 		const updated = store.upsertModel("gpt-4o-mini", {
 			model: "gpt-4o",
-			toolUse: false,
+			contextWindow: 200000,
 		});
 		expect(updated.model).toBe("gpt-4o");
-		expect(updated.contextWindow).toBe(128000);
-		expect(updated.toolUse).toBe(false);
-		expect(updated.streaming).toBe(true);
+		expect(updated.contextWindow).toBe(200000);
 		expect(updated.metadata).toEqual({ tier: "fast" });
 
 		const clearedMetadata = store.upsertModel("gpt-4o-mini", {
@@ -135,8 +129,6 @@ describe("sqlite-store", () => {
 			provider: "in-use",
 			model: "claude-sonnet-4",
 			contextWindow: null,
-			toolUse: true,
-			streaming: true,
 			metadata: null,
 		});
 

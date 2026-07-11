@@ -166,8 +166,6 @@ export type HostClient = {
 			provider?: string;
 			model?: string;
 			contextWindow?: number | null;
-			toolUse?: boolean;
-			streaming?: boolean;
 			metadata?: Record<string, unknown> | null;
 		},
 	): Promise<Envelope<Model>>;

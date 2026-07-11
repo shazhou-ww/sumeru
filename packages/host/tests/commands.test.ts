@@ -70,8 +70,6 @@ function seedDb(hostConfig: Awaited<ReturnType<typeof loadHostConfig>>): void {
 		provider: "test-provider",
 		model: "claude-sonnet-4",
 		contextWindow: null,
-		toolUse: true,
-		streaming: true,
 		metadata: null,
 	});
 	hostConfig.sqliteStore.createPersona({

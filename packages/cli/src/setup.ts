@@ -264,8 +264,6 @@ dockerfile: |
 				provider: input.provider,
 				model: input.model,
 				contextWindow: null,
-				toolUse: true,
-				streaming: true,
 				metadata: null,
 			});
 			actions.push(`updated model "${modelRef}"`);
@@ -274,8 +272,6 @@ dockerfile: |
 				provider: input.provider,
 				model: input.model,
 				contextWindow: null,
-				toolUse: true,
-				streaming: true,
 				metadata: null,
 			});
 			actions.push(`created model "${modelRef}"`);

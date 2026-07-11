@@ -98,16 +98,6 @@ export function formatModelTable(models: Array<Model>): string {
 			value: (row) =>
 				row.contextWindow === null ? "-" : String(row.contextWindow),
 		},
-		{
-			header: "TOOLS",
-			width: 6,
-			value: (row) => (row.toolUse ? "yes" : "no"),
-		},
-		{
-			header: "STREAM",
-			width: 7,
-			value: (row) => (row.streaming ? "yes" : "no"),
-		},
 	]);
 }
 

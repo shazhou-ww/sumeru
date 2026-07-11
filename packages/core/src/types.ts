@@ -24,8 +24,6 @@ export type Model = {
 	provider: string; // associated provider name
 	model: string; // API model name on the provider side
 	contextWindow: number | null;
-	toolUse: boolean;
-	streaming: boolean;
 	metadata: Record<string, unknown> | null;
 	createdAt: string;
 	updatedAt: string;

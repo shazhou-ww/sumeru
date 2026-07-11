@@ -10,7 +10,7 @@ import type {
 	Skill,
 } from "@sumeru/core";
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS providers (
@@ -27,8 +27,6 @@ CREATE TABLE IF NOT EXISTS models (
   provider TEXT NOT NULL,
   model TEXT NOT NULL,
   context_window INTEGER,
-  tool_use INTEGER NOT NULL DEFAULT 1,
-  streaming INTEGER NOT NULL DEFAULT 1,
   metadata TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -77,13 +75,28 @@ CREATE TABLE models (
   provider TEXT NOT NULL,
   model TEXT NOT NULL,
   context_window INTEGER,
-  tool_use INTEGER NOT NULL DEFAULT 1,
-  streaming INTEGER NOT NULL DEFAULT 1,
   metadata TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (provider) REFERENCES providers(name) ON DELETE RESTRICT
 );
+`;
+
+const MIGRATION_V6 = `
+CREATE TABLE models_v6 (
+  id TEXT PRIMARY KEY NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  context_window INTEGER,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (provider) REFERENCES providers(name) ON DELETE RESTRICT
+);
+INSERT INTO models_v6 (id, provider, model, context_window, metadata, created_at, updated_at)
+  SELECT id, provider, model, context_window, metadata, created_at, updated_at FROM models;
+DROP TABLE models;
+ALTER TABLE models_v6 RENAME TO models;
 `;
 
 export class ProviderInUseError extends Error {
@@ -131,8 +144,6 @@ export type UpsertModelInput = {
 	provider?: string;
 	model?: string;
 	contextWindow?: number | null;
-	toolUse?: boolean;
-	streaming?: boolean;
 	metadata?: Record<string, unknown> | null;
 };
 
@@ -211,8 +222,6 @@ type ModelRow = {
 	provider: string;
 	model: string;
 	context_window: number | null;
-	tool_use: number;
-	streaming: number;
 	metadata: string;
 	created_at: string;
 	updated_at: string;
@@ -286,6 +295,9 @@ CREATE TABLE IF NOT EXISTS schema_version (
 		}
 		if (current < 5) {
 			db.exec(MIGRATION_V5);
+		}
+		if (current < 6) {
+			db.exec(MIGRATION_V6);
 		}
 		if (row === undefined) {
 			db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
@@ -412,20 +424,16 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 					throw new Error("provider and model are required for new model");
 				}
 				const contextWindow = input.contextWindow ?? null;
-				const toolUse = input.toolUse ?? true;
-				const streaming = input.streaming ?? true;
 				const metadataJson = serializeMetadata(input.metadata ?? null);
 				db.prepare(
 					`INSERT INTO models
-           (id, provider, model, context_window, tool_use, streaming, metadata, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, provider, model, context_window, metadata, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
 				).run(
 					name,
 					input.provider,
 					input.model,
 					contextWindow,
-					toolUse ? 1 : 0,
-					streaming ? 1 : 0,
 					metadataJson,
 					now,
 					now,
@@ -435,8 +443,6 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 					provider: input.provider,
 					model: input.model,
 					context_window: contextWindow,
-					tool_use: toolUse ? 1 : 0,
-					streaming: streaming ? 1 : 0,
 					metadata: metadataJson,
 					created_at: now,
 					updated_at: now,
@@ -449,37 +455,20 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 				input.contextWindow === undefined
 					? existing.context_window
 					: input.contextWindow;
-			const toolUse =
-				input.toolUse === undefined ? existing.tool_use === 1 : input.toolUse;
-			const streaming =
-				input.streaming === undefined
-					? existing.streaming === 1
-					: input.streaming;
 			const metadataJson =
 				input.metadata === undefined
 					? existing.metadata
 					: serializeMetadata(input.metadata);
 			db.prepare(
 				`UPDATE models
-         SET provider = ?, model = ?, context_window = ?, tool_use = ?, streaming = ?, metadata = ?, updated_at = ?
+         SET provider = ?, model = ?, context_window = ?, metadata = ?, updated_at = ?
          WHERE id = ?`,
-			).run(
-				provider,
-				model,
-				contextWindow,
-				toolUse ? 1 : 0,
-				streaming ? 1 : 0,
-				metadataJson,
-				now,
-				name,
-			);
+			).run(provider, model, contextWindow, metadataJson, now, name);
 			return rowToModel({
 				...existing,
 				provider,
 				model,
 				context_window: contextWindow,
-				tool_use: toolUse ? 1 : 0,
-				streaming: streaming ? 1 : 0,
 				metadata: metadataJson,
 				updated_at: now,
 			});
@@ -652,8 +641,6 @@ function rowToModel(row: ModelRow): Model {
 		provider: row.provider,
 		model: row.model,
 		contextWindow: row.context_window,
-		toolUse: row.tool_use !== 0,
-		streaming: row.streaming !== 0,
 		metadata: parseMetadata(row.metadata),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,

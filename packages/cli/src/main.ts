@@ -466,15 +466,13 @@ cli
 		type: "string",
 		description: "Context window size (e.g. 128k, 1m)",
 	})
-	.flag("no-tool-use", { type: "boolean", description: "Disable tool use" })
-	.flag("no-streaming", { type: "boolean", description: "Disable streaming" })
 	.returns(nameSchema, "Created model {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const provider = flags.provider as string | undefined;
 		const apiModel = flags.model as string | undefined;
 		if (!provider || !apiModel) {
 			ctx.error(
-				"Usage: sumeru model add <name> --provider <provider> --model <api-model> [--context-window N] [--no-tool-use] [--no-streaming]",
+				"Usage: sumeru model add <name> --provider <provider> --model <api-model> [--context-window N]",
 			);
 		}
 		const contextWindow =
@@ -489,8 +487,6 @@ cli
 				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
 				model: apiModel!,
 				contextWindow,
-				toolUse: !flags["no-tool-use"],
-				streaming: !flags["no-streaming"],
 				metadata: null,
 			});
 			return { name: envelope.value.name };
@@ -510,8 +506,6 @@ cli
 		type: "string",
 		description: "Context window size (e.g. 128k, 1m)",
 	})
-	.flag("no-tool-use", { type: "boolean", description: "Disable tool use" })
-	.flag("no-streaming", { type: "boolean", description: "Disable streaming" })
 	.returns(nameSchema, "Updated model {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
@@ -519,10 +513,6 @@ cli
 		if (flags.model !== undefined) body.model = flags.model;
 		if (flags["context-window"] !== undefined)
 			body.contextWindow = parseContextWindow(String(flags["context-window"]));
-		if (flags["no-tool-use"] !== undefined)
-			body.toolUse = !flags["no-tool-use"];
-		if (flags["no-streaming"] !== undefined)
-			body.streaming = !flags["no-streaming"];
 		const client = await getClient();
 		try {
 			const envelope = await client.upsertModel(
