@@ -4,7 +4,10 @@ import { createCLI } from "@ocas/cli-kit";
 import { z } from "zod";
 import { ApiClientError, createApiClient } from "./api-client.js";
 import { parseEnvFlagsFromArgv } from "./env-flags.js";
-import { formatTable } from "./format-table.js";
+import {
+	formatTableWithPagination,
+	type PaginatedArray,
+} from "./format-table.js";
 import { createHostClient, HostClientError } from "./http-client.js";
 import { getClient, resolveBaseUrl } from "./lazy.js";
 import { runSessionModelCommand } from "./model-cmd.js";
@@ -172,19 +175,29 @@ cli
 	.command("adapter")
 	.command("list")
 	.describe("List registered adapters")
+	.flag("limit", { type: "number", description: "Max results (default 50)" })
+	.flag("offset", { type: "number", description: "Skip first N results" })
 	.returns(listSchema, {
 		text: (value) =>
-			formatTable(value as Array<Record<string, unknown>>, [
+			formatTableWithPagination(value, [
 				"name",
 				"providerMode",
 				"credentialEnv",
 			]),
 	})
-	.action(async (_args, _flags, ctx) => {
+	.action(async (_args, flags, ctx) => {
+		const limit = (flags.limit as number | undefined) ?? 50;
+		const offset = (flags.offset as number | undefined) ?? 0;
 		const client = await getClient();
 		try {
 			const envelope = await client.listAdapters();
-			return envelope.value;
+			const all = envelope.value;
+			const page = all.slice(offset, offset + limit) as PaginatedArray<
+				Record<string, unknown>
+			>;
+			page._total = all.length;
+			page._offset = offset;
+			return page;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -230,19 +243,25 @@ cli
 	.command("models")
 	.describe("List built-in models for an adapter")
 	.arg("name", "Adapter name")
+	.flag("limit", { type: "number", description: "Max results (default 50)" })
+	.flag("offset", { type: "number", description: "Skip first N results" })
 	.returns(listSchema, {
 		text: (value) =>
-			formatTable(value as Array<Record<string, unknown>>, [
-				"id",
-				"name",
-				"contextWindow",
-			]),
+			formatTableWithPagination(value, ["id", "name", "contextWindow"]),
 	})
-	.action(async (args, _flags, ctx) => {
+	.action(async (args, flags, ctx) => {
+		const limit = (flags.limit as number | undefined) ?? 50;
+		const offset = (flags.offset as number | undefined) ?? 0;
 		const client = await getClient();
 		try {
 			const envelope = await client.listAdapterModels(args.name);
-			return envelope.value;
+			const all = envelope.value;
+			const page = all.slice(offset, offset + limit) as PaginatedArray<
+				Record<string, unknown>
+			>;
+			page._total = all.length;
+			page._offset = offset;
+			return page;
 		} catch (err) {
 			if (
 				err instanceof HostClientError &&
@@ -263,19 +282,25 @@ cli
 	.command("provider")
 	.command("list")
 	.describe("List registered providers")
+	.flag("limit", { type: "number", description: "Max results (default 50)" })
+	.flag("offset", { type: "number", description: "Skip first N results" })
 	.returns(listSchema, {
 		text: (value) =>
-			formatTable(value as Array<Record<string, unknown>>, [
-				"name",
-				"apiType",
-				"baseUrl",
-			]),
+			formatTableWithPagination(value, ["name", "apiType", "baseUrl"]),
 	})
-	.action(async (_args, _flags, ctx) => {
+	.action(async (_args, flags, ctx) => {
+		const limit = (flags.limit as number | undefined) ?? 50;
+		const offset = (flags.offset as number | undefined) ?? 0;
 		const client = await getClient();
 		try {
 			const envelope = await client.listProviders();
-			return envelope.value;
+			const all = envelope.value;
+			const page = all.slice(offset, offset + limit) as PaginatedArray<
+				Record<string, unknown>
+			>;
+			page._total = all.length;
+			page._offset = offset;
+			return page;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -404,15 +429,24 @@ cli
 	.command("models")
 	.describe("List models available from a provider")
 	.arg("name", "Provider name")
+	.flag("limit", { type: "number", description: "Max results (default 50)" })
+	.flag("offset", { type: "number", description: "Skip first N results" })
 	.returns(listSchema, {
-		text: (value) =>
-			formatTable(value as Array<Record<string, unknown>>, ["id"]),
+		text: (value) => formatTableWithPagination(value, ["id"]),
 	})
-	.action(async (args, _flags, ctx) => {
+	.action(async (args, flags, ctx) => {
+		const limit = (flags.limit as number | undefined) ?? 50;
+		const offset = (flags.offset as number | undefined) ?? 0;
 		const client = await getClient();
 		try {
 			const envelope = await client.listProviderModels(args.name);
-			return envelope.value;
+			const all = envelope.value;
+			const page = all.slice(offset, offset + limit) as PaginatedArray<
+				Record<string, unknown>
+			>;
+			page._total = all.length;
+			page._offset = offset;
+			return page;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -425,9 +459,11 @@ cli
 	.command("list")
 	.describe("List registered models")
 	.flag("provider", { type: "string", description: "Filter by provider" })
+	.flag("limit", { type: "number", description: "Max results (default 50)" })
+	.flag("offset", { type: "number", description: "Skip first N results" })
 	.returns(listSchema, {
 		text: (value) =>
-			formatTable(value as Array<Record<string, unknown>>, [
+			formatTableWithPagination(value, [
 				"name",
 				"provider",
 				"model",
@@ -435,16 +471,24 @@ cli
 			]),
 	})
 	.action(async (_args, flags, ctx) => {
+		const limit = (flags.limit as number | undefined) ?? 50;
+		const offset = (flags.offset as number | undefined) ?? 0;
 		const client = await getClient();
 		try {
 			const provider = flags.provider as string | undefined;
 			const envelope = await client.listModels(provider);
-			return envelope.value.map((m) => ({
+			const all = envelope.value.map((m) => ({
 				name: m.name,
 				provider: m.provider,
 				model: m.model,
 				contextWindow: m.contextWindow,
 			}));
+			const page = all.slice(offset, offset + limit) as PaginatedArray<
+				Record<string, unknown>
+			>;
+			page._total = all.length;
+			page._offset = offset;
+			return page;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -579,20 +623,25 @@ cli
 	.command("prototype")
 	.command("list")
 	.describe("List prototypes")
+	.flag("limit", { type: "number", description: "Max results (default 50)" })
+	.flag("offset", { type: "number", description: "Skip first N results" })
 	.returns(listSchema, {
 		text: (value) =>
-			formatTable(value as Array<Record<string, unknown>>, [
-				"name",
-				"adapter",
-				"model",
-				"persona",
-			]),
+			formatTableWithPagination(value, ["name", "adapter", "model", "persona"]),
 	})
-	.action(async (_args, _flags, ctx) => {
+	.action(async (_args, flags, ctx) => {
+		const limit = (flags.limit as number | undefined) ?? 50;
+		const offset = (flags.offset as number | undefined) ?? 0;
 		const client = await getClient();
 		try {
 			const envelope = await client.listPrototypes();
-			return envelope.value;
+			const all = envelope.value;
+			const page = all.slice(offset, offset + limit) as PaginatedArray<
+				Record<string, unknown>
+			>;
+			page._total = all.length;
+			page._offset = offset;
+			return page;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -722,20 +771,36 @@ cli
 	.command("persona")
 	.command("list")
 	.describe("List personas")
+	.flag("limit", { type: "number", description: "Max results (default 50)" })
+	.flag("offset", { type: "number", description: "Skip first N results" })
 	.returns(listSchema, {
 		text: (value) => {
-			const rows = value as Array<Record<string, unknown>>;
+			const rows = value as PaginatedArray<Record<string, unknown>>;
 			if (rows.length === 0) return "(empty)\n";
-			return rows
+			let output = rows
 				.map((p) => `[${p.name}]\n${p.instructions ?? ""}\n`)
 				.join("\n");
+			const total = rows._total;
+			const offset = rows._offset ?? 0;
+			if (total !== undefined && offset + rows.length < total) {
+				output += `(${String(rows.length)} of ${String(total)} shown. Use --offset ${String(offset + rows.length)} to see more.)\n`;
+			}
+			return output;
 		},
 	})
-	.action(async (_args, _flags, ctx) => {
+	.action(async (_args, flags, ctx) => {
+		const limit = (flags.limit as number | undefined) ?? 50;
+		const offset = (flags.offset as number | undefined) ?? 0;
 		const client = await getClient();
 		try {
 			const envelope = await client.listPersonas();
-			return envelope.value;
+			const all = envelope.value;
+			const page = all.slice(offset, offset + limit) as PaginatedArray<
+				Record<string, unknown>
+			>;
+			page._total = all.length;
+			page._offset = offset;
+			return page;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -814,24 +879,41 @@ cli
 	.command("session")
 	.command("list")
 	.describe("List sessions")
+	.flag("limit", { type: "number", description: "Max results (default 50)" })
+	.flag("offset", { type: "number", description: "Skip first N results" })
 	.returns(listSchema, {
-		text: (value) =>
-			formatTable(
-				(value as Array<Record<string, unknown>>).map((s) => ({
-					...s,
-					task:
-						typeof s.task === "string" && s.task.length > 50
-							? `${s.task.slice(0, 47)}...`
-							: s.task,
-				})),
-				["id", "prototype", "status", "task"],
-			),
+		text: (value) => {
+			const rows = value as PaginatedArray<Record<string, unknown>>;
+			const mapped = rows.map((s) => ({
+				...s,
+				task:
+					typeof s.task === "string" && s.task.length > 50
+						? `${s.task.slice(0, 47)}...`
+						: s.task,
+			})) as PaginatedArray<Record<string, unknown>>;
+			mapped._total = rows._total;
+			mapped._offset = rows._offset;
+			return formatTableWithPagination(mapped, [
+				"id",
+				"prototype",
+				"status",
+				"task",
+			]);
+		},
 	})
-	.action(async (_args, _flags, ctx) => {
+	.action(async (_args, flags, ctx) => {
+		const limit = (flags.limit as number | undefined) ?? 50;
+		const offset = (flags.offset as number | undefined) ?? 0;
 		const client = await getClient();
 		try {
 			const envelope = await client.listSessions();
-			return envelope.value;
+			const all = envelope.value;
+			const page = all.slice(offset, offset + limit) as PaginatedArray<
+				Record<string, unknown>
+			>;
+			page._total = all.length;
+			page._offset = offset;
+			return page;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -1026,11 +1108,13 @@ cli
 	.arg("id", "Session ID")
 	.flag("after", { type: "number", description: "Show turns after this ID" })
 	.flag("system", { type: "boolean", description: "Include system prompt" })
+	.flag("limit", { type: "number", description: "Max results (default 50)" })
+	.flag("offset", { type: "number", description: "Skip first N results" })
 	.returns(listSchema, {
 		text: (value) => {
-			const turns = value as Array<Record<string, unknown>>;
+			const turns = value as PaginatedArray<Record<string, unknown>>;
 			if (turns.length === 0) return "(empty)\n";
-			return turns
+			let output = turns
 				.map((turn) => {
 					const role = turn.role;
 					const ts = turn.timestamp ?? "";
@@ -1043,15 +1127,29 @@ cli
 					return `[${role}] ${ts}\n${content}\n`;
 				})
 				.join("\n");
+			const total = turns._total;
+			const offset = turns._offset ?? 0;
+			if (total !== undefined && offset + turns.length < total) {
+				output += `(${String(turns.length)} of ${String(total)} shown. Use --offset ${String(offset + turns.length)} to see more.)\n`;
+			}
+			return output;
 		},
 	})
 	.action(async (args, flags, ctx) => {
+		const limit = (flags.limit as number | undefined) ?? 50;
+		const offset = (flags.offset as number | undefined) ?? 0;
 		const after = flags.after !== undefined ? Number(flags.after) : undefined;
 		const system = Boolean(flags.system);
 		const client = await getClient();
 		try {
 			const envelope = await client.getTurns(args.id, { after, system });
-			return envelope.value;
+			const all = envelope.value;
+			const page = all.slice(offset, offset + limit) as PaginatedArray<
+				Record<string, unknown>
+			>;
+			page._total = all.length;
+			page._offset = offset;
+			return page;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}

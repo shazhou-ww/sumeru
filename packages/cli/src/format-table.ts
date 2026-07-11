@@ -1,9 +1,31 @@
+export type PaginatedArray<T> = Array<T> & {
+	_total?: number;
+	_offset?: number;
+};
+
+export function formatTableWithPagination(
+	value: unknown,
+	columns: string[],
+): string {
+	const rows = value as PaginatedArray<Record<string, unknown>>;
+	if (rows.length === 0) return "(empty)\n";
+	const total = rows._total;
+	const offset = rows._offset ?? 0;
+	let output = formatTable(rows, columns, offset + 1);
+	if (total !== undefined && offset + rows.length < total) {
+		output += `(${String(rows.length)} of ${String(total)} shown. Use --offset ${String(offset + rows.length)} to see more.)\n`;
+	}
+	return output;
+}
+
 export function formatTable(
 	rows: Array<Record<string, unknown>>,
 	columns: string[],
+	startIndex = 1,
 ): string {
 	if (rows.length === 0) return "(empty)\n";
-	const numWidth = Math.max(1, String(rows.length).length);
+	const maxIdx = startIndex + rows.length - 1;
+	const numWidth = Math.max(1, String(maxIdx).length);
 	const widths = columns.map((col) =>
 		Math.max(col.length, ...rows.map((r) => String(r[col] ?? "").length)),
 	);
@@ -18,7 +40,7 @@ export function formatTable(
 	const body = rows
 		.map(
 			(r, idx) =>
-				`${String(idx + 1).padEnd(numWidth)}  ` +
+				`${String(startIndex + idx).padEnd(numWidth)}  ` +
 				// biome-ignore lint/style/noNonNullAssertion: widths array matches columns length
 				columns.map((c, i) => String(r[c] ?? "").padEnd(widths[i]!)).join("  "),
 		)
