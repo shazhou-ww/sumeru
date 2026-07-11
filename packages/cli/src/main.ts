@@ -1126,6 +1126,14 @@ if (formatIdx !== -1) {
 	}
 }
 
+// Reject --json (use --format json instead)
+if (argv.includes("--json")) {
+	process.stderr.write(
+		"Error: Unknown flag '--json'. Use '--format json' instead.\n",
+	);
+	process.exit(1);
+}
+
 const modelExitCode = await runSessionModelCommand(argv);
 if (modelExitCode !== null) {
 	process.exit(modelExitCode);
