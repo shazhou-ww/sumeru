@@ -45,6 +45,17 @@ function handleClientError(err: unknown, ctx: CliContext): never {
 	ctx.error(msg);
 }
 
+function parseContextWindow(value: string): number {
+	const s = value.trim().toLowerCase();
+	const match = s.match(/^(\d+(?:\.\d+)?)\s*([km]?)$/);
+	if (!match) return Number(value);
+	const num = Number.parseFloat(match[1]!);
+	const suffix = match[2];
+	if (suffix === "k") return Math.round(num * 1000);
+	if (suffix === "m") return Math.round(num * 1000000);
+	return Math.round(num);
+}
+
 // ─── CLI definition ──────────────────────────────────────────────────────
 
 const cli = createCLI({ name: "sumeru", version: "0.3.2" });
@@ -452,8 +463,8 @@ cli
 	.flag("provider", { type: "string", description: "Provider name" })
 	.flag("model", { type: "string", description: "API model name" })
 	.flag("context-window", {
-		type: "number",
-		description: "Context window size",
+		type: "string",
+		description: "Context window size (e.g. 128k, 1m)",
 	})
 	.flag("no-tool-use", { type: "boolean", description: "Disable tool use" })
 	.flag("no-streaming", { type: "boolean", description: "Disable streaming" })
@@ -468,7 +479,7 @@ cli
 		}
 		const contextWindow =
 			flags["context-window"] !== undefined
-				? Number(flags["context-window"])
+				? parseContextWindow(String(flags["context-window"]))
 				: null;
 		const client = await getClient();
 		try {
@@ -496,8 +507,8 @@ cli
 	.flag("provider", { type: "string", description: "Provider name" })
 	.flag("model", { type: "string", description: "API model name" })
 	.flag("context-window", {
-		type: "number",
-		description: "Context window size",
+		type: "string",
+		description: "Context window size (e.g. 128k, 1m)",
 	})
 	.flag("no-tool-use", { type: "boolean", description: "Disable tool use" })
 	.flag("no-streaming", { type: "boolean", description: "Disable streaming" })
@@ -507,7 +518,7 @@ cli
 		if (flags.provider !== undefined) body.provider = flags.provider;
 		if (flags.model !== undefined) body.model = flags.model;
 		if (flags["context-window"] !== undefined)
-			body.contextWindow = Number(flags["context-window"]);
+			body.contextWindow = parseContextWindow(String(flags["context-window"]));
 		if (flags["no-tool-use"] !== undefined)
 			body.toolUse = !flags["no-tool-use"];
 		if (flags["no-streaming"] !== undefined)
