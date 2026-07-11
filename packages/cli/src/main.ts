@@ -49,6 +49,7 @@ function parseContextWindow(value: string): number {
 	const s = value.trim().toLowerCase();
 	const match = s.match(/^(\d+(?:\.\d+)?)\s*([km]?)$/);
 	if (!match) return Number(value);
+	// biome-ignore lint/style/noNonNullAssertion: regex groups guaranteed by match
 	const num = Number.parseFloat(match[1]!);
 	const suffix = match[2];
 	if (suffix === "k") return Math.round(num * 1000);
@@ -203,15 +204,13 @@ cli
 		{
 			text: (value) => {
 				const v = value as Record<string, unknown>;
-				return (
-					[
-						`Name: ${v.name}`,
-						`Mode: ${v.providerMode}`,
-						v.credentialEnv ? `Credential: ${v.credentialEnv}` : null,
-					]
-						.filter(Boolean)
-						.join("\n") + "\n"
-				);
+				return `${[
+					`Name: ${v.name}`,
+					`Mode: ${v.providerMode}`,
+					v.credentialEnv ? `Credential: ${v.credentialEnv}` : null,
+				]
+					.filter(Boolean)
+					.join("\n")}\n`;
 			},
 		},
 		{ defaultFormat: "text" },
@@ -296,15 +295,13 @@ cli
 		{
 			text: (value) => {
 				const v = value as Record<string, unknown>;
-				return (
-					[
-						`Name: ${v.name}`,
-						`Type: ${v.apiType}`,
-						v.baseUrl ? `URL: ${v.baseUrl}` : null,
-					]
-						.filter(Boolean)
-						.join("\n") + "\n"
-				);
+				return `${[
+					`Name: ${v.name}`,
+					`Type: ${v.apiType}`,
+					v.baseUrl ? `URL: ${v.baseUrl}` : null,
+				]
+					.filter(Boolean)
+					.join("\n")}\n`;
 			},
 		},
 		{ defaultFormat: "text" },
@@ -468,16 +465,14 @@ cli
 		{
 			text: (value) => {
 				const v = value as Record<string, unknown>;
-				return (
-					[
-						`Name: ${v.name}`,
-						`Provider: ${v.provider}`,
-						`Model: ${v.model}`,
-						v.contextWindow != null ? `Context: ${v.contextWindow}` : null,
-					]
-						.filter(Boolean)
-						.join("\n") + "\n"
-				);
+				return `${[
+					`Name: ${v.name}`,
+					`Provider: ${v.provider}`,
+					`Model: ${v.model}`,
+					v.contextWindow != null ? `Context: ${v.contextWindow}` : null,
+				]
+					.filter(Boolean)
+					.join("\n")}\n`;
 			},
 		},
 		{ defaultFormat: "text" },
@@ -618,16 +613,14 @@ cli
 		{
 			text: (value) => {
 				const v = value as Record<string, unknown>;
-				return (
-					[
-						`Name: ${v.name}`,
-						`Adapter: ${v.adapter}`,
-						v.model ? `Model: ${v.model}` : null,
-						`Persona: ${v.persona}`,
-					]
-						.filter(Boolean)
-						.join("\n") + "\n"
-				);
+				return `${[
+					`Name: ${v.name}`,
+					`Adapter: ${v.adapter}`,
+					v.model ? `Model: ${v.model}` : null,
+					`Persona: ${v.persona}`,
+				]
+					.filter(Boolean)
+					.join("\n")}\n`;
 			},
 		},
 		{ defaultFormat: "text" },
@@ -758,11 +751,9 @@ cli
 		{
 			text: (value) => {
 				const v = value as Record<string, unknown>;
-				return (
-					[`Name: ${v.name}`, `Instructions: ${v.instructions}`]
-						.filter(Boolean)
-						.join("\n") + "\n"
-				);
+				return `${[`Name: ${v.name}`, `Instructions: ${v.instructions}`]
+					.filter(Boolean)
+					.join("\n")}\n`;
 			},
 		},
 		{ defaultFormat: "text" },
@@ -861,16 +852,14 @@ cli
 		{
 			text: (value) => {
 				const v = value as Record<string, unknown>;
-				return (
-					[
-						`ID: ${v.id}`,
-						`Prototype: ${v.prototype}`,
-						`Status: ${v.status}`,
-						v.task ? `Task: ${v.task}` : null,
-					]
-						.filter(Boolean)
-						.join("\n") + "\n"
-				);
+				return `${[
+					`ID: ${v.id}`,
+					`Prototype: ${v.prototype}`,
+					`Status: ${v.status}`,
+					v.task ? `Task: ${v.task}` : null,
+				]
+					.filter(Boolean)
+					.join("\n")}\n`;
 			},
 		},
 		{ defaultFormat: "text" },

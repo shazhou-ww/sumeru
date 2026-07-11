@@ -19,7 +19,6 @@ import {
 } from "./data-store.js";
 import {
 	discoverDockerPrototypeByName,
-	discoverDockerPrototypes,
 	mergeDockerWithYaml,
 } from "./docker-prototypes.js";
 import { logger, TAG_CFG } from "./logger.js";
@@ -139,20 +138,7 @@ async function loadAllPrototypes(input: {
 	prototypesDir: string;
 	skillsDir: string;
 }): Promise<Map<string, PrototypeInfo>> {
-	const yamlPrototypes = await loadPrototypesFromDisk(input);
-	const dockerPrototypes =
-		process.env.VITEST === "true"
-			? new Map<string, PrototypeInfo>()
-			: await discoverDockerPrototypes();
-	const merged = new Map<string, PrototypeInfo>();
-	for (const [name, info] of yamlPrototypes) {
-		merged.set(name, info);
-	}
-	for (const [name, dockerInfo] of dockerPrototypes) {
-		const yamlInfo = merged.get(name) ?? null;
-		merged.set(name, mergeDockerWithYaml(dockerInfo, yamlInfo));
-	}
-	return merged;
+	return await loadPrototypesFromDisk(input);
 }
 
 const DEFAULT_ENDPOINTS: Record<ProviderApiType, string> = {

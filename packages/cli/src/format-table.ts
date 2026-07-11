@@ -14,8 +14,7 @@ export function formatTable(
 			// biome-ignore lint/style/noNonNullAssertion: widths array matches columns length
 			.map((c, i) => c.toUpperCase().padEnd(widths[i]!))
 			.join("  ");
-	const sep =
-		`${"-".repeat(numWidth)}  ` + widths.map((w) => "-".repeat(w)).join("  ");
+	const sep = `${"-".repeat(numWidth)}  ${widths.map((w) => "-".repeat(w)).join("  ")}`;
 	const body = rows
 		.map(
 			(r, idx) =>
