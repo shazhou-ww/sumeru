@@ -40,7 +40,7 @@ function handleClientError(err: unknown, ctx: CliContext): never {
 	}
 	const msg = err instanceof Error ? err.message : String(err);
 	if (msg === "fetch failed" || msg.includes("ECONNREFUSED")) {
-		ctx.error("Could not connect to host");
+		ctx.error("Could not connect to server");
 	}
 	ctx.error(msg);
 }
@@ -68,7 +68,7 @@ const cli = createCLI({ name: "sumeru", version: "0.3.2" });
 
 // ─── Group descriptions (shown in top-level --help) ─────────────────────
 
-cli.command("server").describe("Manage the host process");
+cli.command("server").describe("Manage the server process");
 cli.command("adapter").describe("Query adapter registry");
 cli.command("provider").describe("Manage LLM providers");
 cli.command("model").describe("Manage LLM models");
@@ -80,12 +80,12 @@ cli.command("session").describe("Manage agent sessions");
 cli
 	.command("server")
 	.command("start")
-	.describe("Start the host process in the background")
-	.returns(messageSchema, "{{message}}")
+	.describe("Start the server process in the background")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (_args, _flags, ctx) => {
 		try {
 			await getClient();
-			return { message: `Host running at ${resolveBaseUrl()}` };
+			return { message: `Server running at ${resolveBaseUrl()}` };
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			ctx.error(msg);
@@ -95,27 +95,21 @@ cli
 cli
 	.command("server")
 	.command("stop")
-	.describe("Stop the running host")
-	.returns(messageSchema, "{{message}}")
+	.describe("Stop the running server")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (_args, _flags, ctx) => {
 		const pidFilePath = resolvePidFilePath();
 		const pid = readPidFile(pidFilePath);
 		if (pid === null) {
-			return {
-				message:
-					`No PID file at ${pidFilePath}.\n` +
-					`If the host is running, stop it with: kill $(cat ${pidFilePath})`,
-			};
+			return { message: "Server is not running." };
 		}
 		if (!isProcessAlive(pid)) {
 			removePidFile(pidFilePath);
-			return {
-				message: `Removed stale PID file (pid ${String(pid)} not running).`,
-			};
+			return { message: "Server is not running." };
 		}
 		try {
 			process.kill(pid, "SIGTERM");
-			return { message: `Sent SIGTERM to host pid ${String(pid)}.` };
+			return { message: "Server stopped." };
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			ctx.error(`Failed to stop pid ${String(pid)}: ${msg}`);
@@ -125,8 +119,8 @@ cli
 cli
 	.command("server")
 	.command("restart")
-	.describe("Restart the host process")
-	.returns(messageSchema, "{{message}}")
+	.describe("Restart the server process")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (_args, _flags, ctx) => {
 		const pidFilePath = resolvePidFilePath();
 		const pid = readPidFile(pidFilePath);
@@ -143,32 +137,37 @@ cli
 		}
 		// Lazy start will spawn a new host
 		await getClient();
-		return { message: "Host restarted." };
+		return { message: "Server restarted." };
 	});
 
 cli
 	.command("server")
 	.command("status")
-	.describe("Show host status")
-	.returns(
-		statusSchema,
-		"{{name}} {{version}} running={{running}} queued={{queued}} idle={{idle}}",
-	)
+	.describe("Show server status")
+	.returns(statusSchema, "", { defaultFormat: "text" })
 	.action(async (_args, _flags, ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl() });
 		try {
 			const envelope = await client.getRoot();
 			const v = envelope.value;
-			return {
-				name: v.name,
-				version: v.version,
-				running: v.status.running,
-				queued: v.status.queued,
-				idle: v.status.idle,
-				uptime: v.uptime,
-			};
-		} catch (err) {
-			handleClientError(err, ctx);
+			const url = new URL(resolveBaseUrl());
+			const secs = v.uptime;
+			const h = Math.floor(secs / 3600);
+			const m = Math.floor((secs % 3600) / 60);
+			const uptimeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+			ctx.stdout(
+				[
+					`Status: running`,
+					`Port: ${url.port || "7900"}`,
+					`Version: ${v.version}`,
+					`Sessions: running=${v.status.running} queued=${v.status.queued} idle=${v.status.idle}`,
+					`Uptime: ${uptimeStr}`,
+				].join("\n") + "\n",
+			);
+			return undefined;
+		} catch {
+			ctx.stdout("Status: stopped\n");
+			return undefined;
 		}
 	});
 
@@ -207,18 +206,19 @@ cli
 			providerMode: z.string(),
 			credentialEnv: z.string().nullable(),
 		}),
-		"{{name}} ({{providerMode}}) credential={{credentialEnv}}",
+		"{{name}} ({{providerMode}})",
+		{ defaultFormat: "text" },
 	)
 	.action(async (args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.getAdapter(args.name);
 			const v = envelope.value;
-			return {
-				name: v.name,
-				providerMode: v.providerMode,
-				credentialEnv: v.credentialEnv,
-			};
+			const line = v.credentialEnv
+				? `${v.name} (${v.providerMode}) credential=${v.credentialEnv}`
+				: `${v.name} (${v.providerMode})`;
+			ctx.stdout(`${line}\n`);
+			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -283,6 +283,7 @@ cli
 			baseUrl: z.string().nullable(),
 		}),
 		"{{name}} ({{apiType}}) {{baseUrl}}",
+		{ defaultFormat: "text" },
 	)
 	.action(async (args, flags, ctx) => {
 		const client = await getClient();
@@ -303,7 +304,7 @@ cli
 	.flag("api-type", { type: "string" })
 	.flag("base-url", { type: "string" })
 	.flag("api-key", { type: "string" })
-	.returns(nameSchema, "{{name}}")
+	.returns(nameSchema, "Created provider {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const apiType = flags["api-type"] as string | undefined;
 		const baseUrl = (flags["base-url"] as string) ?? null;
@@ -337,7 +338,7 @@ cli
 	.flag("api-type", { type: "string" })
 	.flag("base-url", { type: "string" })
 	.flag("api-key", { type: "string" })
-	.returns(nameSchema, "{{name}}")
+	.returns(nameSchema, "Updated provider {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
 		if (flags["api-type"] !== undefined) body.apiType = flags["api-type"];
@@ -360,12 +361,12 @@ cli
 	.command("remove")
 	.describe("Remove a provider")
 	.arg("name")
-	.returns(messageSchema, "{{message}}")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			await client.removeProvider(args.name);
-			return { message: `removed provider ${args.name}` };
+			return { message: `Removed provider ${args.name}` };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -406,7 +407,8 @@ cli
 	.arg("id")
 	.returns(
 		z.object({ name: z.string(), provider: z.string(), model: z.string() }),
-		"{{provider}}:{{name}} {{model}}",
+		"",
+		{ defaultFormat: "text" },
 	)
 	.action(async (args, flags, ctx) => {
 		const client = await getClient();
@@ -414,7 +416,8 @@ cli
 			const { provider, name } = parseModelId(args.id);
 			const envelope = await client.getModel(provider, name);
 			const v = envelope.value;
-			return { name: v.name, provider: v.provider, model: v.model };
+			ctx.stdout(`${v.provider}:${v.name} → ${v.model}\n`);
+			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -429,7 +432,7 @@ cli
 	.flag("context-window", { type: "number" })
 	.flag("no-tool-use", { type: "boolean" })
 	.flag("no-streaming", { type: "boolean" })
-	.returns(idSchema, "{{id}}")
+	.returns(idSchema, "Created model {{id}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const apiModel = flags.model as string | undefined;
 		if (!apiModel) {
@@ -466,7 +469,7 @@ cli
 	.flag("context-window", { type: "number" })
 	.flag("no-tool-use", { type: "boolean" })
 	.flag("no-streaming", { type: "boolean" })
-	.returns(idSchema, "{{id}}")
+	.returns(idSchema, "Updated model {{id}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
 		if (flags.model !== undefined) body.model = flags.model;
@@ -495,13 +498,13 @@ cli
 	.command("remove")
 	.describe("Remove a model")
 	.arg("id")
-	.returns(messageSchema, "{{message}}")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const { provider, name } = parseModelId(args.id);
 			await client.removeModel(provider, name);
-			return { message: `removed model ${args.id}` };
+			return { message: `Removed model ${args.id}` };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -545,6 +548,7 @@ cli
 			adapter: z.string(),
 		}),
 		"{{name}} persona={{persona}} model={{model}} adapter={{adapter}}",
+		{ defaultFormat: "text" },
 	)
 	.action(async (args, flags, ctx) => {
 		const client = await getClient();
@@ -570,7 +574,7 @@ cli
 	.flag("model", { type: "string" })
 	.flag("adapter", { type: "string" })
 	.flag("persona", { type: "string", default: "default" })
-	.returns(nameSchema, "{{name}}")
+	.returns(nameSchema, "Created prototype {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const model = flags.model as string | undefined;
 		const adapter = flags.adapter as string | undefined;
@@ -601,7 +605,7 @@ cli
 	.flag("model", { type: "string" })
 	.flag("adapter", { type: "string" })
 	.flag("persona", { type: "string" })
-	.returns(nameSchema, "{{name}}")
+	.returns(nameSchema, "Updated prototype {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
 		if (flags.model !== undefined) body.model = flags.model;
@@ -624,12 +628,12 @@ cli
 	.command("remove")
 	.describe("Remove a prototype")
 	.arg("name")
-	.returns(messageSchema, "{{message}}")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			await client.removePrototype(args.name);
-			return { message: `removed prototype ${args.name}` };
+			return { message: `Removed prototype ${args.name}` };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -666,6 +670,7 @@ cli
 	.returns(
 		z.object({ name: z.string(), instructions: z.string() }),
 		"{{name}}: {{instructions}}",
+		{ defaultFormat: "text" },
 	)
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
@@ -683,7 +688,7 @@ cli
 	.describe("Create a persona")
 	.arg("name")
 	.flag("instructions", { type: "string", description: "System prompt text" })
-	.returns(nameSchema, "{{name}}")
+	.returns(nameSchema, "Created persona {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const instructions = flags.instructions as string | undefined;
 		if (!instructions) {
@@ -705,12 +710,12 @@ cli
 	.command("remove")
 	.describe("Delete a persona")
 	.arg("name")
-	.returns(messageSchema, "{{message}}")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			await client.removePersona(args.name);
-			return { message: `Persona '${args.name}' deleted.` };
+			return { message: `Removed persona ${args.name}` };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -753,6 +758,7 @@ cli
 	.returns(
 		z.object({ id: z.string(), prototype: z.string(), status: z.string() }),
 		"{{id}} {{prototype}} [{{status}}]",
+		{ defaultFormat: "text" },
 	)
 	.action(async (args, flags, ctx) => {
 		const client = await getClient();
@@ -773,7 +779,7 @@ cli
 	.flag("project", { type: "string" })
 	.flag("task", { type: "string" })
 	.flag("env", { type: "string" })
-	.returns(idSchema, "{{id}}")
+	.returns(idSchema, "Created session {{id}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const project = (flags.project as string | undefined) ?? null;
 		const task = (flags.task as string | undefined) ?? null;
@@ -804,7 +810,7 @@ cli
 	.command("stop")
 	.describe("Stop a running session")
 	.arg("id")
-	.returns(messageSchema, "{{message}}")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const client = await getClient();
 		try {
@@ -820,12 +826,12 @@ cli
 	.command("remove")
 	.describe("Delete a session")
 	.arg("id")
-	.returns(messageSchema, "{{message}}")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			await client.removeSession(args.id);
-			return { message: `deleted ${args.id}` };
+			return { message: `Removed session ${args.id}` };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -839,7 +845,7 @@ cli
 	.arg("message")
 	.flag("model", { type: "string" })
 	.flag("env", { type: "string" })
-	.returns(messageSchema, "{{message}}")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		let env: Record<string, string> | null = null;
 		try {
@@ -870,7 +876,7 @@ cli
 	.describe("Stream session events")
 	.arg("id")
 	.flag("follow", { type: "boolean", alias: "f" })
-	.returns(messageSchema, "{{message}}")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const follow = Boolean(flags.follow);
 		const client = await getClient();
@@ -984,7 +990,7 @@ cli
 	.describe("Reset a session context, optionally with a new persona")
 	.arg("id")
 	.flag("persona", { type: "string" })
-	.returns(messageSchema, "{{message}}")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const persona = (flags.persona as string | undefined) ?? null;
 		const api = createApiClient(resolveBaseUrl());
@@ -1008,7 +1014,7 @@ cli
 	.describe("Snapshot a session into a new prototype image")
 	.arg("id")
 	.arg("name")
-	.returns(messageSchema, "{{message}}")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const api = createApiClient(resolveBaseUrl());
 		try {
@@ -1044,6 +1050,7 @@ cli
 	.returns(
 		z.object({ query: z.string(), hits: z.number() }),
 		"{{query}} — {{hits}} hits",
+		{ defaultFormat: "text" },
 	)
 	.action(async (args, flags, ctx) => {
 		const sessionFilter = (flags.session as string | undefined) ?? undefined;
