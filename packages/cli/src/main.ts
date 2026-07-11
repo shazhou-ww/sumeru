@@ -394,11 +394,8 @@ cli
 	.describe("List models available from a provider")
 	.arg("name", "Provider name")
 	.returns(listSchema, {
-		text: (value) => {
-			const rows = value as Array<Record<string, unknown>>;
-			if (rows.length === 0) return "(empty)\n";
-			return rows.map((r) => String(r.id ?? "")).join("\n") + "\n";
-		},
+		text: (value) =>
+			formatTable(value as Array<Record<string, unknown>>, ["id"]),
 	})
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
