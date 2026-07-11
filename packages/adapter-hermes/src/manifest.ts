@@ -2,7 +2,7 @@ import type { AdapterManifest } from "@sumeru/adapter-core";
 
 export const manifest: AdapterManifest = {
 	name: "hermes",
-	providerMode: "builtin-only",
+	providerMode: "custom-only",
 	credentialEnv: null,
 	listModels: null,
 };
