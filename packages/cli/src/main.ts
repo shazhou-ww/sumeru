@@ -177,17 +177,19 @@ cli
 	.command("adapter")
 	.command("list")
 	.describe("List registered adapters")
-	.returns(listSchema, "")
-	.action(async (_args, flags, ctx) => {
+	.returns(listSchema, {
+		text: (value) =>
+			formatTable(value as Array<Record<string, unknown>>, [
+				"name",
+				"providerMode",
+				"credentialEnv",
+			]),
+	})
+	.action(async (_args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listAdapters();
-			const rows = envelope.value as Array<Record<string, unknown>>;
-			if (flags.json || (flags.format && flags.format !== "text")) {
-				return rows;
-			}
-			ctx.stdout(formatTable(rows, ["name", "providerMode", "credentialEnv"]));
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -227,17 +229,19 @@ cli
 	.command("models")
 	.describe("List built-in models for an adapter")
 	.arg("name")
-	.returns(listSchema, "")
-	.action(async (args, flags, ctx) => {
+	.returns(listSchema, {
+		text: (value) =>
+			formatTable(value as Array<Record<string, unknown>>, [
+				"id",
+				"name",
+				"contextWindow",
+			]),
+	})
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listAdapterModels(args.name);
-			const rows = envelope.value as Array<Record<string, unknown>>;
-			if (flags.json || (flags.format && flags.format !== "text")) {
-				return rows;
-			}
-			ctx.stdout(formatTable(rows, ["id", "name", "contextWindow"]));
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			if (
 				err instanceof HostClientError &&
@@ -258,17 +262,19 @@ cli
 	.command("provider")
 	.command("list")
 	.describe("List registered providers")
-	.returns(listSchema, "")
-	.action(async (_args, flags, ctx) => {
+	.returns(listSchema, {
+		text: (value) =>
+			formatTable(value as Array<Record<string, unknown>>, [
+				"name",
+				"apiType",
+				"baseUrl",
+			]),
+	})
+	.action(async (_args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listProviders();
-			const rows = envelope.value as Array<Record<string, unknown>>;
-			if (flags.json || (flags.format && flags.format !== "text")) {
-				return rows;
-			}
-			ctx.stdout(formatTable(rows, ["name", "apiType", "baseUrl"]));
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -383,7 +389,15 @@ cli
 	.command("list")
 	.describe("List registered models")
 	.flag("provider", { type: "string" })
-	.returns(listSchema, "")
+	.returns(listSchema, {
+		text: (value) =>
+			formatTable(value as Array<Record<string, unknown>>, [
+				"id",
+				"provider",
+				"model",
+				"contextWindow",
+			]),
+	})
 	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
@@ -395,13 +409,7 @@ cli
 				model: m.model,
 				contextWindow: m.contextWindow,
 			}));
-			if (flags.json || (flags.format && flags.format !== "text")) {
-				return rows;
-			}
-			ctx.stdout(
-				formatTable(rows, ["id", "provider", "model", "contextWindow"]),
-			);
-			return undefined;
+			return rows;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -524,17 +532,20 @@ cli
 	.command("prototype")
 	.command("list")
 	.describe("List prototypes")
-	.returns(listSchema, "")
-	.action(async (_args, flags, ctx) => {
+	.returns(listSchema, {
+		text: (value) =>
+			formatTable(value as Array<Record<string, unknown>>, [
+				"name",
+				"adapter",
+				"model",
+				"persona",
+			]),
+	})
+	.action(async (_args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listPrototypes();
-			const rows = envelope.value as Array<Record<string, unknown>>;
-			if (flags.json || (flags.format && flags.format !== "text")) {
-				return rows;
-			}
-			ctx.stdout(formatTable(rows, ["name", "adapter", "model", "persona"]));
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -654,18 +665,20 @@ cli
 	.command("persona")
 	.command("list")
 	.describe("List personas")
-	.returns(listSchema, "")
-	.action(async (_args, flags, ctx) => {
+	.returns(listSchema, {
+		text: (value) => {
+			const rows = value as Array<Record<string, unknown>>;
+			if (rows.length === 0) return "(empty)\n";
+			return rows
+				.map((p) => `[${p.name}]\n${p.instructions ?? ""}\n`)
+				.join("\n");
+		},
+	})
+	.action(async (_args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listPersonas();
-			const rows = envelope.value as Array<Record<string, unknown>>;
-			if (flags.json || (flags.format && flags.format !== "text")) {
-				return rows;
-			}
-			const lines = rows.map((p) => `[${p.name}]\n${p.instructions ?? ""}\n`);
-			ctx.stdout(lines.length > 0 ? lines.join("\n") : "(empty)\n");
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -737,28 +750,24 @@ cli
 	.command("session")
 	.command("list")
 	.describe("List sessions")
-	.returns(listSchema, "")
-	.action(async (_args, flags, ctx) => {
+	.returns(listSchema, {
+		text: (value) =>
+			formatTable(
+				(value as Array<Record<string, unknown>>).map((s) => ({
+					...s,
+					task:
+						typeof s.task === "string" && s.task.length > 50
+							? `${s.task.slice(0, 47)}...`
+							: s.task,
+				})),
+				["id", "prototype", "status", "task"],
+			),
+	})
+	.action(async (_args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listSessions();
-			const rows = envelope.value as Array<Record<string, unknown>>;
-			if (flags.json || (flags.format && flags.format !== "text")) {
-				return rows;
-			}
-			ctx.stdout(
-				formatTable(
-					rows.map((s) => ({
-						...s,
-						task:
-							typeof s.task === "string" && s.task.length > 50
-								? `${s.task.slice(0, 47)}...`
-								: s.task,
-					})),
-					["id", "prototype", "status", "task"],
-				),
-			);
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -924,30 +933,32 @@ cli
 	.arg("id")
 	.flag("after", { type: "number" })
 	.flag("system", { type: "boolean", description: "Include system prompt" })
-	.returns(listSchema, "")
+	.returns(listSchema, {
+		text: (value) => {
+			const turns = value as Array<Record<string, unknown>>;
+			if (turns.length === 0) return "(empty)\n";
+			return turns
+				.map((turn) => {
+					const role = turn.role;
+					const ts = turn.timestamp ?? "";
+					const content =
+						role === "assistant" || role === "user"
+							? turn.content
+							: role === "tool"
+								? turn.result
+								: "";
+					return `[${role}] ${ts}\n${content}\n`;
+				})
+				.join("\n");
+		},
+	})
 	.action(async (args, flags, ctx) => {
 		const after = flags.after !== undefined ? Number(flags.after) : undefined;
 		const system = Boolean(flags.system);
 		const client = await getClient();
 		try {
 			const envelope = await client.getTurns(args.id, { after, system });
-			const rows = envelope.value;
-			if (flags.json || (flags.format && flags.format !== "text")) {
-				return rows;
-			}
-			const lines = rows.map((turn) => {
-				const role = turn.role;
-				const ts = turn.timestamp ?? "";
-				const content =
-					role === "assistant" || role === "user"
-						? turn.content
-						: role === "tool"
-							? turn.result
-							: "";
-				return `[${role}] ${ts}\n${content}\n`;
-			});
-			ctx.stdout(lines.length > 0 ? lines.join("\n") : "(empty)\n");
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
