@@ -243,6 +243,15 @@ cli
 			);
 			return undefined;
 		} catch (err) {
+			if (
+				err instanceof HostClientError &&
+				err.code === "models_not_supported"
+			) {
+				ctx.stdout(
+					`Adapter ${args.name} has no built-in models.\nUse 'sumeru provider' and 'sumeru model' to configure a shared model registry.\n`,
+				);
+				return undefined;
+			}
 			handleClientError(err, ctx);
 		}
 	});
