@@ -10,6 +10,7 @@ async function listModels(): Promise<BuiltinModel[]> {
 	for (const line of output.split("\n")) {
 		const match = line.match(/^(\S+)\s+-\s+(.+)$/);
 		if (match) {
+			// biome-ignore lint/style/noNonNullAssertion: regex groups guaranteed by match
 			models.push({ id: match[1]!, name: match[2]!, contextWindow: null });
 		}
 	}

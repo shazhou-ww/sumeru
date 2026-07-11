@@ -1,8 +1,11 @@
 packages:
-  - 'packages/*'
+  - packages/*
+
+minimumReleaseAge: 0
 
 onlyBuiltDependencies:
   - esbuild
-  - "@biomejs/biome"
+  - '@biomejs/biome'
 
-minimumReleaseAge: 0
+overrides:
+  '@ocas/cli-kit': link:../ocas/packages/cli-kit

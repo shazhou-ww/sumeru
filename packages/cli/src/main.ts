@@ -178,17 +178,15 @@ cli
 	.command("list")
 	.describe("List registered adapters")
 	.returns(listSchema, "")
-	.action(async (_args, _flags, ctx) => {
+	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listAdapters();
-			ctx.stdout(
-				formatTable(envelope.value as Array<Record<string, unknown>>, [
-					"name",
-					"providerMode",
-					"credentialEnv",
-				]),
-			);
+			const rows = envelope.value as Array<Record<string, unknown>>;
+			if (flags.json || (flags.format && flags.format !== "text")) {
+				return rows;
+			}
+			ctx.stdout(formatTable(rows, ["name", "providerMode", "credentialEnv"]));
 			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
@@ -230,17 +228,15 @@ cli
 	.describe("List built-in models for an adapter")
 	.arg("name")
 	.returns(listSchema, "")
-	.action(async (args, _flags, ctx) => {
+	.action(async (args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listAdapterModels(args.name);
-			ctx.stdout(
-				formatTable(envelope.value as Array<Record<string, unknown>>, [
-					"id",
-					"name",
-					"contextWindow",
-				]),
-			);
+			const rows = envelope.value as Array<Record<string, unknown>>;
+			if (flags.json || (flags.format && flags.format !== "text")) {
+				return rows;
+			}
+			ctx.stdout(formatTable(rows, ["id", "name", "contextWindow"]));
 			return undefined;
 		} catch (err) {
 			if (
@@ -263,17 +259,15 @@ cli
 	.command("list")
 	.describe("List registered providers")
 	.returns(listSchema, "")
-	.action(async (_args, _flags, ctx) => {
+	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listProviders();
-			ctx.stdout(
-				formatTable(envelope.value as Array<Record<string, unknown>>, [
-					"name",
-					"apiType",
-					"baseUrl",
-				]),
-			);
+			const rows = envelope.value as Array<Record<string, unknown>>;
+			if (flags.json || (flags.format && flags.format !== "text")) {
+				return rows;
+			}
+			ctx.stdout(formatTable(rows, ["name", "apiType", "baseUrl"]));
 			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
@@ -401,6 +395,9 @@ cli
 				model: m.model,
 				contextWindow: m.contextWindow,
 			}));
+			if (flags.json || (flags.format && flags.format !== "text")) {
+				return rows;
+			}
 			ctx.stdout(
 				formatTable(rows, ["id", "provider", "model", "contextWindow"]),
 			);
@@ -528,18 +525,15 @@ cli
 	.command("list")
 	.describe("List prototypes")
 	.returns(listSchema, "")
-	.action(async (_args, _flags, ctx) => {
+	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listPrototypes();
-			ctx.stdout(
-				formatTable(envelope.value as Array<Record<string, unknown>>, [
-					"name",
-					"adapter",
-					"model",
-					"persona",
-				]),
-			);
+			const rows = envelope.value as Array<Record<string, unknown>>;
+			if (flags.json || (flags.format && flags.format !== "text")) {
+				return rows;
+			}
+			ctx.stdout(formatTable(rows, ["name", "adapter", "model", "persona"]));
 			return undefined;
 		} catch (err) {
 			handleClientError(err, ctx);
@@ -661,13 +655,15 @@ cli
 	.command("list")
 	.describe("List personas")
 	.returns(listSchema, "")
-	.action(async (_args, _flags, ctx) => {
+	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listPersonas();
-			const lines = (envelope.value as Array<Record<string, unknown>>).map(
-				(p) => `[${p.name}]\n${p.instructions ?? ""}\n`,
-			);
+			const rows = envelope.value as Array<Record<string, unknown>>;
+			if (flags.json || (flags.format && flags.format !== "text")) {
+				return rows;
+			}
+			const lines = rows.map((p) => `[${p.name}]\n${p.instructions ?? ""}\n`);
 			ctx.stdout(lines.length > 0 ? lines.join("\n") : "(empty)\n");
 			return undefined;
 		} catch (err) {
@@ -742,13 +738,17 @@ cli
 	.command("list")
 	.describe("List sessions")
 	.returns(listSchema, "")
-	.action(async (_args, _flags, ctx) => {
+	.action(async (_args, flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listSessions();
+			const rows = envelope.value as Array<Record<string, unknown>>;
+			if (flags.json || (flags.format && flags.format !== "text")) {
+				return rows;
+			}
 			ctx.stdout(
 				formatTable(
-					(envelope.value as Array<Record<string, unknown>>).map((s) => ({
+					rows.map((s) => ({
 						...s,
 						task:
 							typeof s.task === "string" && s.task.length > 50
@@ -931,7 +931,11 @@ cli
 		const client = await getClient();
 		try {
 			const envelope = await client.getTurns(args.id, { after, system });
-			const lines = envelope.value.map((turn) => {
+			const rows = envelope.value;
+			if (flags.json || (flags.format && flags.format !== "text")) {
+				return rows;
+			}
+			const lines = rows.map((turn) => {
 				const role = turn.role;
 				const ts = turn.timestamp ?? "";
 				const content =

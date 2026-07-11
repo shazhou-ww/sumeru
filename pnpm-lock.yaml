@@ -4,9 +4,16 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@ocas/cli-kit': link:../ocas/packages/cli-kit
+
 importers:
 
   .:
+    dependencies:
+      '@ocas/cli-kit':
+        specifier: link:../ocas/packages/cli-kit
+        version: link:../ocas/packages/cli-kit
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.0.0
@@ -69,8 +76,8 @@ importers:
   packages/cli:
     dependencies:
       '@ocas/cli-kit':
-        specifier: ^0.4.0
-        version: 0.4.0
+        specifier: link:../../../ocas/packages/cli-kit
+        version: link:../../../ocas/packages/cli-kit
       '@sumeru/core':
         specifier: workspace:*
         version: link:../core
@@ -338,10 +345,6 @@ packages:
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
-
-  '@ocas/cli-kit@0.4.0':
-    resolution: {integrity: sha512-VrEEqMOjaDVl5JU9bj8Eh5Fs2pvZgDUAohK2ziu+B33L4l/iXY4ZCbJZ2oRDb0obB9lmSC4iQti6YgOYaHhAvg==}
-    engines: {node: '>=24.15.0'}
 
   '@ocas/core@0.5.0':
     resolution: {integrity: sha512-5NMGWBaWdq3l9QeWcm45KeKzRQU2E8dYFP6bChuw8Hk0Dkxu+baGAG1aoVhQTilUONpX2tDZNexoFXYRCYobIA==}
@@ -924,10 +927,6 @@ snapshots:
     optional: true
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
-
-  '@ocas/cli-kit@0.4.0':
-    dependencies:
-      zod: 4.4.3
 
   '@ocas/core@0.5.0':
     dependencies:
