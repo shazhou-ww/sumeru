@@ -121,7 +121,7 @@ cli
 	.command("restart")
 	.describe("Restart the server process")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
-	.action(async (_args, _flags, ctx) => {
+	.action(async (_args, _flags, _ctx) => {
 		const pidFilePath = resolvePidFilePath();
 		const pid = readPidFile(pidFilePath);
 		if (pid !== null && isProcessAlive(pid)) {
@@ -156,13 +156,13 @@ cli
 			const m = Math.floor((secs % 3600) / 60);
 			const uptimeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
 			ctx.stdout(
-				[
+				`${[
 					`Status: running`,
 					`Port: ${url.port || "7900"}`,
 					`Version: ${v.version}`,
 					`Sessions: running=${v.status.running} queued=${v.status.queued} idle=${v.status.idle}`,
 					`Uptime: ${uptimeStr}`,
-				].join("\n") + "\n",
+				].join("\n")}\n`,
 			);
 			return undefined;
 		} catch {
@@ -178,7 +178,7 @@ cli
 	.command("list")
 	.describe("List registered adapters")
 	.returns(listSchema, "")
-	.action(async (_args, flags, ctx) => {
+	.action(async (_args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listAdapters();
@@ -209,7 +209,7 @@ cli
 		"{{name}} ({{providerMode}})",
 		{ defaultFormat: "text" },
 	)
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.getAdapter(args.name);
@@ -230,7 +230,7 @@ cli
 	.describe("List built-in models for an adapter")
 	.arg("name")
 	.returns(listSchema, "")
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listAdapterModels(args.name);
@@ -254,7 +254,7 @@ cli
 	.command("list")
 	.describe("List registered providers")
 	.returns(listSchema, "")
-	.action(async (_args, flags, ctx) => {
+	.action(async (_args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listProviders();
@@ -285,7 +285,7 @@ cli
 		"{{name}} ({{apiType}}) {{baseUrl}}",
 		{ defaultFormat: "text" },
 	)
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.getProvider(args.name);
@@ -321,6 +321,7 @@ cli
 		try {
 			const envelope = await client.addProvider(args.name, {
 				apiType: apiType as "anthropic" | "openai",
+				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
 				baseUrl: baseUrl!,
 				apiKey,
 			});
@@ -362,7 +363,7 @@ cli
 	.describe("Remove a provider")
 	.arg("name")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			await client.removeProvider(args.name);
@@ -410,7 +411,7 @@ cli
 		"",
 		{ defaultFormat: "text" },
 	)
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const { provider, name } = parseModelId(args.id);
@@ -448,6 +449,7 @@ cli
 		try {
 			const { provider, name } = parseModelId(args.id);
 			const envelope = await client.upsertModel(provider, name, {
+				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
 				model: apiModel!,
 				contextWindow,
 				toolUse: !flags["no-tool-use"],
@@ -499,7 +501,7 @@ cli
 	.describe("Remove a model")
 	.arg("id")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const { provider, name } = parseModelId(args.id);
@@ -517,7 +519,7 @@ cli
 	.command("list")
 	.describe("List prototypes")
 	.returns(listSchema, "")
-	.action(async (_args, flags, ctx) => {
+	.action(async (_args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listPrototypes();
@@ -550,7 +552,7 @@ cli
 		"{{name}} persona={{persona}} model={{model}} adapter={{adapter}}",
 		{ defaultFormat: "text" },
 	)
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.getPrototype(args.name);
@@ -588,7 +590,9 @@ cli
 		try {
 			const envelope = await client.addPrototype(args.name, {
 				persona,
+				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
 				model: model!,
+				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
 				adapter: adapter!,
 			});
 			return { name: envelope.value.name };
@@ -629,7 +633,7 @@ cli
 	.describe("Remove a prototype")
 	.arg("name")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			await client.removePrototype(args.name);
@@ -697,6 +701,7 @@ cli
 		const client = await getClient();
 		try {
 			const envelope = await client.addPersona(args.name, {
+				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
 				instructions: instructions!,
 			});
 			return { name: envelope.value.name };
@@ -728,7 +733,7 @@ cli
 	.command("list")
 	.describe("List sessions")
 	.returns(listSchema, "")
-	.action(async (_args, flags, ctx) => {
+	.action(async (_args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.listSessions();
@@ -760,7 +765,7 @@ cli
 		"{{id}} {{prototype}} [{{status}}]",
 		{ defaultFormat: "text" },
 	)
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.getSession(args.id);
@@ -811,7 +816,7 @@ cli
 	.describe("Stop a running session")
 	.arg("id")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			await client.stopSession(args.id);
@@ -827,7 +832,7 @@ cli
 	.describe("Delete a session")
 	.arg("id")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			await client.removeSession(args.id);
@@ -943,7 +948,7 @@ cli
 	.describe("Run a shell command in a session container")
 	.arg("id")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const separator = process.argv.indexOf("--");
 		if (separator === -1) {
 			ctx.error("Usage: sumeru session exec <id> -- <command...>");
@@ -1015,7 +1020,7 @@ cli
 	.arg("id")
 	.arg("name")
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
-	.action(async (args, flags, ctx) => {
+	.action(async (args, _flags, ctx) => {
 		const api = createApiClient(resolveBaseUrl());
 		try {
 			const result = await api.postCommand(args.id, {

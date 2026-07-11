@@ -404,8 +404,8 @@ describe("loadHostConfig — env var expansion", () => {
 	});
 
 	it("uses default when env var is not set", async () => {
-		savedEnv["NONEXISTENT_KEY"] = process.env["NONEXISTENT_KEY"];
-		delete process.env["NONEXISTENT_KEY"];
+		savedEnv.NONEXISTENT_KEY = process.env.NONEXISTENT_KEY;
+		delete process.env.NONEXISTENT_KEY;
 
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-host-envdefault-"));
 		mkdirSync(join(rootDir, "data", "skills"), { recursive: true });
