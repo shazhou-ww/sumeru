@@ -1113,6 +1113,19 @@ if (argv.includes("--version") || argv.includes("-v")) {
 	process.exit(0);
 }
 
+// Validate --format before CLI dispatch
+const formatIdx = argv.indexOf("--format");
+if (formatIdx !== -1) {
+	const fmt = argv[formatIdx + 1];
+	const supported = ["text", "json", "yaml"];
+	if (!fmt || !supported.includes(fmt)) {
+		process.stderr.write(
+			`Error: Unsupported format '${fmt ?? ""}'. Available: ${supported.join(", ")}\n`,
+		);
+		process.exit(1);
+	}
+}
+
 const modelExitCode = await runSessionModelCommand(argv);
 if (modelExitCode !== null) {
 	process.exit(modelExitCode);
