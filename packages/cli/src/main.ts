@@ -200,19 +200,27 @@ cli
 			providerMode: z.string(),
 			credentialEnv: z.string().nullable(),
 		}),
-		"{{name}} ({{providerMode}})",
+		{
+			text: (value) => {
+				const v = value as Record<string, unknown>;
+				return (
+					[
+						`Name: ${v.name}`,
+						`Mode: ${v.providerMode}`,
+						v.credentialEnv ? `Credential: ${v.credentialEnv}` : null,
+					]
+						.filter(Boolean)
+						.join("\n") + "\n"
+				);
+			},
+		},
 		{ defaultFormat: "text" },
 	)
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.getAdapter(args.name);
-			const v = envelope.value;
-			const line = v.credentialEnv
-				? `${v.name} (${v.providerMode}) credential=${v.credentialEnv}`
-				: `${v.name} (${v.providerMode})`;
-			ctx.stdout(`${line}\n`);
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -285,15 +293,27 @@ cli
 			apiType: z.string(),
 			baseUrl: z.string().nullable(),
 		}),
-		"{{name}} ({{apiType}}) {{baseUrl}}",
+		{
+			text: (value) => {
+				const v = value as Record<string, unknown>;
+				return (
+					[
+						`Name: ${v.name}`,
+						`Type: ${v.apiType}`,
+						v.baseUrl ? `URL: ${v.baseUrl}` : null,
+					]
+						.filter(Boolean)
+						.join("\n") + "\n"
+				);
+			},
+		},
 		{ defaultFormat: "text" },
 	)
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.getProvider(args.name);
-			const v = envelope.value;
-			return { name: v.name, apiType: v.apiType, baseUrl: v.baseUrl };
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -439,17 +459,34 @@ cli
 	.describe("Get a model by name")
 	.arg("name", "Model registry name")
 	.returns(
-		z.object({ name: z.string(), provider: z.string(), model: z.string() }),
-		"",
+		z.object({
+			name: z.string(),
+			provider: z.string(),
+			model: z.string(),
+			contextWindow: z.number().nullable(),
+		}),
+		{
+			text: (value) => {
+				const v = value as Record<string, unknown>;
+				return (
+					[
+						`Name: ${v.name}`,
+						`Provider: ${v.provider}`,
+						`Model: ${v.model}`,
+						v.contextWindow != null ? `Context: ${v.contextWindow}` : null,
+					]
+						.filter(Boolean)
+						.join("\n") + "\n"
+				);
+			},
+		},
 		{ defaultFormat: "text" },
 	)
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.getModel(args.name);
-			const v = envelope.value;
-			ctx.stdout(`${v.name} (${v.provider}) → ${v.model}\n`);
-			return undefined;
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -578,20 +615,28 @@ cli
 			model: z.string().nullable(),
 			adapter: z.string(),
 		}),
-		"{{name}} persona={{persona}} model={{model}} adapter={{adapter}}",
+		{
+			text: (value) => {
+				const v = value as Record<string, unknown>;
+				return (
+					[
+						`Name: ${v.name}`,
+						`Adapter: ${v.adapter}`,
+						v.model ? `Model: ${v.model}` : null,
+						`Persona: ${v.persona}`,
+					]
+						.filter(Boolean)
+						.join("\n") + "\n"
+				);
+			},
+		},
 		{ defaultFormat: "text" },
 	)
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.getPrototype(args.name);
-			const p = envelope.value;
-			return {
-				name: p.name,
-				persona: p.persona,
-				model: p.model,
-				adapter: p.adapter,
-			};
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -710,7 +755,16 @@ cli
 	.arg("name", "Persona name")
 	.returns(
 		z.object({ name: z.string(), instructions: z.string() }),
-		"{{name}}: {{instructions}}",
+		{
+			text: (value) => {
+				const v = value as Record<string, unknown>;
+				return (
+					[`Name: ${v.name}`, `Instructions: ${v.instructions}`]
+						.filter(Boolean)
+						.join("\n") + "\n"
+				);
+			},
+		},
 		{ defaultFormat: "text" },
 	)
 	.action(async (args, _flags, ctx) => {
@@ -798,16 +852,34 @@ cli
 	.describe("Get session details")
 	.arg("id", "Session ID")
 	.returns(
-		z.object({ id: z.string(), prototype: z.string(), status: z.string() }),
-		"{{id}} {{prototype}} [{{status}}]",
+		z.object({
+			id: z.string(),
+			prototype: z.string(),
+			status: z.string(),
+			task: z.string().nullable(),
+		}),
+		{
+			text: (value) => {
+				const v = value as Record<string, unknown>;
+				return (
+					[
+						`ID: ${v.id}`,
+						`Prototype: ${v.prototype}`,
+						`Status: ${v.status}`,
+						v.task ? `Task: ${v.task}` : null,
+					]
+						.filter(Boolean)
+						.join("\n") + "\n"
+				);
+			},
+		},
 		{ defaultFormat: "text" },
 	)
 	.action(async (args, _flags, ctx) => {
 		const client = await getClient();
 		try {
 			const envelope = await client.getSession(args.id);
-			const v = envelope.value;
-			return { id: v.id, prototype: v.prototype, status: v.status };
+			return envelope.value;
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
