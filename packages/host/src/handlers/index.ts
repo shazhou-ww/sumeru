@@ -14,7 +14,6 @@ export {
 	writeMethodNotAllowed,
 	writeRouteNotFound,
 } from "./root.js";
-export { createSearchHandler, searchEnvelope } from "./search.js";
 export { createSessionsHandler } from "./sessions.js";
 export { createSkillsHandler } from "./skills.js";
 export { createTurnsHandler } from "./turns.js";

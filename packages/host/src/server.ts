@@ -14,7 +14,6 @@ import {
 	createPrototypesHandler,
 	createProvidersHandler,
 	createRootHandler,
-	createSearchHandler,
 	createSessionsHandler,
 	createSkillsHandler,
 	createTurnsHandler,
@@ -112,8 +111,7 @@ export function createHostHandler(input: {
 			"POST",
 			"/sessions/:id/export",
 			createExportHandler(input.manager, input.hostConfig.dataDir),
-		)
-		.route("GET", "/search", createSearchHandler(input.hostConfig.dataDir));
+		);
 
 	return (req, res) => {
 		router.handle(req, res);

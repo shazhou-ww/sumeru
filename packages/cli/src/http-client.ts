@@ -64,19 +64,6 @@ export type HistoryValue = {
 	limit: number;
 };
 
-export type SearchHit = {
-	sessionId: string;
-	turnId: number;
-	role: string;
-	content: string;
-	score: number;
-};
-
-export type SearchValue = {
-	query: string;
-	hits: Array<SearchHit>;
-};
-
 export type AdapterInfo = {
 	name: string;
 	providerMode: "custom-only" | "both" | "builtin-only";
@@ -219,12 +206,6 @@ export type HostClient = {
 		options?: { after?: number; system?: boolean },
 	): Promise<Envelope<Array<Turn>>>;
 	exportSession(id: string): Promise<ReadableStream<Uint8Array>>;
-
-	// Search
-	search(
-		query: string,
-		options?: { session?: string },
-	): Promise<Envelope<SearchValue>>;
 };
 
 export function createHostClient(options: HostClientOptions): HostClient {
@@ -663,22 +644,6 @@ export function createHostClient(options: HostClientOptions): HostClient {
 				);
 			}
 			return response.body;
-		},
-
-		// Search
-		async search(query, searchOptions) {
-			const params = new URLSearchParams();
-			params.set("q", query);
-			if (searchOptions?.session !== undefined) {
-				params.set("session", searchOptions.session);
-			}
-			const qs = params.toString();
-			const { json } = await requestJson<SearchValue>(
-				"GET",
-				`/search?${qs}`,
-				null,
-			);
-			return json;
 		},
 	};
 }

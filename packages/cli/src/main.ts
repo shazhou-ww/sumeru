@@ -1260,35 +1260,6 @@ cli
 		}
 	});
 
-// ─── search ──────────────────────────────────────────────────────────────
-
-cli
-	.command("search")
-	.describe("Full-text search across sessions")
-	.arg("query", "Search query")
-	.flag("session", { type: "string" })
-	.returns(
-		z.object({ query: z.string(), hits: z.number() }),
-		"{{query}} — {{hits}} hits",
-		{ defaultFormat: "text" },
-	)
-	.action(async (args, flags, ctx) => {
-		const sessionFilter = (flags.session as string | undefined) ?? undefined;
-		const client = await getClient();
-		try {
-			const envelope = await client.search(args.query, {
-				session: sessionFilter,
-			});
-			const v = envelope.value;
-			for (const hit of v.hits) {
-				ctx.stdout(`[${hit.sessionId}] ${hit.content.slice(0, 120)}\n`);
-			}
-			return { query: v.query, hits: v.hits.length };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
 // ─── Phase 3: verb + target commands ────────────────────────────────────
 
 registerSessionRmCommand(cli);
