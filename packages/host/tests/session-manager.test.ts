@@ -456,13 +456,14 @@ describe("session-manager", () => {
 		const turnContents = new Map<string, string>();
 		for (const session of created) {
 			const managed = manager.getSession(session.id);
-			const turnEvent = manager
+			const assistantTurnEvent = manager
 				.getSseBuffer(session.id)
 				.eventsAfter(0)
-				.find((event) => event.event === "turn");
-			if (turnEvent === undefined) continue;
-			const data = JSON.parse(turnEvent.data) as Turn;
-			turnContents.set(session.id, data.content);
+				.filter((event) => event.event === "turn")
+				.map((event) => JSON.parse(event.data) as Turn)
+				.find((turn) => turn.role === "assistant");
+			if (assistantTurnEvent === undefined) continue;
+			turnContents.set(session.id, assistantTurnEvent.content);
 			expect(turnContents.get(session.id)).toBe(
 				`pong:${managed?.projectName ?? ""}`,
 			);
@@ -482,8 +483,12 @@ describe("session-manager", () => {
 		await waitUntil(() => manager.getSession(created.id)?.status === "idle");
 		const events = manager.getSseBuffer(created.id).eventsAfter(0);
 		expect(calls.some((call) => call.startsWith("exec:"))).toBe(true);
-		expect(events.map((event) => event.event)).toEqual(["turn", "exit"]);
-		expect(JSON.parse(events[0]?.data ?? "{}")).toMatchObject({
+		expect(events.map((event) => event.event)).toEqual([
+			"turn",
+			"turn",
+			"exit",
+		]);
+		expect(JSON.parse(events[1]?.data ?? "{}")).toMatchObject({
 			role: "assistant",
 			content: expect.stringMatching(/^pong:/),
 		});
@@ -498,13 +503,15 @@ describe("session-manager", () => {
 		const created = await manager.createSession(createSessionBody());
 
 		await waitUntil(() => manager.getSession(created.id)?.status === "idle");
-		const turnEvent = manager
+		const turnEvents = manager
 			.getSseBuffer(created.id)
 			.eventsAfter(0)
-			.find((event) => event.event === "turn");
-		const turn = JSON.parse(turnEvent?.data ?? "{}") as Turn;
-
-		if (turn.role !== "assistant") throw new Error("expected assistant turn");
+			.filter((event) => event.event === "turn");
+		const assistantTurnEvent = turnEvents.find((event) => {
+			const data = JSON.parse(event.data) as Turn;
+			return data.role === "assistant";
+		});
+		const turn = JSON.parse(assistantTurnEvent?.data ?? "{}") as Turn;
 		// durationMs is wall-clock, never 0, never the sum of tool durations.
 		expect(Number.isInteger(turn.durationMs)).toBe(true);
 		expect(turn.durationMs).toBeGreaterThanOrEqual(1);
@@ -686,7 +693,11 @@ describe("session-manager", () => {
 			line.includes("native-resume-abc"),
 		);
 		expect(resumeWrite).toBeUndefined();
-		expect(events.map((event) => event.event)).toEqual(["turn", "exit"]);
+		expect(events.map((event) => event.event)).toEqual([
+			"turn",
+			"turn",
+			"exit",
+		]);
 	});
 
 	it("clears history on delete", async () => {

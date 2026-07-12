@@ -483,18 +483,28 @@ export function createSessionManager(input: {
 				value: message,
 			})}\n`,
 		);
+		const userTimestamp = new Date().toISOString();
 		recorder.append(id, {
 			type: "turn",
 			value: {
 				index: recorder.getTurnTotal(id),
 				role: "user",
 				content: body.content,
-				timestamp: new Date().toISOString(),
+				timestamp: userTimestamp,
 				toolCalls: null,
 				tokens: null,
 				durationMs: null,
 			},
 		});
+		if (runtime !== undefined) {
+			appendTurnEvent(runtime, {
+				id: runtime.nextTurnEventId,
+				role: "user",
+				content: body.content,
+				timestamp: userTimestamp,
+			});
+			runtime.nextTurnEventId += 1;
+		}
 	}
 
 	async function sendTask(
