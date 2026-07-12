@@ -1250,7 +1250,9 @@ cli
 				name: string;
 				image: string;
 			};
-			return { message: `${snapshotResult.name} ${snapshotResult.image}` };
+			return {
+				message: `Snapshot created\n  Name:  ${snapshotResult.name}\n  Image: ${snapshotResult.image}`,
+			};
 		} catch (err) {
 			if (err instanceof ApiClientError) {
 				ctx.error(`${err.code}: ${err.message}`);
