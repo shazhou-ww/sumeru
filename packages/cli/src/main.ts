@@ -65,10 +65,11 @@ function formatTurnLogLine(turn: Turn): string {
 }
 
 function formatWatchTurnLine(turn: Turn): string {
+	const ts = turn.timestamp ?? "";
 	if (turn.role === "tool") {
-		return `[tool] ${turn.name}: ${turn.result}`;
+		return `[tool] ${ts}\n${turn.name}: ${turn.result}`;
 	}
-	return `[${turn.role}] ${turn.content}`;
+	return `[${turn.role}] ${ts}\n${turn.content}`;
 }
 
 function isStreamCloseError(err: unknown): boolean {
@@ -1199,13 +1200,13 @@ cli
 					system,
 				});
 				for (const turn of history.value) {
-					ctx.stdout(`${formatWatchTurnLine(turn)}\n`);
+					ctx.stdout(`${formatWatchTurnLine(turn)}\n\n`);
 				}
 				ctx.stdout("---\n");
 				for await (const { event, data } of stream) {
 					if (event === "turn") {
 						const turn = JSON.parse(data) as Turn;
-						ctx.stdout(`${formatWatchTurnLine(turn)}\n`);
+						ctx.stdout(`${formatWatchTurnLine(turn)}\n\n`);
 					} else if (event === "exit") {
 						const exit = JSON.parse(data) as {
 							type: string;
