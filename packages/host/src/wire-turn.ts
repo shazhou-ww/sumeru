@@ -67,7 +67,7 @@ export function wireTurnsToV3(
 	// Pass adapter-reported usage through unchanged; null stays null so the
 	// client can tell "unknown" apart from "zero consumption" (#178).
 	const tokenUsage = wire.tokens;
-	const mappedToolCalls = mapLegacyToolCalls(wire.toolCalls);
+	const mappedToolCalls = mapLegacyToolCalls(wire.toolCalls, wire.timestamp);
 	let nextId = startId;
 	const turns: Array<Turn> = [];
 
@@ -93,7 +93,10 @@ export function wireTurnsToV3(
 	return { turns, nextId };
 }
 
-function mapLegacyToolCalls(toolCalls: Array<WireToolCall> | null): {
+function mapLegacyToolCalls(
+	toolCalls: Array<WireToolCall> | null,
+	parentTimestamp: string,
+): {
 	calls: Array<ToolCall>;
 	toolTurns: Array<Omit<ToolTurn, "id">>;
 } {
@@ -103,7 +106,6 @@ function mapLegacyToolCalls(toolCalls: Array<WireToolCall> | null): {
 
 	const calls: Array<ToolCall> = [];
 	const toolTurns: Array<Omit<ToolTurn, "id">> = [];
-	const timestamp = new Date().toISOString();
 
 	for (let index = 0; index < toolCalls.length; index += 1) {
 		const legacy = toolCalls[index];
@@ -121,7 +123,7 @@ function mapLegacyToolCalls(toolCalls: Array<WireToolCall> | null): {
 				name: legacy.tool,
 				result: legacy.output,
 				durationMs: legacy.durationMs ?? 0,
-				timestamp,
+				timestamp: parentTimestamp,
 			});
 		}
 	}
