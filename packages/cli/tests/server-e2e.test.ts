@@ -4,11 +4,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const CLI = "npx tsx packages/cli/src/main.ts";
 
 function run(args: string): { stdout: string; exitCode: number } {
+	const cleanEnv = Object.fromEntries(
+		Object.entries(process.env).filter(([key]) => !key.startsWith("npm_")),
+	);
 	try {
 		const stdout = execSync(`${CLI} ${args}`, {
 			encoding: "utf-8",
 			cwd: process.cwd(),
 			timeout: 15000,
+			env: cleanEnv,
 		});
 		return { stdout, exitCode: 0 };
 	} catch (err: unknown) {

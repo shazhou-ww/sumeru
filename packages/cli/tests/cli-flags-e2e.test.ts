@@ -8,12 +8,16 @@ function run(args: string): {
 	stderr: string;
 	exitCode: number;
 } {
+	const cleanEnv = Object.fromEntries(
+		Object.entries(process.env).filter(([key]) => !key.startsWith("npm_")),
+	);
 	try {
 		const stdout = execSync(`${CLI} ${args}`, {
 			encoding: "utf-8",
 			cwd: process.cwd(),
 			timeout: 15000,
 			stdio: ["pipe", "pipe", "pipe"],
+			env: cleanEnv,
 		});
 		return { stdout, stderr: "", exitCode: 0 };
 	} catch (err: unknown) {
