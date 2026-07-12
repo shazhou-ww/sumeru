@@ -69,6 +69,16 @@ function formatWatchTurnLine(turn: Turn): string {
 	if (turn.role === "tool") {
 		return `[tool] ${ts}\n${turn.name}: ${turn.result}`;
 	}
+	if (turn.role === "assistant") {
+		const parts: string[] = [];
+		if (turn.content) parts.push(turn.content);
+		if (turn.toolCalls && turn.toolCalls.length > 0) {
+			for (const tc of turn.toolCalls) {
+				parts.push(`→ ${tc.name}(${JSON.stringify(tc.arguments)})`);
+			}
+		}
+		return `[assistant] ${ts}\n${parts.join("\n")}`;
+	}
 	return `[${turn.role}] ${ts}\n${turn.content}`;
 }
 
@@ -1170,12 +1180,24 @@ cli
 				.map((turn) => {
 					const role = turn.role;
 					const ts = turn.timestamp ?? "";
-					const content =
-						role === "assistant" || role === "user"
-							? turn.content
-							: role === "tool"
-								? turn.result
-								: "";
+					let content: string;
+					if (role === "assistant") {
+						const parts: string[] = [];
+						if (turn.content) parts.push(String(turn.content));
+						const toolCalls = turn.toolCalls as
+							| Array<{ name: string; arguments: Record<string, unknown> }>
+							| undefined;
+						if (toolCalls && toolCalls.length > 0) {
+							for (const tc of toolCalls) {
+								parts.push(`→ ${tc.name}(${JSON.stringify(tc.arguments)})`);
+							}
+						}
+						content = parts.join("\n");
+					} else if (role === "tool") {
+						content = `${turn.name}: ${turn.result}`;
+					} else {
+						content = String(turn.content ?? "");
+					}
 					return `[${role}] ${ts}\n${content}\n`;
 				})
 				.join("\n");
