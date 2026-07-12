@@ -7,6 +7,7 @@ describe("@sumeru/adapter-claude-code — package surface", () => {
 		const adapter = createClaudeCodeAdapter();
 		expect(typeof adapter.init).toBe("function");
 		expect(typeof adapter.handle).toBe("function");
+		expect(typeof adapter.resume).toBe("function");
 	});
 
 	it("parseStreamJson is exported from the package barrel", () => {
