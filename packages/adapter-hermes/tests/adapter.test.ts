@@ -804,6 +804,129 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 		expect(turns[0]?.content).toBe("pong");
 		expect(turns[0]?.toolCalls).toBeNull();
 	});
+
+	it("resume() returns false when no persisted state exists", async () => {
+		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-resume-missing-"));
+		const homeDir = mkdtempSync(join(tmpdir(), "hermes-resume-home-"));
+		const adapter = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			homeDir,
+		});
+		expect(await adapter.resume?.()).toBe(false);
+	});
+
+	it("persists session id after first handle and resume() restores it", async () => {
+		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-resume-persist-"));
+		const homeDir = mkdtempSync(join(tmpdir(), "hermes-resume-home-"));
+		const nativeId = "20260627_160000_abcd12";
+		const acpClientFactory = createRecordingAcpClientFactory({
+			sessionId: nativeId,
+			onPrompt: (_content, emit) => {
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "ok" },
+				});
+			},
+		});
+		const adapter = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			homeDir,
+			acpClientFactory,
+		});
+		await adapter.init(INIT_CONFIG);
+
+		const generator = adapter.handle({
+			messageId: "msg_1",
+			content: "ping",
+			project: null,
+		});
+		while (true) {
+			const step = await generator.next();
+			if (step.done === true) break;
+		}
+		expect(adapter.getNativeId?.()).toBe(nativeId);
+
+		const persisted = JSON.parse(
+			await readFile(join(homeDir, ".hermes-adapter", "session.json"), "utf-8"),
+		) as { sessionId: string; initConfig: AdapterInitConfig };
+		expect(persisted.sessionId).toBe(nativeId);
+		expect(persisted.initConfig.instructions).toBe(INIT_CONFIG.instructions);
+
+		const resumed = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			homeDir,
+			acpClientFactory,
+		});
+		expect(await resumed.resume?.()).toBe(true);
+		expect(resumed.getNativeId?.()).toBe(nativeId);
+
+		const soul = await readFile(join(hermesDir, "SOUL.md"), "utf-8");
+		expect(soul).toBe(INIT_CONFIG.instructions);
+	});
+
+	it("uses ACP session/resume on handle after resume()", async () => {
+		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-resume-handle-"));
+		const homeDir = mkdtempSync(join(tmpdir(), "hermes-resume-home-"));
+		const nativeId = "20260627_170000_abcd12";
+		const acpClientFactory = createRecordingAcpClientFactory({
+			sessionId: nativeId,
+			onPrompt: (_content, emit) => {
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "ok" },
+				});
+			},
+		});
+		const first = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			homeDir,
+			acpClientFactory,
+		});
+		await first.init(INIT_CONFIG);
+		const firstGen = first.handle({
+			messageId: "msg_1",
+			content: "ping",
+			project: null,
+		});
+		while (true) {
+			const step = await firstGen.next();
+			if (step.done === true) break;
+		}
+
+		const second = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			homeDir,
+			acpClientFactory,
+		});
+		expect(await second.resume?.()).toBe(true);
+
+		const secondGen = second.handle({
+			messageId: "msg_2",
+			content: "pong",
+			project: null,
+		});
+		while (true) {
+			const step = await secondGen.next();
+			if (step.done === true) break;
+		}
+
+		expect(acpClientFactory.calls.map((call) => call.method)).toEqual([
+			"initialize",
+			"newSession",
+			"setMode",
+			"prompt",
+			"initialize",
+			"resumeSession",
+			"setMode",
+			"prompt",
+		]);
+		expect(acpClientFactory.calls[5]?.args[0]).toBe(nativeId);
+	});
 });
 
 describe("@sumeru/adapter-hermes — acp-client", () => {

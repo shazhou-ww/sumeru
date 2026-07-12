@@ -3,9 +3,10 @@
  * via Hermes ACP (`hermes acp --accept-hooks`) JSON-RPC over stdin/stdout.
  */
 
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type {
 	AdapterHandleYield,
 	AdapterImpl,
@@ -29,12 +30,18 @@ const DEFAULT_SEND_TIMEOUT_MS = 2 * 60 * 60_000;
 const ACP_INIT_TIMEOUT_MS = 30_000;
 const ACP_ARGS = ["acp", "--accept-hooks"] as const;
 
+type PersistedAdapterState = {
+	sessionId: string | null;
+	initConfig: AdapterInitConfig;
+};
+
 export function createHermesAdapter(
 	options: Partial<HermesAdapterOptions> = {},
 ): AdapterImpl {
 	const _profile = options.profile ?? "default";
 	const hermesBin = options.hermesBin ?? DEFAULT_HERMES_BIN;
 	const configuredHermesDir = options.hermesDir ?? null;
+	const configuredHomeDir = options.homeDir ?? null;
 	const sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
 
 	let initConfig: AdapterInitConfig | null = null;
@@ -53,6 +60,35 @@ export function createHermesAdapter(
 				clientInfo: { name: "sumeru-adapter", version: "0.1.0" },
 				spawnProcess: null,
 			}));
+
+	function resolveHomeDir(): string {
+		return configuredHomeDir ?? homedir();
+	}
+
+	function statePath(): string {
+		return join(resolveHomeDir(), ".hermes-adapter", "session.json");
+	}
+
+	function loadPersistedState(): PersistedAdapterState | null {
+		const path = statePath();
+		if (!existsSync(path)) return null;
+		try {
+			return JSON.parse(readFileSync(path, "utf-8")) as PersistedAdapterState;
+		} catch {
+			return null;
+		}
+	}
+
+	async function persistState(state: PersistedAdapterState): Promise<void> {
+		const path = statePath();
+		mkdirSync(dirname(path), { recursive: true });
+		await writeFile(path, JSON.stringify(state), "utf-8");
+	}
+
+	async function persistCurrentState(): Promise<void> {
+		if (initConfig === null) return;
+		await persistState({ sessionId, initConfig });
+	}
 
 	function resolveHermesDir(): string {
 		if (configuredHermesDir !== null) return configuredHermesDir;
@@ -96,6 +132,16 @@ export function createHermesAdapter(
 	async function init(config: AdapterInitConfig): Promise<void> {
 		initConfig = config;
 		await writeInitArtifacts(config);
+		await persistState({ sessionId: null, initConfig: config });
+	}
+
+	async function resume(): Promise<boolean> {
+		const state = loadPersistedState();
+		if (state === null) return false;
+		initConfig = state.initConfig;
+		sessionId = state.sessionId;
+		await writeInitArtifacts(state.initConfig);
+		return true;
 	}
 
 	async function ensureAcpClient(cwd: string): Promise<AcpClient> {
@@ -131,6 +177,7 @@ export function createHermesAdapter(
 				activeSessionId = targetSessionId;
 				sessionId = targetSessionId;
 				await client.setMode(targetSessionId, "dont_ask");
+				await persistCurrentState();
 			}
 			return;
 		}
@@ -143,6 +190,7 @@ export function createHermesAdapter(
 			activeSessionId = result.sessionId;
 			sessionId = result.sessionId;
 			await client.setMode(result.sessionId, "dont_ask");
+			await persistCurrentState();
 		}
 	}
 
@@ -267,6 +315,7 @@ export function createHermesAdapter(
 		init,
 		handle,
 		getNativeId: () => sessionId,
+		resume,
 	};
 }
 

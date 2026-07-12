@@ -2,6 +2,7 @@ export type HermesAdapterOptions = {
 	profile: string;
 	hermesBin: string | null;
 	hermesDir: string | null;
+	homeDir: string | null;
 	acpClientFactory: AcpClientFactory | null;
 	sendTimeoutMs: number | null;
 };
