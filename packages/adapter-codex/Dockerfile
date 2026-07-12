@@ -5,16 +5,18 @@
 FROM sumeru/base:dev
 RUN npm install -g @openai/codex \
 	&& mkdir -p /home/node/.codex && chown node:node /home/node/.codex
-COPY --chown=node:node packages/core/dist /opt/sumeru/core/dist
-COPY --chown=node:node packages/core/package.json /opt/sumeru/core/package.json
-COPY --chown=node:node packages/adapter-core/dist /opt/sumeru/adapter-core/dist
-COPY --chown=node:node packages/adapter-core/package.json /opt/sumeru/adapter-core/package.json
-COPY --chown=node:node packages/adapter-codex/dist /opt/sumeru/adapter-codex/dist
-COPY --chown=node:node packages/adapter-codex/package.json /opt/sumeru/adapter-codex/package.json
-RUN cd /opt/sumeru && mkdir -p node_modules/@sumeru \
-	&& ln -s /opt/sumeru/core node_modules/@sumeru/core \
-	&& ln -s /opt/sumeru/adapter-core node_modules/@sumeru/adapter-core \
-	&& ln -s /opt/sumeru/adapter-codex node_modules/@sumeru/adapter-codex
+COPY --chown=node:node packages/core/dist /home/node/adapter/core/dist
+COPY --chown=node:node packages/core/package.json /home/node/adapter/core/package.json
+COPY --chown=node:node packages/adapter-core/dist /home/node/adapter/adapter-core/dist
+COPY --chown=node:node packages/adapter-core/package.json /home/node/adapter/adapter-core/package.json
+COPY --chown=node:node packages/adapter-codex/dist /home/node/adapter/adapter-codex/dist
+COPY --chown=node:node packages/adapter-codex/package.json /home/node/adapter/adapter-codex/package.json
+RUN cd /home/node/adapter && mkdir -p node_modules/@sumeru \
+	&& ln -s /home/node/adapter/core node_modules/@sumeru/core \
+	&& ln -s /home/node/adapter/adapter-core node_modules/@sumeru/adapter-core \
+	&& ln -s /home/node/adapter/adapter-codex node_modules/@sumeru/adapter-codex \
+	&& ln -s /home/node/adapter/adapter-codex/dist/main.js /home/node/.local/bin/sumeru-adapter \
+	&& chmod +x /home/node/adapter/adapter-codex/dist/main.js
 USER node
 WORKDIR /workspace
 LABEL sumeru.harness="codex"

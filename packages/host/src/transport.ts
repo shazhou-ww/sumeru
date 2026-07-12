@@ -3,7 +3,7 @@ import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
 import type { Transport, TransportExecSession } from "./types.js";
 
-const ADAPTER_BASE = "/opt/sumeru";
+const CONTAINER_WORKDIR = "/workspace";
 
 function runCommand(
 	args: Array<string>,
@@ -223,7 +223,7 @@ export function createDockerTransport(
 		},
 
 		exec({ containerId, command, env }) {
-			const args = [dockerBin, "exec", "-i", "-w", ADAPTER_BASE];
+			const args = [dockerBin, "exec", "-i", "-w", CONTAINER_WORKDIR];
 			if (env !== null) {
 				for (const [key, value] of Object.entries(env)) {
 					args.push("-e", `${key}=${value}`);
@@ -260,7 +260,7 @@ export function createDockerTransport(
 		},
 
 		async runOnce({ containerId, command, env }) {
-			const args = [dockerBin, "exec", "-i", "-w", ADAPTER_BASE];
+			const args = [dockerBin, "exec", "-i", "-w", CONTAINER_WORKDIR];
 			if (env !== null) {
 				for (const [key, value] of Object.entries(env)) {
 					args.push("-e", `${key}=${value}`);
@@ -309,9 +309,8 @@ export function createDockerTransport(
 	};
 }
 
-export function defaultAdapterCommand(adapter: string): Array<string> {
-	const pkg = adapter === "sarsapa" ? "sarsapa" : `adapter-${adapter}`;
-	return ["node", `${ADAPTER_BASE}/${pkg}/dist/main.js`];
+export function defaultAdapterCommand(_adapter: string): Array<string> {
+	return ["sumeru-adapter"];
 }
 
 export type MockTransportCall =

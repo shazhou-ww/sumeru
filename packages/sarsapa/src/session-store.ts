@@ -5,12 +5,17 @@ import {
 	readFileSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import type { AdapterInitConfig } from "@sumeru/adapter-core";
 import type { ModelConfig } from "@sumeru/core";
 import type { LlmMessage } from "./types.js";
 
-export const DEFAULT_SESSION_PATH = "/workspace/.sarsapa/session.jsonl";
+export const DEFAULT_SESSION_PATH = join(
+	homedir(),
+	".sarsapa",
+	"session.jsonl",
+);
 
 type InitLine = {
 	type: "init";

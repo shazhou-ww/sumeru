@@ -108,18 +108,12 @@ describe("createDockerTransport", () => {
 });
 
 describe("defaultAdapterCommand", () => {
-	it("returns per-adapter entrypoint", () => {
-		expect(defaultAdapterCommand("codex")).toEqual([
-			"node",
-			"/opt/sumeru/adapter-codex/dist/main.js",
-		]);
+	it("returns unified sumeru-adapter entrypoint", () => {
+		expect(defaultAdapterCommand("codex")).toEqual(["sumeru-adapter"]);
 	});
 
-	it("returns hermes adapter entrypoint", () => {
-		expect(defaultAdapterCommand("hermes")).toEqual([
-			"node",
-			"/opt/sumeru/adapter-hermes/dist/main.js",
-		]);
+	it("returns same entrypoint for all adapters", () => {
+		expect(defaultAdapterCommand("hermes")).toEqual(["sumeru-adapter"]);
 	});
 });
 
