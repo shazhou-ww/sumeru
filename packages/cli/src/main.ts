@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import type { CliContext } from "@ocas/cli-kit";
 import { createCLI } from "@ocas/cli-kit";
+import type { Turn } from "@sumeru/core";
 import { z } from "zod";
 import { ApiClientError, createApiClient } from "./api-client.js";
 import { parseEnvFlagsFromArgv } from "./env-flags.js";
@@ -46,6 +47,30 @@ function handleClientError(err: unknown, ctx: CliContext): never {
 		ctx.error("Could not connect to server");
 	}
 	ctx.error(msg);
+}
+
+const TURN_LOG_PREVIEW_MAX = 120;
+
+function previewText(text: string, maxLen = TURN_LOG_PREVIEW_MAX): string {
+	const oneLine = text.replace(/\s+/g, " ").trim();
+	if (oneLine.length <= maxLen) return oneLine;
+	return `${oneLine.slice(0, maxLen - 3)}...`;
+}
+
+function formatTurnLogLine(turn: Turn): string {
+	if (turn.role === "tool") {
+		return `[tool] ${turn.name}: ${previewText(turn.result)}`;
+	}
+	return `[${turn.role}] ${previewText(turn.content)}`;
+}
+
+function isStreamCloseError(err: unknown): boolean {
+	const msg = err instanceof Error ? err.message : String(err);
+	if (msg === "terminated" || msg.includes("ECONNRESET")) return true;
+	const cause = err instanceof Error ? err.cause : undefined;
+	if (cause instanceof Error && cause.message.includes("ECONNRESET"))
+		return true;
+	return false;
 }
 
 function parseContextWindow(value: string): number {
@@ -1079,6 +1104,18 @@ cli
 		const follow = Boolean(flags.follow);
 		const client = await getClient();
 
+		if (!follow) {
+			try {
+				const envelope = await client.getTurns(args.id);
+				for (const turn of envelope.value) {
+					ctx.stdout(`${formatTurnLogLine(turn)}\n`);
+				}
+				return undefined;
+			} catch (err) {
+				handleClientError(err, ctx);
+			}
+		}
+
 		let gotExit = false;
 		const printEvent = (event: string, data: string): void => {
 			if (event === "heartbeat") return;
@@ -1090,13 +1127,15 @@ cli
 		};
 
 		try {
-			do {
+			while (!gotExit) {
 				gotExit = false;
 				await client.streamEvents(args.id, printEvent);
-				if (gotExit || !follow) break;
-			} while (follow);
+			}
 			return undefined;
 		} catch (err) {
+			if (gotExit && isStreamCloseError(err)) {
+				return undefined;
+			}
 			handleClientError(err, ctx);
 		}
 	});
