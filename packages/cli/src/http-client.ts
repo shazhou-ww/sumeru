@@ -203,9 +203,20 @@ export type HostClient = {
 	): Promise<Envelope<HistoryValue>>;
 	getTurns(
 		id: string,
-		options?: { after?: number; system?: boolean },
+		options?: { after?: number; before?: string; system?: boolean },
 	): Promise<Envelope<Array<Turn>>>;
+	watchTurns(id: string): Promise<WatchTurnsResult>;
 	exportSession(id: string): Promise<ReadableStream<Uint8Array>>;
+};
+
+export type WatchTurnsEvent = {
+	event: string;
+	data: string;
+};
+
+export type WatchTurnsResult = {
+	connectedAt: string;
+	stream: AsyncIterable<WatchTurnsEvent>;
 };
 
 export function createHostClient(options: HostClientOptions): HostClient {
@@ -604,6 +615,9 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			if (turnsOptions?.after !== undefined) {
 				params.set("after", String(turnsOptions.after));
 			}
+			if (turnsOptions?.before !== undefined) {
+				params.set("before", turnsOptions.before);
+			}
 			if (turnsOptions?.system === true) {
 				params.set("system", "true");
 			}
@@ -611,6 +625,104 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			const path = `/sessions/${encodeURIComponent(id)}/turns${qs ? `?${qs}` : ""}`;
 			const { json } = await requestJson<Array<Turn>>("GET", path, null);
 			return json;
+		},
+		async watchTurns(id) {
+			const response = await fetch(
+				`${baseUrl}/sessions/${encodeURIComponent(id)}/turns/watch`,
+				{ headers: { Accept: "text/event-stream" } },
+			);
+			if (!response.ok) {
+				const text = await response.text();
+				if (text.length > 0) {
+					const json = JSON.parse(text) as Envelope<{
+						error: string;
+						message: string;
+					}>;
+					throw new HostClientError(
+						response.status,
+						json.value.error,
+						json.value.message,
+					);
+				}
+				throw new HostClientError(
+					response.status,
+					"request_failed",
+					`HTTP ${String(response.status)}`,
+				);
+			}
+			const body = response.body;
+			if (body === null) {
+				throw new HostClientError(500, "no_body", "SSE response has no body");
+			}
+			const reader = body.getReader();
+			const decoder = new TextDecoder();
+			let buffer = "";
+			let connectedAt = "";
+			const pending: Array<WatchTurnsEvent> = [];
+			let streamDone = false;
+			let notify: (() => void) | null = null;
+
+			const wake = (): void => {
+				notify?.();
+				notify = null;
+			};
+
+			const waitForEvent = (): Promise<void> =>
+				new Promise((resolve) => {
+					notify = resolve;
+				});
+
+			const onSseEvent = (event: string, data: string): void => {
+				if (event === "connected" && connectedAt.length === 0) {
+					const parsed = JSON.parse(data) as { ts: string };
+					connectedAt = parsed.ts;
+					wake();
+					return;
+				}
+				pending.push({ event, data });
+				wake();
+			};
+
+			const pump = async (): Promise<void> => {
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) {
+						streamDone = true;
+						wake();
+						return;
+					}
+					buffer += decoder.decode(value, { stream: true });
+					buffer = consumeSseBuffer(buffer, onSseEvent);
+				}
+			};
+
+			void pump();
+
+			while (connectedAt.length === 0 && !streamDone) {
+				await waitForEvent();
+			}
+			if (connectedAt.length === 0) {
+				throw new HostClientError(
+					500,
+					"no_connected",
+					"SSE stream ended before connected event",
+				);
+			}
+
+			const stream = (async function* (): AsyncGenerator<WatchTurnsEvent> {
+				while (true) {
+					while (pending.length > 0) {
+						const evt = pending.shift();
+						if (evt !== undefined) {
+							yield evt;
+						}
+					}
+					if (streamDone) return;
+					await waitForEvent();
+				}
+			})();
+
+			return { connectedAt, stream };
 		},
 		async exportSession(id) {
 			const response = await fetch(

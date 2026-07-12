@@ -17,3 +17,4 @@ export {
 export { createSessionsHandler } from "./sessions.js";
 export { createSkillsHandler } from "./skills.js";
 export { createTurnsHandler } from "./turns.js";
+export { createWatchHandler } from "./watch.js";

@@ -54,7 +54,28 @@ export function createTurnsHandler(manager: SessionManager) {
 
 		const includeSystem = query.get("system") === "true";
 
-		const turns = manager.getSessionTurns(id, after, { includeSystem });
+		const beforeRaw = query.get("before");
+		let beforeMs: number | null = null;
+		if (beforeRaw !== null && beforeRaw.length > 0) {
+			const parsed = Date.parse(beforeRaw);
+			if (!Number.isFinite(parsed)) {
+				writeJson(
+					res,
+					400,
+					errorEnvelope(
+						"invalid_request",
+						`Query parameter 'before' must be an ISO 8601 timestamp (got '${beforeRaw}')`,
+					),
+				);
+				return;
+			}
+			beforeMs = parsed;
+		}
+
+		let turns = manager.getSessionTurns(id, after, { includeSystem });
+		if (beforeMs !== null) {
+			turns = turns.filter((turn) => Date.parse(turn.timestamp) < beforeMs);
+		}
 		writeJson(res, 200, turnListEnvelope(turns));
 	};
 }

@@ -53,6 +53,16 @@ describe("router — host routes", () => {
 		}
 	});
 
+	it("matches GET /sessions/:id/turns/watch", () => {
+		const router = createTestRouter();
+		router.route("GET", "/sessions/:id/turns/watch", () => {});
+		const result = router.match("GET", "/sessions/ses_01J/turns/watch");
+		expect(result.type).toBe("match");
+		if (result.type === "match") {
+			expect(result.params).toEqual({ id: "ses_01J" });
+		}
+	});
+
 	it("matches GET /sessions/:id/turns", () => {
 		const router = createTestRouter();
 		router.route("GET", "/sessions/:id/turns", () => {});

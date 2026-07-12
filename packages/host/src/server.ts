@@ -17,6 +17,7 @@ import {
 	createSessionsHandler,
 	createSkillsHandler,
 	createTurnsHandler,
+	createWatchHandler,
 	writeMethodNotAllowed,
 	writeRouteNotFound,
 } from "./handlers/index.js";
@@ -106,6 +107,11 @@ export function createHostHandler(input: {
 		)
 		.route("GET", "/sessions/:id/events", createEventsHandler(input.manager))
 		.route("GET", "/sessions/:id/history", createHistoryHandler(input.manager))
+		.route(
+			"GET",
+			"/sessions/:id/turns/watch",
+			createWatchHandler(input.manager),
+		)
 		.route("GET", "/sessions/:id/turns", createTurnsHandler(input.manager))
 		.route(
 			"POST",

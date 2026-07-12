@@ -118,6 +118,54 @@ describe("createTurnsHandler", () => {
 		});
 	});
 
+	it("filters turns with ?before=<iso timestamp>", () => {
+		const manager = createMockManager({
+			session: minimalSession("ses_abc"),
+			turns: sampleTurns,
+		});
+		const handler = createTurnsHandler(manager);
+		const res = createMockResponse();
+		handler(
+			createMockRequest(),
+			res,
+			{ id: "ses_abc" },
+			"/sessions/ses_abc/turns",
+			"before=2026-06-29T00:00:01.000Z",
+		);
+
+		expect(res.statusCode).toBe(200);
+		expect(res.body).toEqual({
+			type: "@sumeru/turn-list",
+			value: [sampleTurns[0]],
+		});
+	});
+
+	it("returns 400 for invalid before", () => {
+		const manager = createMockManager({
+			session: minimalSession("ses_abc"),
+			turns: sampleTurns,
+		});
+		const handler = createTurnsHandler(manager);
+		const res = createMockResponse();
+		handler(
+			createMockRequest(),
+			res,
+			{ id: "ses_abc" },
+			"/sessions/ses_abc/turns",
+			"before=not-a-date",
+		);
+
+		expect(res.statusCode).toBe(400);
+		expect(res.body).toEqual({
+			type: "@sumeru/error",
+			value: {
+				error: "invalid_request",
+				message:
+					"Query parameter 'before' must be an ISO 8601 timestamp (got 'not-a-date')",
+			},
+		});
+	});
+
 	it("returns 400 for invalid after", () => {
 		const manager = createMockManager({
 			session: minimalSession("ses_abc"),

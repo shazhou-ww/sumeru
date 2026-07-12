@@ -64,6 +64,13 @@ function formatTurnLogLine(turn: Turn): string {
 	return `[${turn.role}] ${previewText(turn.content)}`;
 }
 
+function formatWatchTurnLine(turn: Turn): string {
+	if (turn.role === "tool") {
+		return `[tool] ${turn.name}: ${turn.result}`;
+	}
+	return `[${turn.role}] ${turn.content}`;
+}
+
 function isStreamCloseError(err: unknown): boolean {
 	const msg = err instanceof Error ? err.message : String(err);
 	if (msg === "terminated" || msg.includes("ECONNRESET")) return true;
@@ -1146,6 +1153,11 @@ cli
 	.describe("List turns for a session")
 	.arg("id", "Session ID")
 	.flag("after", { type: "number", description: "Show turns after this ID" })
+	.flag("watch", {
+		type: "boolean",
+		alias: "w",
+		description: "Watch turns (subscribe + history pull)",
+	})
 	.flag("system", { type: "boolean", description: "Include system prompt" })
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
@@ -1175,11 +1187,42 @@ cli
 		},
 	})
 	.action(async (args, flags, ctx) => {
+		const watch = Boolean(flags.watch);
+		const system = Boolean(flags.system);
+		const client = await getClient();
+
+		if (watch) {
+			try {
+				const { connectedAt, stream } = await client.watchTurns(args.id);
+				const history = await client.getTurns(args.id, {
+					before: connectedAt,
+					system,
+				});
+				for (const turn of history.value) {
+					ctx.stdout(`${formatWatchTurnLine(turn)}\n`);
+				}
+				ctx.stdout("---\n");
+				for await (const { event, data } of stream) {
+					if (event === "turn") {
+						const turn = JSON.parse(data) as Turn;
+						ctx.stdout(`${formatWatchTurnLine(turn)}\n`);
+					} else if (event === "exit") {
+						const exit = JSON.parse(data) as {
+							type: string;
+							message: string;
+						};
+						ctx.stdout(`[exit] ${exit.type}: ${exit.message}\n`);
+					}
+				}
+				return undefined;
+			} catch (err) {
+				handleClientError(err, ctx);
+			}
+		}
+
 		const limit = (flags.limit as number | undefined) ?? 50;
 		const offset = (flags.offset as number | undefined) ?? 0;
 		const after = flags.after !== undefined ? Number(flags.after) : undefined;
-		const system = Boolean(flags.system);
-		const client = await getClient();
 		try {
 			const envelope = await client.getTurns(args.id, { after, system });
 			const all = envelope.value;
