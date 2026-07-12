@@ -129,6 +129,25 @@ export async function runAdapterEntry(
 		wake();
 	});
 
+	if (impl.resume !== undefined) {
+		try {
+			const resumed = await impl.resume();
+			if (resumed) {
+				initialized = true;
+				write({ type: "ready", value: {} });
+			}
+		} catch (err) {
+			write({
+				type: "error",
+				value: { code: "resume_error", message: errorMessage(err) },
+			});
+			disposeSigterm();
+			stdin.removeListener("data", onData);
+			stdin.removeListener("end", onEnd);
+			return;
+		}
+	}
+
 	const handleMessage = async (
 		message: AdapterInboxMessage,
 	): Promise<"exit" | undefined> => {

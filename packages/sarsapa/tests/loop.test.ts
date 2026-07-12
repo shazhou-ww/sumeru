@@ -1,7 +1,17 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AdapterInboxMessage, WireToolCall } from "@sumeru/adapter-core";
 import { describe, expect, it } from "vitest";
 import { createSarsapaAdapter } from "../src/agent.js";
-import type { Tool } from "../src/types.js";
+import type { SarsapaOptions, Tool } from "../src/types.js";
+
+function testAdapterOptions(
+	overrides: Partial<SarsapaOptions> = {},
+): Partial<SarsapaOptions> {
+	const dir = mkdtempSync(join(tmpdir(), "sarsapa-loop-"));
+	return { sessionPath: join(dir, "session.jsonl"), ...overrides };
+}
 
 function mockFetch(): typeof fetch {
 	let call = 0;
@@ -42,10 +52,12 @@ function mockFetch(): typeof fetch {
 
 describe("sarsapa loop", () => {
 	it("runs a tool call then finishes with done", async () => {
-		const adapter = createSarsapaAdapter({
-			fetchImpl: mockFetch(),
-			maxIterations: 5,
-		});
+		const adapter = createSarsapaAdapter(
+			testAdapterOptions({
+				fetchImpl: mockFetch(),
+				maxIterations: 5,
+			}),
+		);
 		await adapter.init({
 			instructions: "you are a test agent",
 			skills: [],
@@ -159,11 +171,13 @@ async function collectTurns(adapter: ReturnType<typeof createSarsapaAdapter>) {
 describe("sarsapa loop — error resilience", () => {
 	it("unknown tool: returns error output without crashing", async () => {
 		// LLM calls "nonexistent_tool" but no such tool is registered
-		const adapter = createSarsapaAdapter({
-			fetchImpl: mockFetchWithToolCall("nonexistent_tool", '{"x":1}'),
-			maxIterations: 5,
-			tools: [], // no tools registered
-		});
+		const adapter = createSarsapaAdapter(
+			testAdapterOptions({
+				fetchImpl: mockFetchWithToolCall("nonexistent_tool", '{"x":1}'),
+				maxIterations: 5,
+				tools: [], // no tools registered
+			}),
+		);
 		await adapter.init(INIT_CONFIG);
 		const { turns, done } = await collectTurns(adapter);
 
@@ -187,11 +201,13 @@ describe("sarsapa loop — error resilience", () => {
 				exitCode: 0,
 			}),
 		};
-		const adapter = createSarsapaAdapter({
-			fetchImpl: mockFetchWithToolCall("dummy", "NOT_JSON{{{"),
-			maxIterations: 5,
-			tools: [dummyTool],
-		});
+		const adapter = createSarsapaAdapter(
+			testAdapterOptions({
+				fetchImpl: mockFetchWithToolCall("dummy", "NOT_JSON{{{"),
+				maxIterations: 5,
+				tools: [dummyTool],
+			}),
+		);
 		await adapter.init(INIT_CONFIG);
 		const { turns, done } = await collectTurns(adapter);
 
@@ -213,11 +229,13 @@ describe("sarsapa loop — error resilience", () => {
 				throw new Error("kaboom");
 			},
 		};
-		const adapter = createSarsapaAdapter({
-			fetchImpl: mockFetchWithToolCall("exploder", "{}"),
-			maxIterations: 5,
-			tools: [throwingTool],
-		});
+		const adapter = createSarsapaAdapter(
+			testAdapterOptions({
+				fetchImpl: mockFetchWithToolCall("exploder", "{}"),
+				maxIterations: 5,
+				tools: [throwingTool],
+			}),
+		);
 		await adapter.init(INIT_CONFIG);
 		const { turns, done } = await collectTurns(adapter);
 
@@ -251,7 +269,9 @@ describe("sarsapa multi-turn", () => {
 			);
 		}) as typeof fetch;
 
-		const adapter = createSarsapaAdapter({ fetchImpl: fakeFetch });
+		const adapter = createSarsapaAdapter(
+			testAdapterOptions({ fetchImpl: fakeFetch }),
+		);
 		await adapter.init({
 			instructions: "you are helpful",
 			skills: [],
@@ -310,7 +330,9 @@ describe("sarsapa skill injection", () => {
 			);
 		}) as typeof fetch;
 
-		const adapter = createSarsapaAdapter({ fetchImpl: fakeFetch });
+		const adapter = createSarsapaAdapter(
+			testAdapterOptions({ fetchImpl: fakeFetch }),
+		);
 		await adapter.init({
 			instructions: "base instructions",
 			skills: [

@@ -212,6 +212,7 @@ describe("sqlite-store", () => {
 			containerName: "container-ses-01abcdef",
 			createdAt: "2026-06-27T00:00:00.000Z",
 			exit: null,
+			initVersion: null,
 		});
 
 		const listed = store.listPersistedSessions();

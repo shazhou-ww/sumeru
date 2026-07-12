@@ -43,6 +43,7 @@ export type SarsapaOptions = {
 	maxIterations: number | null;
 	fetchImpl: typeof fetch | null;
 	tools: Array<Tool> | null;
+	sessionPath: string | null;
 };
 
 export const DEFAULT_MAX_ITERATIONS = 40;

@@ -10,7 +10,7 @@ import type {
 	Skill,
 } from "@sumeru/core";
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 const MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS providers (
@@ -99,6 +99,10 @@ DROP TABLE models;
 ALTER TABLE models_v6 RENAME TO models;
 `;
 
+const MIGRATION_V7 = `
+ALTER TABLE sessions ADD COLUMN initVersion TEXT;
+`;
+
 export class ProviderInUseError extends Error {
 	readonly providerName: string;
 	readonly modelCount: number;
@@ -176,6 +180,7 @@ export type PersistSessionInput = {
 	containerName: string | null;
 	createdAt: string;
 	exit: ExitSignal | null;
+	initVersion: string | null;
 };
 
 export type PersistedSession = PersistSessionInput;
@@ -252,6 +257,7 @@ type SessionRow = {
 	containerName: string | null;
 	createdAt: string;
 	exit: string | null;
+	initVersion: string | null;
 };
 
 export function maskApiKey(key: string | null): string | null {
@@ -298,6 +304,9 @@ CREATE TABLE IF NOT EXISTS schema_version (
 		}
 		if (current < 6) {
 			db.exec(MIGRATION_V6);
+		}
+		if (current < 7) {
+			db.exec(MIGRATION_V7);
 		}
 		if (row === undefined) {
 			db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
@@ -595,8 +604,8 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 		persistSession(session) {
 			db.prepare(
 				`INSERT OR REPLACE INTO sessions
-         (id, prototype, project, task, model, status, image, containerName, createdAt, exit)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, prototype, project, task, model, status, image, containerName, createdAt, exit, initVersion)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			).run(
 				session.id,
 				session.prototype,
@@ -608,6 +617,7 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 				session.containerName,
 				session.createdAt,
 				session.exit === null ? null : JSON.stringify(session.exit),
+				session.initVersion,
 			);
 		},
 
@@ -747,5 +757,6 @@ function rowToPersistedSession(row: SessionRow): PersistedSession {
 		containerName: row.containerName,
 		createdAt: row.createdAt,
 		exit: parseExitSignal(row.exit),
+		initVersion: row.initVersion ?? null,
 	};
 }

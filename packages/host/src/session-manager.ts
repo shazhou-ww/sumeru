@@ -147,7 +147,7 @@ export function createSessionManager(input: {
 				projectName: projectNameFromSessionId(row.id),
 				composePath: prototype.composePath,
 				imageTag: prototype.imageTag,
-				initVersion: null,
+				initVersion: row.initVersion,
 				projectPath,
 				sessionEnv: {},
 			};
@@ -689,11 +689,15 @@ export function createSessionManager(input: {
 		const activeSession = session;
 		resetRuntimeStats(runtime);
 		runtime.readTask = readAdapterOutput(id, session.lines, activeSession);
-		runtime.session.stdin.write(
-			`${JSON.stringify({ type: "init", value: runtime.initConfig })}\n`,
-		);
+		const sendInit = record.initVersion === null || versionStale;
+		if (sendInit) {
+			runtime.session.stdin.write(
+				`${JSON.stringify({ type: "init", value: runtime.initConfig })}\n`,
+			);
+		}
 		await waitForReady(id);
 		record.initVersion = currentHash;
+		persistManagedSession(record);
 	}
 
 	async function invalidateAdapterSession(
@@ -1030,6 +1034,7 @@ function toPersistSessionInput(record: ManagedSession): PersistSessionInput {
 		containerName: record.containerId,
 		createdAt: record.createdAt,
 		exit: record.exit,
+		initVersion: record.initVersion,
 	};
 }
 

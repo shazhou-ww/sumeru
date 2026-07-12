@@ -160,6 +160,24 @@ export async function runSessionLoop(
 		reader.wake();
 	});
 
+	if (impl.resume !== undefined) {
+		try {
+			const resumed = await impl.resume();
+			if (resumed) {
+				initialized = true;
+				write({ type: "ready", value: {} });
+			}
+		} catch (err) {
+			write({
+				type: "error",
+				value: { code: "resume_error", message: errorMessage(err) },
+			});
+			disposeSigterm();
+			reader.dispose();
+			return;
+		}
+	}
+
 	const handleMessage = async (
 		message: AdapterInboxMessage,
 	): Promise<"exit" | undefined> => {

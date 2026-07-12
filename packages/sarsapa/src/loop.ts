@@ -8,7 +8,7 @@ import type { Conversation } from "./context.js";
 import { pushAssistant, pushToolResult, toMessages } from "./context.js";
 import { chat } from "./llm/client.js";
 import type { LlmRequest, ToolSchema } from "./llm/types.js";
-import type { LlmToolCall, Tool, ToolContext } from "./types.js";
+import type { LlmMessage, LlmToolCall, Tool, ToolContext } from "./types.js";
 
 export type LoopOptions = {
 	model: string;
@@ -20,6 +20,7 @@ export type LoopOptions = {
 	ctx: ToolContext;
 	fetchImpl: typeof fetch | null;
 	maxIterations: number;
+	persistMessage: ((message: LlmMessage) => void) | null;
 };
 
 function nowIso(): string {
@@ -114,6 +115,9 @@ export async function* runLoop(
 		if (res.toolCalls === null) {
 			// Push final assistant message to conversation for multi-turn history.
 			pushAssistant(conversation, res.content, null);
+			opts.persistMessage?.(
+				conversation.turns[conversation.turns.length - 1] as LlmMessage,
+			);
 			const turn: TurnValue = {
 				index,
 				role: "assistant",
@@ -132,6 +136,9 @@ export async function* runLoop(
 
 		// assistant message (with tool_calls) must precede tool results
 		pushAssistant(conversation, res.content, res.toolCalls);
+		opts.persistMessage?.(
+			conversation.turns[conversation.turns.length - 1] as LlmMessage,
+		);
 
 		// Tool calls issued in one turn are independent — execute them in
 		// parallel. The LLM decides whether to batch; the runtime should not
@@ -141,6 +148,9 @@ export async function* runLoop(
 		);
 		for (const [i, call] of res.toolCalls.entries()) {
 			pushToolResult(conversation, call.id, results[i].output ?? "");
+			opts.persistMessage?.(
+				conversation.turns[conversation.turns.length - 1] as LlmMessage,
+			);
 		}
 		const executed: Array<WireToolCall> = results;
 

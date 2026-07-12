@@ -56,6 +56,8 @@ export type AdapterImpl = {
 	handle(
 		message: AdapterInboxMessage,
 	): AsyncGenerator<AdapterHandleYield, DoneValue>;
+	// Optional: restore persisted state before the init handshake (adapter restart).
+	resume?: () => boolean | Promise<boolean>;
 	// Optional: expose the agent-native session id for timeout suspend + resume.
 	getNativeId?: () => string | null;
 };

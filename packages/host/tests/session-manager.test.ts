@@ -106,10 +106,17 @@ function createInteractiveTransport(): {
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();
 			const instanceKey = containerId.replace("container-", "");
+			const emitReady = (): void => {
+				stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
+			};
+			// Simulate adapter resume(): auto-ready without init for restarted sessions.
+			queueMicrotask(() => {
+				emitReady();
+			});
 			stdin.on("data", (chunk: Buffer | string) => {
 				const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
 				if (text.includes('"init"')) {
-					stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
+					emitReady();
 				}
 				if (text.includes('"message"')) {
 					for (const line of text.split("\n")) {
@@ -601,12 +608,20 @@ describe("session-manager", () => {
 				execCount += 1;
 				const stdin = new PassThrough();
 				const stdout = new PassThrough();
+				const emitReady = (): void => {
+					stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
+				};
+				if (execCount > 1) {
+					queueMicrotask(() => {
+						emitReady();
+					});
+				}
 				stdin.on("data", (chunk: Buffer | string) => {
 					const text =
 						typeof chunk === "string" ? chunk : chunk.toString("utf8");
 					stdinWrites.push(text);
 					if (text.includes('"init"')) {
-						stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
+						emitReady();
 					}
 					if (execCount === 1 && text.includes('"message"')) {
 						stdout.write(
