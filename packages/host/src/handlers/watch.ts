@@ -29,6 +29,8 @@ export function createWatchHandler(manager: SessionManager) {
 		}
 
 		writeSseHeaders(res);
+		res.flushHeaders();
+		res.socket?.setNoDelay(true);
 		writeSseEvent(res, "connected", { ts: new Date().toISOString() });
 
 		let unsubscribe: (() => void) | null = null;

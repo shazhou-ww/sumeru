@@ -74,6 +74,10 @@
 | 5.1 | 全量查询 turns | `GET /sessions/:id/turns` | `sumeru session turns <id>` | [turns/list-turns-pagination/spec.md](./turns/list-turns-pagination/spec.md) |
 | 5.2 | 分页查询（after=N） | `GET /sessions/:id/turns?after=N` | `sumeru session turns <id> --after N` | [turns/list-turns-pagination/spec.md](./turns/list-turns-pagination/spec.md) |
 | 5.3 | Turn discriminated union | turn 结构区分 assistant / tool | — (数据结构定义，非独立操作) | [turns/turn-discriminated-union/spec.md](./turns/turn-discriminated-union/spec.md) |
+| 5.4 | 时间过滤（before=ISO） | `GET /sessions/:id/turns?before=<ISO>` | — (watch 内部使用) | [session/turns-watch/spec.md](./session/turns-watch/spec.md) |
+| 5.5 | Watch 实时监视 | `GET /sessions/:id/turns/watch` (SSE) | `sumeru session turns <id> -w` | [session/turns-watch/spec.md](./session/turns-watch/spec.md) |
+| 5.6 | Watch 输出格式一致性 | — | `turns` 与 `turns -w` 格式一致 | [session/turns-watch/tc-format-consistency.md](./session/turns-watch/tc-format-consistency.md) |
+| 5.7 | Turns 显示 tool calls | — | assistant turn 带 tool call 时显示 `→ name(args)` | [session/turns-watch/tc-format-consistency.md](./session/turns-watch/tc-format-consistency.md) |
 
 ---
 
@@ -144,6 +148,7 @@
 | 11.3 | 切换 model | `POST /sessions/:id/commands` `{"type":"model",...}` | `sumeru session model <id> <model-id>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
 | 11.4 | 清上下文 | `POST /sessions/:id/commands` `{"type":"reset",...}` | `sumeru session reset <id> [--persona]` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
 | 11.5 | snapshot（docker commit） | `POST /sessions/:id/commands` `{"type":"snapshot",...}` | `sumeru session snapshot <id> <name>` | [commands/session-commands/spec.md](./commands/session-commands/spec.md) |
+| 11.6 | snapshot 输出可读性 | — | `sumeru session snapshot` 多行格式 | [session/snapshot-output/tc-snapshot-readability.md](./session/snapshot-output/tc-snapshot-readability.md) |
 
 ---
 
@@ -151,7 +156,7 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 12.1 | 全文搜索 sessions | `GET /search?q=...` | `sumeru search <query> [--session <id>]` | [search/full-text-search/spec.md](./search/full-text-search/spec.md) |
+| 12.1 | ~~全文搜索 sessions~~ | ~~`GET /search?q=...`~~ | ~~`sumeru search <query>`~~ | 已移除 ([#256](https://git.shazhou.work/shazhou/sumeru/issues/256))，待以 `session search` 重新实现 |
 
 ---
 
@@ -177,6 +182,7 @@
 | 14.1 | unhandledRejection 守卫 | — (进程级) | — (内部行为) | [host/unhandled-rejection-guard.md](./host/unhandled-rejection-guard.md) |
 | 14.2 | markIdle 缺失 session 守卫 | — (内部) | — (内部行为) | [host/mark-idle-missing-session-guard.md](./host/mark-idle-missing-session-guard.md) |
 | 14.3 | Adapter 异常退出后 Host 存活 | — (端到端不变量) | — (内部行为) | [host/adapter-abnormal-exit-resilience.md](./host/adapter-abnormal-exit-resilience.md) |
+| 14.4 | Host 重启后 session 上下文恢复 | — (adapter JSONL 持久化) | `server restart` → `session send` 上下文不丢 | [session/resume-after-restart/spec.md](./session/resume-after-restart/spec.md) |
 
 ---
 
@@ -240,7 +246,7 @@
 | `sumeru prototype` | `list`, `remove` |
 | `sumeru persona` | `list`, `get`, `add`, `remove` |
 | `sumeru session` | `list`, `add`, `send`, `turns`, `logs`, `stop`, `remove`, `exec`, `reset`, `snapshot`, `model` |
-| `sumeru search` | *(top-level command)* |
+| ~~`sumeru search`~~ | *(已移除 [#256](https://git.shazhou.work/shazhou/sumeru/issues/256))* |
 
 ---
 
