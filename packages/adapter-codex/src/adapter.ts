@@ -3,8 +3,9 @@
  * by shelling out to `codex exec <prompt> --json`.
  */
 
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type {
 	AdapterImpl,
 	AdapterInboxMessage,
@@ -36,6 +37,11 @@ const API_KEY_PATTERNS: readonly RegExp[] = [
 	/api.?key/i,
 ];
 
+type PersistedAdapterState = {
+	sessionId: string | null;
+	initConfig: AdapterInitConfig;
+};
+
 export function createCodexAdapter(
 	options: Partial<CodexAdapterOptions> = {},
 ): AdapterImpl {
@@ -54,6 +60,26 @@ export function createCodexAdapter(
 
 	function resolveHomeDir(): string {
 		return configuredHomeDir ?? process.env.HOME ?? process.cwd();
+	}
+
+	function statePath(): string {
+		return join(resolveHomeDir(), ".codex-adapter", "session.json");
+	}
+
+	function loadPersistedState(): PersistedAdapterState | null {
+		const path = statePath();
+		if (!existsSync(path)) return null;
+		try {
+			return JSON.parse(readFileSync(path, "utf-8")) as PersistedAdapterState;
+		} catch {
+			return null;
+		}
+	}
+
+	async function persistState(state: PersistedAdapterState): Promise<void> {
+		const path = statePath();
+		mkdirSync(dirname(path), { recursive: true });
+		await writeFile(path, JSON.stringify(state), "utf-8");
 	}
 
 	function resolveModel(): string | null {
@@ -111,6 +137,16 @@ export function createCodexAdapter(
 	async function init(config: AdapterInitConfig): Promise<void> {
 		initConfig = config;
 		await writeInitArtifacts(config, resolveHomeDir());
+		await persistState({ sessionId: null, initConfig: config });
+	}
+
+	async function resume(): Promise<boolean> {
+		const state = loadPersistedState();
+		if (state === null) return false;
+		initConfig = state.initConfig;
+		sessionId = state.sessionId;
+		await writeInitArtifacts(state.initConfig, resolveHomeDir());
+		return true;
 	}
 
 	async function* handle(
@@ -167,7 +203,10 @@ export function createCodexAdapter(
 		try {
 			for await (const event of parseCodexJsonIncremental(streamResult.lines)) {
 				if (event.type === "meta") {
-					sessionId = event.sessionId;
+					if (event.sessionId !== sessionId) {
+						sessionId = event.sessionId;
+						await persistState({ sessionId, initConfig: config });
+					}
 				} else if (event.type === "turn") {
 					const turn = event.turn;
 					turn.index = nextTurnIndex++;
@@ -202,7 +241,7 @@ export function createCodexAdapter(
 		return doneValueFromResultLine(resultLine);
 	}
 
-	return { init, handle, getNativeId: () => sessionId };
+	return { init, handle, getNativeId: () => sessionId, resume };
 }
 
 function makeExitError(

@@ -8,6 +8,7 @@ describe("@sumeru/adapter-cursor-agent — package surface", () => {
 		expect(typeof adapter.init).toBe("function");
 		expect(typeof adapter.handle).toBe("function");
 		expect(typeof adapter.getNativeId).toBe("function");
+		expect(typeof adapter.resume).toBe("function");
 	});
 
 	it("getNativeId is null before init/handle", () => {
