@@ -276,6 +276,7 @@ export function createSessionManager(input: {
 			sessions.set(id, record);
 			persistManagedSession(record);
 			await ensureAdapterReady(id, record);
+			await resetAdapter(record);
 			if (body.task !== null) {
 				await sendTask(id, record, body.task as string);
 			} else {
@@ -472,17 +473,20 @@ export function createSessionManager(input: {
 			project: record.projectPath !== null ? "/workspace" : null,
 		};
 		await ensureAdapterReady(id, record);
-		const runtime = adapters.get(id);
-		if (runtime === null || runtime === undefined || runtime.session === null) {
-			throw new Error("adapter_unavailable");
+		if (record.containerId === null) {
+			throw new Error("session_not_running");
 		}
+		const runtime = ensureAdapterRuntime(id);
+		const session = input.transport.exec({
+			containerId: record.containerId,
+			command: adapterSubcommand(prototypeAdapter(record), "message"),
+			env: record.sessionEnv,
+		});
+		runtime.session = session;
 		resetRuntimeStats(runtime);
-		runtime.session.stdin.write(
-			`${JSON.stringify({
-				type: "message",
-				value: message,
-			})}\n`,
-		);
+		runtime.readTask = readAdapterOutput(id, session.lines, session);
+		session.stdin.write(`${JSON.stringify(message)}\n`);
+		session.stdin.end();
 		const userTimestamp = new Date().toISOString();
 		recorder.append(id, {
 			type: "turn",
@@ -496,15 +500,13 @@ export function createSessionManager(input: {
 				durationMs: null,
 			},
 		});
-		if (runtime !== undefined) {
-			appendTurnEvent(runtime, {
-				id: runtime.nextTurnEventId,
-				role: "user",
-				content: body.content,
-				timestamp: userTimestamp,
-			});
-			runtime.nextTurnEventId += 1;
-		}
+		appendTurnEvent(runtime, {
+			id: runtime.nextTurnEventId,
+			role: "user",
+			content: body.content,
+			timestamp: userTimestamp,
+		});
+		runtime.nextTurnEventId += 1;
 	}
 
 	async function sendTask(
@@ -650,54 +652,68 @@ export function createSessionManager(input: {
 			adapters.set(id, runtime);
 		}
 		const versionStale = record.initVersion !== currentHash;
-		if (
-			versionStale &&
-			runtime.session !== null &&
-			runtime.initialized &&
-			record.status === "running"
-		) {
-			await invalidateAdapterSession(runtime, record.prototype, record.model);
-		}
-		if (
-			runtime.session !== null &&
-			runtime.initialized &&
-			record.status === "running" &&
-			!versionStale
-		) {
+		if (runtime.initialized && !versionStale) {
 			return;
 		}
 		if (record.containerId === null) {
 			throw new Error("session_not_running");
 		}
-		if (versionStale) {
-			runtime.initConfig = await buildInitConfig(
-				record.prototype,
-				record.model,
-			);
+		runtime.initConfig = await buildInitConfig(record.prototype, record.model);
+		await sendAdapterConfig(record, runtime.initConfig);
+		runtime.initialized = true;
+		record.initVersion = currentHash;
+		persistManagedSession(record);
+	}
+
+	async function sendAdapterConfig(
+		record: ManagedSession,
+		config: AdapterInitConfig,
+	): Promise<void> {
+		if (record.containerId === null) {
+			throw new Error("session_not_running");
 		}
-		runtime.initialized = false;
+		await ensureContainerRunning(record.containerId);
+		const session = input.transport.exec({
+			containerId: record.containerId,
+			command: adapterSubcommand(prototypeAdapter(record), "config"),
+			env: record.sessionEnv,
+		});
+		session.stdin.write(`${JSON.stringify(config)}\n`);
+		session.stdin.end();
+		const { exitCode } = await session.waitForExit();
+		if (exitCode !== 0) {
+			throw new Error("adapter_config_failed");
+		}
+	}
+
+	async function resetAdapter(record: ManagedSession): Promise<void> {
+		if (record.containerId === null) {
+			throw new Error("session_not_running");
+		}
+		await ensureContainerRunning(record.containerId);
+		const result = await input.transport.runOnce({
+			containerId: record.containerId,
+			command: adapterSubcommand(prototypeAdapter(record), "reset"),
+			env: record.sessionEnv,
+		});
+		if (result.exitCode !== 0) {
+			throw new Error("adapter_reset_failed");
+		}
+	}
+
+	async function ensureContainerRunning(containerId: string): Promise<void> {
+		const status = await input.transport.inspectStatus(containerId);
+		if (status === "stopped") {
+			await input.transport.start(containerId);
+		}
+	}
+
+	function prototypeAdapter(record: ManagedSession): string {
 		const prototype = input.hostConfig.prototypes.get(record.prototype);
 		if (prototype === undefined) {
 			throw new Error("prototype_not_found");
 		}
-		const session = input.transport.exec({
-			containerId: record.containerId,
-			command: defaultAdapterCommand(prototype.prototype.adapter),
-			env: record.sessionEnv,
-		});
-		runtime.session = session;
-		const activeSession = session;
-		resetRuntimeStats(runtime);
-		runtime.readTask = readAdapterOutput(id, session.lines, activeSession);
-		const sendInit = record.initVersion === null || versionStale;
-		if (sendInit) {
-			runtime.session.stdin.write(
-				`${JSON.stringify({ type: "init", value: runtime.initConfig })}\n`,
-			);
-		}
-		await waitForReady(id);
-		record.initVersion = currentHash;
-		persistManagedSession(record);
+		return prototype.prototype.adapter;
 	}
 
 	async function invalidateAdapterSession(
@@ -705,22 +721,9 @@ export function createSessionManager(input: {
 		prototypeName: string,
 		model: ManagedSession["model"],
 	): Promise<void> {
-		if (runtime.session !== null) {
-			runtime.session.stdin.end();
-			runtime.session = null;
-		}
+		// Model/prototype changes are applied via `config` on the next message.
 		runtime.initialized = false;
 		runtime.initConfig = await buildInitConfig(prototypeName, model);
-	}
-
-	async function waitForReady(id: string): Promise<void> {
-		const deadline = Date.now() + 30_000;
-		while (Date.now() < deadline) {
-			const runtime = adapters.get(id);
-			if (runtime?.initialized === true) return;
-			await sleep(20);
-		}
-		throw new Error("adapter_ready_timeout");
 	}
 
 	async function readAdapterOutput(
@@ -732,21 +735,6 @@ export function createSessionManager(input: {
 		if (runtime === undefined) return;
 		try {
 			for await (const line of lines) {
-				let parsed: unknown;
-				try {
-					parsed = JSON.parse(line);
-				} catch {
-					continue;
-				}
-				if (
-					typeof parsed === "object" &&
-					parsed !== null &&
-					"type" in parsed &&
-					(parsed as { type: string }).type === "ready"
-				) {
-					runtime.initialized = true;
-					continue;
-				}
 				const frame = parseOutboxLine(line);
 				if (frame === null) continue;
 				if (
@@ -756,13 +744,7 @@ export function createSessionManager(input: {
 				) {
 					handleAdapterFrame(runtime, frame, id);
 					markIdle(id, frame);
-					// Keep session alive after "done" — the adapter process can
-					// handle multiple messages (multi-turn). Only tear down on
-					// suspend/error where the adapter signals it cannot continue.
-					if (frame.type !== "done") {
-						runtime.session = null;
-						runtime.initialized = false;
-					}
+					runtime.session = null;
 					continue;
 				}
 				handleAdapterFrame(runtime, frame, id);
@@ -777,7 +759,6 @@ export function createSessionManager(input: {
 		} finally {
 			if (runtime.session === activeSession) {
 				runtime.session = null;
-				runtime.initialized = false;
 			}
 		}
 	}
@@ -798,12 +779,13 @@ export function createSessionManager(input: {
 		sessions.set(id, updated);
 		releaseRunningSlot();
 
-		// Stop container to release CPU/memory (writable layer preserved).
-		// Skip container stop when the adapter session is still alive (done
-		// with session kept open for multi-turn) — the process needs the
-		// container running to serve the next message.
-		const sessionKept = runtime?.session !== null && runtime?.initialized;
-		if (updated.containerId !== null && !sessionKept) {
+		// Stop container after done/error to release CPU/memory (writable layer
+		// preserved). Keep it running on needsInput suspend so resume is fast.
+		const keepContainer =
+			frame.type === "suspend" &&
+			(frame.value.reason === "permissionRequest" ||
+				frame.value.reason === "inputRequired");
+		if (updated.containerId !== null && !keepContainer) {
 			input.transport.stop(updated.containerId).catch(() => {
 				// best-effort: container may already be gone
 			});
@@ -1127,10 +1109,11 @@ function placeholderModel(): AdapterInitConfig["model"] {
 	};
 }
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => {
-		setTimeout(resolve, ms);
-	});
+function adapterSubcommand(
+	adapterName: string,
+	subcommand: string,
+): Array<string> {
+	return defaultAdapterCommand(adapterName).concat([subcommand]);
 }
 
 function isDockerImageMissingError(err: unknown): boolean {

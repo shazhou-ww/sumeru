@@ -78,16 +78,16 @@ function createInitTrackingTransport(): {
 		async rmContainer() {},
 		async stop() {},
 		async start() {},
-		exec(_input) {
+		exec({ command }) {
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();
+			const subcommand = command[1] ?? null;
+			if (subcommand === "config") {
+				inits += 1;
+			}
 			stdin.on("data", (chunk: Buffer | string) => {
 				const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
-				if (text.includes('"init"')) {
-					inits += 1;
-					stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
-				}
-				if (text.includes('"message"')) {
+				if (subcommand === "message" || text.includes('"messageId"')) {
 					stdout.write(
 						`${JSON.stringify({
 							type: "done",

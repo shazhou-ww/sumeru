@@ -111,14 +111,24 @@ export async function runSessionCommand(input: {
 			};
 		}
 		case "reset": {
-			const value =
-				input.command.persona === null
-					? {}
-					: { persona: input.command.persona };
-			await emitSessionFrame(input.transport, input.hostConfig, record, {
-				type: "reset",
-				value,
+			if (record.containerId === null) {
+				throw new Error("session_not_running");
+			}
+			await ensureContainerRunning(input.transport, record.containerId);
+			const prototype = input.hostConfig.prototypes.get(record.prototype);
+			if (prototype === undefined) {
+				throw new Error("prototype_not_found");
+			}
+			const result = await input.transport.runOnce({
+				containerId: record.containerId,
+				command: defaultAdapterCommand(prototype.prototype.adapter).concat([
+					"reset",
+				]),
+				env: record.sessionEnv,
 			});
+			if (result.exitCode !== 0) {
+				throw new Error("reset_failed");
+			}
 			return { mode: "sync", value: { type: "reset" } };
 		}
 		case "snapshot": {
@@ -131,10 +141,6 @@ export async function runSessionCommand(input: {
 			) {
 				throw new Error("prototype_exists");
 			}
-			await emitSessionFrame(input.transport, input.hostConfig, record, {
-				type: "reset",
-				value: {},
-			});
 			const imageTag = `sumeru/${input.command.name}:dev`;
 			if (record.containerId === null) {
 				throw new Error("session_not_running");

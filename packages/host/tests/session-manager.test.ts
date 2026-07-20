@@ -106,28 +106,22 @@ function createInteractiveTransport(): {
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();
 			const instanceKey = containerId.replace("container-", "");
-			const emitReady = (): void => {
-				stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
-			};
-			// Simulate adapter resume(): auto-ready without init for restarted sessions.
-			queueMicrotask(() => {
-				emitReady();
-			});
+			const subcommand = command[1] ?? null;
 			stdin.on("data", (chunk: Buffer | string) => {
 				const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
-				if (text.includes('"init"')) {
-					emitReady();
+				if (subcommand === "config") {
+					return;
 				}
-				if (text.includes('"message"')) {
+				if (subcommand === "message") {
 					for (const line of text.split("\n")) {
-						if (line.length === 0 || !line.includes('"message"')) continue;
+						if (line.trim().length === 0) continue;
 						try {
-							const envelope = JSON.parse(line) as {
-								type: string;
-								value: { project: string | null };
+							const message = JSON.parse(line) as {
+								messageId?: string;
+								project: string | null;
 							};
-							if (envelope.type === "message") {
-								inboxProjects.push(envelope.value.project);
+							if (typeof message.messageId === "string") {
+								inboxProjects.push(message.project);
 							}
 						} catch {
 							// ignore partial lines
@@ -166,6 +160,7 @@ function createInteractiveTransport(): {
 			return "running";
 		},
 		async runOnce({ command }) {
+			calls.push(`runOnce:${command.join(" ")}`);
 			return {
 				stdout: `ran:${command.join(" ")}`,
 				stderr: "",
@@ -195,12 +190,6 @@ function createBlockingTransport(): Transport {
 		exec(_input) {
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();
-			stdin.on("data", (chunk: Buffer | string) => {
-				const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
-				if (text.includes('"init"')) {
-					stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
-				}
-			});
 			const rl = createInterface({ input: stdout, crlfDelay: Infinity });
 			return {
 				stdin,
@@ -591,7 +580,7 @@ describe("session-manager", () => {
 		const hostConfig = await loadHostConfig(rootDir);
 		seedDb(hostConfig);
 		const stdinWrites: Array<string> = [];
-		let execCount = 0;
+		let messageCount = 0;
 		const transport: Transport = {
 			async up(input) {
 				return { containerId: `container-${input.projectName}` };
@@ -604,58 +593,50 @@ describe("session-manager", () => {
 			async rmContainer() {},
 			async stop() {},
 			async start() {},
-			exec(_input) {
-				execCount += 1;
+			exec({ command }) {
 				const stdin = new PassThrough();
 				const stdout = new PassThrough();
-				const emitReady = (): void => {
-					stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
-				};
-				if (execCount > 1) {
-					queueMicrotask(() => {
-						emitReady();
-					});
-				}
+				const subcommand = command[1] ?? null;
 				stdin.on("data", (chunk: Buffer | string) => {
 					const text =
 						typeof chunk === "string" ? chunk : chunk.toString("utf8");
 					stdinWrites.push(text);
-					if (text.includes('"init"')) {
-						emitReady();
-					}
-					if (execCount === 1 && text.includes('"message"')) {
-						stdout.write(
-							`${JSON.stringify({
-								type: "suspend",
-								value: {
-									reason: "timeout",
-									elapsedMs: 42,
-									nativeId: "native-resume-abc",
-								},
-							})}\n`,
-						);
-						stdout.end();
-					}
-					if (execCount === 2 && text.includes('"message"')) {
-						stdout.write(
-							`${JSON.stringify({
-								type: "turn",
-								value: {
-									index: 0,
-									role: "assistant",
-									content: "resumed",
-									timestamp: "2026-06-27T00:00:00.000Z",
-									toolCalls: null,
-									tokens: null,
-								},
-							})}\n`,
-						);
-						stdout.write(
-							`${JSON.stringify({
-								type: "done",
-								value: { summary: "ok", tokenUsage: null },
-							})}\n`,
-						);
+					if (subcommand === "message") {
+						messageCount += 1;
+						if (messageCount === 1) {
+							stdout.write(
+								`${JSON.stringify({
+									type: "suspend",
+									value: {
+										reason: "timeout",
+										elapsedMs: 42,
+										nativeId: "native-resume-abc",
+									},
+								})}\n`,
+							);
+							stdout.end();
+						}
+						if (messageCount === 2) {
+							stdout.write(
+								`${JSON.stringify({
+									type: "turn",
+									value: {
+										index: 0,
+										role: "assistant",
+										content: "resumed",
+										timestamp: "2026-06-27T00:00:00.000Z",
+										toolCalls: null,
+										tokens: null,
+									},
+								})}\n`,
+							);
+							stdout.write(
+								`${JSON.stringify({
+									type: "done",
+									value: { summary: "ok", tokenUsage: null },
+								})}\n`,
+							);
+						}
 					}
 				});
 				const rl = createInterface({ input: stdout, crlfDelay: Infinity });
@@ -701,7 +682,7 @@ describe("session-manager", () => {
 		await waitUntil(() => events.some((event) => event.event === "exit"));
 		unsubscribe();
 
-		expect(execCount).toBe(2);
+		expect(messageCount).toBe(2);
 		expect(manager.getSession(created.id)?.status).toBe("idle");
 		expect(manager.getSession(created.id)?.exit?.type).toBe("complete");
 		const resumeWrite = stdinWrites.find((line) =>

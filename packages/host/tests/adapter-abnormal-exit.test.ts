@@ -78,15 +78,16 @@ function createCrashableTransport(): {
 		async rmContainer() {},
 		async stop() {},
 		async start() {},
-		exec(_input) {
+		exec({ command }) {
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();
-			stdouts.push(stdout);
-			stdin.on("data", (chunk: Buffer | string) => {
-				const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
-				if (text.includes('"init"')) {
-					stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
-				}
+			stdout.on("error", () => {
+				// swallow destroy() errors from crash()
+			});
+			if (command[1] === "message") {
+				stdouts.push(stdout);
+			}
+			stdin.on("data", (_chunk: Buffer | string) => {
 				// Intentionally never emits a done frame: the session stays running
 				// until the adapter stdout is destroyed via crash().
 			});
@@ -94,7 +95,7 @@ function createCrashableTransport(): {
 			const session: TransportExecSession = {
 				stdin,
 				lines: rl,
-				waitForExit: async () => ({ exitCode: 1, stderr: "boom" }),
+				waitForExit: async () => ({ exitCode: 0, stderr: "" }),
 			};
 			return session;
 		},
