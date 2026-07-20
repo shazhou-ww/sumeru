@@ -1,6 +1,11 @@
 #!/usr/bin/env node
-import { createSessionLoop } from "@sumeru/adapter-core";
+import { createSubcommandEntry } from "@sumeru/adapter-core";
 import { createSarsapaAdapter } from "./agent.js";
 import { sarsapaHarness } from "./harness.js";
+import { manifest } from "./manifest.js";
 
-createSessionLoop(createSarsapaAdapter(), sarsapaHarness);
+createSubcommandEntry({
+	impl: createSarsapaAdapter(),
+	harness: sarsapaHarness,
+	manifest,
+});

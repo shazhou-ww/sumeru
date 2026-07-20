@@ -1,6 +1,11 @@
 #!/usr/bin/env node
-import { createSessionLoop } from "@sumeru/adapter-core";
+import { createSubcommandEntry } from "@sumeru/adapter-core";
 import { createCursorAgentAdapter } from "./adapter.js";
 import { cursorAgentHarness } from "./harness.js";
+import { manifest } from "./manifest.js";
 
-createSessionLoop(createCursorAgentAdapter(), cursorAgentHarness);
+createSubcommandEntry({
+	impl: createCursorAgentAdapter(),
+	harness: cursorAgentHarness,
+	manifest,
+});

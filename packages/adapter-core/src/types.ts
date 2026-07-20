@@ -60,6 +60,8 @@ export type AdapterImpl = {
 	resume?: () => boolean | Promise<boolean>;
 	// Optional: expose the agent-native session id for timeout suspend + resume.
 	getNativeId?: () => string | null;
+	// Optional: expose session turn history for the `turns` subcommand.
+	getTurns?: () => TurnValue[] | AsyncIterable<TurnValue>;
 };
 
 // === Adapter manifest (static capability declaration) ===

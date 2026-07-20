@@ -13,6 +13,12 @@ export { createAdapterEntry, runAdapterEntry } from "./entrypoint.js";
 export type { HarnessConfig } from "./harness-types.js";
 export type { SessionLoopOptions } from "./session-loop.js";
 export { createSessionLoop, runSessionLoop } from "./session-loop.js";
+export {
+	createSubcommandEntry,
+	type RunSubcommandOptions,
+	runSubcommand,
+	type SubcommandEntryOptions,
+} from "./subcommand.js";
 export type {
 	AdapterEntryOptions,
 	AdapterHandleYield,

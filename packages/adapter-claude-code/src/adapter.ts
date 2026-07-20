@@ -86,7 +86,7 @@ export function createClaudeCodeAdapter(
 	function resolveModel(): string | null {
 		if (initConfig === null) return defaultModel;
 		const fromInit = initConfig.model.name;
-		if (fromInit.length > 0) return fromInit;
+		if (fromInit.length > 0 && fromInit !== "auto") return fromInit;
 		return defaultModel;
 	}
 
