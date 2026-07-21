@@ -78,8 +78,15 @@ export function createSarsapaAdapter(
 	async function init(config: AdapterInitConfig): Promise<void> {
 		initConfig = config;
 		const system = buildSystemPrompt(config);
-		conversation = createConversation(system);
-		sessionStore.writeInit(system, config);
+		if (sessionStore.exists()) {
+			// Already have context (e.g. from snapshot image) — update config only,
+			// preserve conversation history.
+			restoreFromStore();
+			conversation.system = system;
+		} else {
+			conversation = createConversation(system);
+			sessionStore.writeInit(system, config);
+		}
 	}
 
 	function resume(): boolean {

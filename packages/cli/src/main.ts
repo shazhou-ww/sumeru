@@ -1006,6 +1006,11 @@ cli
 	.arg("prototype", "Prototype to use")
 	.flag("project", { type: "string", description: "Project directory path" })
 	.flag("task", { type: "string", description: "Initial task message" })
+	.flag("skip-reset", {
+		type: "boolean",
+		description: "Skip reset on session creation (inherit snapshot context)",
+		default: false,
+	})
 	.flag("env", {
 		type: "string",
 		description: "Environment variables (KEY=VALUE)",
@@ -1014,6 +1019,7 @@ cli
 	.action(async (args, flags, ctx) => {
 		const project = (flags.project as string | undefined) ?? null;
 		const task = (flags.task as string | undefined) ?? null;
+		const noReset = (flags["skip-reset"] as boolean | undefined) ?? false;
 		let env: Record<string, string> | null = null;
 		try {
 			env = parseEnvFlagsFromArgv(process.argv.slice(2));
@@ -1029,6 +1035,7 @@ cli
 				task,
 				model: null,
 				env,
+				reset: !noReset,
 			});
 			return { id: envelope.value.id };
 		} catch (err) {

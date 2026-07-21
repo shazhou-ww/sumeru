@@ -276,7 +276,9 @@ export function createSessionManager(input: {
 			sessions.set(id, record);
 			persistManagedSession(record);
 			await ensureAdapterReady(id, record);
-			await resetAdapter(record);
+			if (body.reset !== false) {
+				await resetAdapter(record);
+			}
 			if (body.task !== null) {
 				await sendTask(id, record, body.task as string);
 			} else {

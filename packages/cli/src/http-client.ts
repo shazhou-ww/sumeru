@@ -48,6 +48,7 @@ export type CreateSessionBody = {
 		| { provider: SessionInfo["model"]["provider"]; name: string }
 		| null;
 	env: Record<string, string> | null;
+	reset?: boolean;
 };
 
 export type HistoryEntry = {

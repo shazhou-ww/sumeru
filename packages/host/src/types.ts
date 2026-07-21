@@ -89,6 +89,7 @@ export type CreateSessionRequest = {
 	task: string | null;
 	model: SessionModelOverride;
 	env: Record<string, string> | null;
+	reset?: boolean;
 };
 
 export type MessageBody = {
