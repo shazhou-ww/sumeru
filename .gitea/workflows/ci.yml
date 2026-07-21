@@ -12,13 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/checkout@v4
-        with:
-          repository: shazhou/ocas
-          path: .ocas
-
-      - name: Link ocas for pnpm overrides
-        run: ln -s $GITHUB_WORKSPACE/.ocas ../ocas
+      - name: Checkout ocas (cross-repo dependency)
+        run: |
+          git clone --depth 1 https://x-access-token:${{ secrets.GITEA_TOKEN }}@git.shazhou.work/shazhou/ocas.git ../ocas
 
       - uses: actions/setup-node@v4
         with:
