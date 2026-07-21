@@ -15,6 +15,7 @@ jobs:
       - name: Checkout ocas (cross-repo dependency)
         run: |
           git clone --depth 1 https://x-access-token:${{ secrets.CROSS_REPO_TOKEN }}@git.shazhou.work/shazhou/ocas.git ../ocas
+          cd ../ocas/packages/cli-kit && npm install && npx tsc
 
       - uses: actions/setup-node@v4
         with:
