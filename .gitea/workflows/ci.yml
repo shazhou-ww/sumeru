@@ -15,7 +15,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: shazhou/ocas
-          path: ../ocas
+          path: .ocas
+
+      - name: Link ocas for pnpm overrides
+        run: ln -s $GITHUB_WORKSPACE/.ocas ../ocas
 
       - uses: actions/setup-node@v4
         with:
