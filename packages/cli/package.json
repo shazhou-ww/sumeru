@@ -19,7 +19,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@ocas/cli-kit": "^0.4.0",
+    "@ocas/cli-kit": "link:../../../ocas/packages/cli-kit",
     "@sumeru/core": "workspace:*",
     "@sumeru/host": "workspace:*",
     "zod": "^4.4.3"
