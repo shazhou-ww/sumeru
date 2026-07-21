@@ -136,6 +136,7 @@ function parseCreateBody(body: unknown): CreateSessionRequest | null {
 	if (model === "invalid") return null;
 
 	const envRaw = body.env;
+	const reset = body.reset === false ? false : undefined;
 	if (envRaw === undefined || envRaw === null) {
 		return {
 			prototype,
@@ -143,6 +144,7 @@ function parseCreateBody(body: unknown): CreateSessionRequest | null {
 			task: normalizedTask,
 			model,
 			env: null,
+			...(reset === false ? { reset } : {}),
 		};
 	}
 	if (!isRecord(envRaw)) return null;
@@ -157,6 +159,7 @@ function parseCreateBody(body: unknown): CreateSessionRequest | null {
 		task: normalizedTask,
 		model,
 		env,
+		...(reset === false ? { reset } : {}),
 	};
 }
 

@@ -99,25 +99,29 @@ function createCommandsTransport(): {
 		async rmContainer() {},
 		async stop() {},
 		async start() {},
-		exec({ containerId: _containerId, command: _command, env: _env }) {
+		exec({ containerId: _containerId, command, env: _env }) {
 			const stdin = new PassThrough();
 			const stdout = new PassThrough();
+			const subcommand = command[1] ?? null;
 			stdin.on("data", (chunk: Buffer | string) => {
 				const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
 				execInputs.push(text);
 				for (const line of text.split("\n")) {
 					const trimmed = line.trim();
 					if (trimmed.length === 0) continue;
-					let parsed: { type?: string };
+					let parsed: Record<string, unknown>;
 					try {
-						parsed = JSON.parse(trimmed) as { type?: string };
+						parsed = JSON.parse(trimmed) as Record<string, unknown>;
 					} catch {
 						continue;
 					}
-					if (parsed.type === "init") {
-						stdout.write(`${JSON.stringify({ type: "ready", value: {} })}\n`);
+					if (subcommand === "config") {
+						continue;
 					}
-					if (parsed.type === "message" || parsed.type === "chat") {
+					if (
+						subcommand === "message" ||
+						typeof parsed.messageId === "string"
+					) {
 						stdout.write(
 							`${JSON.stringify({
 								type: "turn",
@@ -137,6 +141,7 @@ function createCommandsTransport(): {
 								value: { summary: "ok", tokenUsage: null },
 							})}\n`,
 						);
+						continue;
 					}
 					if (
 						parsed.type === "model" ||
@@ -286,6 +291,7 @@ describe("POST /sessions/:id/commands", () => {
 			env: null,
 		});
 		await waitUntil(() => manager.getSession(created.id)?.status === "idle");
+		transport.runOnceCommands.length = 0;
 
 		const response = await request(
 			server,
@@ -379,7 +385,7 @@ describe("POST /sessions/:id/commands", () => {
 		expect(frame).toContain("Write tests first.");
 	});
 
-	it("emits reset frames", async () => {
+	it("runs reset via adapter reset subcommand", async () => {
 		const { server, transport, manager } = await startTestServer();
 		const created = await manager.createSession({
 			prototype: "claude-code",
@@ -389,6 +395,7 @@ describe("POST /sessions/:id/commands", () => {
 			env: null,
 		});
 		await waitUntil(() => manager.getSession(created.id)?.status === "idle");
+		transport.runOnceCommands.length = 0;
 
 		const response = await request(
 			server,
@@ -401,11 +408,7 @@ describe("POST /sessions/:id/commands", () => {
 			type: "@sumeru/command-result",
 			value: { type: "reset" },
 		});
-		expect(
-			transport.execInputs.some(
-				(line) => line.includes('"reset"') && line.includes("You are concise."),
-			),
-		).toBe(true);
+		expect(transport.runOnceCommands).toEqual([["sumeru-adapter", "reset"]]);
 	});
 
 	it("snapshots session into a new prototype image", async () => {
@@ -418,6 +421,7 @@ describe("POST /sessions/:id/commands", () => {
 			env: null,
 		});
 		await waitUntil(() => manager.getSession(created.id)?.status === "idle");
+		transport.execInputs.length = 0;
 
 		const response = await request(
 			server,
@@ -436,7 +440,7 @@ describe("POST /sessions/:id/commands", () => {
 		});
 		expect(transport.commitTags).toEqual(["sumeru/my-snapshot:dev"]);
 		expect(transport.execInputs.some((line) => line.includes('"reset"'))).toBe(
-			true,
+			false,
 		);
 		const compose = readFileSync(
 			join(rootDir, "prototypes", "my-snapshot", "compose.yaml"),

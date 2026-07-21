@@ -1,6 +1,11 @@
 #!/usr/bin/env node
-import { createSessionLoop } from "@sumeru/adapter-core";
+import { createSubcommandEntry } from "@sumeru/adapter-core";
 import { createCodexAdapter } from "./adapter.js";
 import { codexHarness } from "./harness.js";
+import { manifest } from "./manifest.js";
 
-createSessionLoop(createCodexAdapter(), codexHarness);
+createSubcommandEntry({
+	impl: createCodexAdapter(),
+	harness: codexHarness,
+	manifest,
+});
