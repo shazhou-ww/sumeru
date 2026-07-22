@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
-const CLI = "npx tsx src/main.ts";
+const CLI = "pnpm exec tsx src/main.ts";
 
 function run(args: string): {
 	stdout: string;
