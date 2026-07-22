@@ -125,9 +125,9 @@ describe("adapter commands e2e", () => {
 		expect(stdout).toContain("sumeru provider");
 	});
 
-	it("adapter models on builtin-only lists models", () => {
+	it("adapter models on builtin-only lists models (needs API key)", () => {
 		const { stdout, exitCode } = run("adapter models cursor-agent");
-		// Skip assertion if no API key available (CI)
+		// This test requires CURSOR_API_KEY — skip in environments without it
 		if (exitCode !== 0) return;
 		expect(stdout).toContain("ID");
 		expect(stdout).toContain("NAME");

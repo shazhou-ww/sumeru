@@ -21,46 +21,30 @@ function run(args: string): { stdout: string; exitCode: number } {
 	}
 }
 
-function serverReachable(): boolean {
-	const { stdout, exitCode } = run("server status");
-	return exitCode === 0 && !stdout.includes("ERR_MODULE_NOT_FOUND");
-}
-
 describe("server commands e2e", () => {
-	let skip = false;
-
 	beforeAll(() => {
-		// Check if CLI is functional (skip entire suite in CI without server)
-		if (!serverReachable()) {
-			skip = true;
-			return;
-		}
 		// Ensure server is stopped before tests
 		run("server stop");
 	});
 
 	afterAll(() => {
-		if (!skip) {
-			run("server stop");
-		}
+		// Clean up: stop server
+		run("server stop");
 	});
 
 	it("server status when stopped", () => {
-		if (skip) return;
 		const { stdout, exitCode } = run("server status");
 		expect(exitCode).toBe(0);
 		expect(stdout.trim()).toBe("Status: stopped");
 	});
 
 	it("server start", () => {
-		if (skip) return;
 		const { stdout, exitCode } = run("server start");
 		expect(exitCode).toBe(0);
 		expect(stdout).toMatch(/^Server running at http:\/\/127\.0\.0\.1:\d+\n$/);
 	});
 
 	it("server status when running", () => {
-		if (skip) return;
 		const { stdout, exitCode } = run("server status");
 		expect(exitCode).toBe(0);
 		const lines = stdout.trim().split("\n");
@@ -72,28 +56,24 @@ describe("server commands e2e", () => {
 	});
 
 	it("server stop", () => {
-		if (skip) return;
 		const { stdout, exitCode } = run("server stop");
 		expect(exitCode).toBe(0);
 		expect(stdout.trim()).toBe("Server stopped.");
 	});
 
 	it("server status after stop", () => {
-		if (skip) return;
 		const { stdout, exitCode } = run("server status");
 		expect(exitCode).toBe(0);
 		expect(stdout.trim()).toBe("Status: stopped");
 	});
 
 	it("server restart", () => {
-		if (skip) return;
 		const { stdout, exitCode } = run("server restart");
 		expect(exitCode).toBe(0);
 		expect(stdout.trim()).toBe("Server restarted.");
 	});
 
 	it("server status after restart", () => {
-		if (skip) return;
 		const { stdout, exitCode } = run("server status");
 		expect(exitCode).toBe(0);
 		const lines = stdout.trim().split("\n");
