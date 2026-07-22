@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const CLI = "npx tsx packages/cli/src/main.ts";
+const CLI = "npx tsx src/main.ts";
 
 function run(args: string): { stdout: string; exitCode: number } {
 	const cleanEnv = Object.fromEntries(

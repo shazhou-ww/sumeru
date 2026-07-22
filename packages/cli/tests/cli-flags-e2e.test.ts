@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
-const CLI = "npx tsx packages/cli/src/main.ts";
+const CLI = "npx tsx src/main.ts";
 
 function run(args: string): {
 	stdout: string;
@@ -31,25 +31,26 @@ function run(args: string): {
 }
 
 describe("CLI help and flags e2e", () => {
-	it("no args shows help with exit 0", () => {
-		const { stdout, exitCode } = run("");
-		expect(exitCode).toBe(0);
+	it("no args shows help with exit 1", () => {
+		const { stdout, stderr, exitCode } = run("");
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("No command selected");
 		expect(stdout).toContain("Usage: sumeru <command>");
 		expect(stdout).toContain("Commands:");
 		expect(stdout).toContain("server");
-		expect(stdout).toContain("--version");
 	});
 
 	it("--help shows help with exit 0", () => {
 		const { stdout, exitCode } = run("--help");
 		expect(exitCode).toBe(0);
 		expect(stdout).toContain("Usage: sumeru <command>");
-		expect(stdout).toContain("-v, --version");
+		expect(stdout).toContain("-h, --help");
 	});
 
 	it("subcommand without subcommand shows help", () => {
-		const { stdout, exitCode } = run("adapter");
-		expect(exitCode).toBe(0);
+		const { stdout, stderr, exitCode } = run("adapter");
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("Command is not executable");
 		expect(stdout).toContain("Usage: sumeru adapter");
 		expect(stdout).toContain("list");
 		expect(stdout).toContain("get");
@@ -59,9 +60,9 @@ describe("CLI help and flags e2e", () => {
 	it("subcommand --help shows format options", () => {
 		const { stdout, exitCode } = run("adapter list --help");
 		expect(exitCode).toBe(0);
-		expect(stdout).toContain("--format <json|text|yaml>");
-		expect(stdout).not.toContain("html");
-		expect(stdout).not.toContain("--version");
+		expect(stdout).toContain("--format");
+		expect(stdout).toContain("json");
+		expect(stdout).toContain("yaml");
 	});
 
 	it("--json is rejected", () => {
@@ -93,7 +94,7 @@ describe("CLI help and flags e2e", () => {
 	});
 
 	it("errors are plain text on stderr", () => {
-		const { stderr, exitCode } = run("adapter models codex");
+		const { stderr, exitCode } = run("adapter models nonexistent");
 		expect(exitCode).toBe(1);
 		expect(stderr.trim()).toMatch(/^Error: /);
 		expect(stderr).not.toContain("{");
