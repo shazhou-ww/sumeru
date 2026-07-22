@@ -1,30 +1,32 @@
 {
-  "name": "@sumeru/cli",
-  "description": "CLI for Sumeru Host API",
-  "version": "0.3.2",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "bin": {
-    "sumeru": "./dist/main.js"
-  },
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
-  },
-  "files": [
-    "dist"
-  ],
-  "license": "MIT",
-  "dependencies": {
-    "@ocas/cli-kit": "^0.4.0",
-    "@sumeru/core": "workspace:*",
-    "@sumeru/host": "workspace:*",
-    "zod": "^4.4.3"
-  },
-  "scripts": {
-    "test:ci": "npx vitest run"
-  }
+	"name": "@sumeru/cli",
+	"description": "CLI for Sumeru Host API",
+	"version": "0.3.2",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"bin": {
+		"sumeru": "./dist/main.js"
+	},
+	"exports": {
+		".": {
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"license": "MIT",
+	"dependencies": {
+		"@ocas/cli-kit": "link:../../../ocas/packages/cli-kit",
+		"@sumeru/core": "workspace:*",
+		"@sumeru/host": "workspace:*",
+		"zod": "^4.4.3"
+	},
+	"scripts": {
+		"test:ci": "npx vitest run",
+		"test": "npx vitest run",
+		"test:integration": "npx vitest run --config vitest.integration.config.ts"
+	}
 }

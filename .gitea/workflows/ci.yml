@@ -14,7 +14,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
+
+      - name: Checkout and build ocas/cli-kit
+        run: |
+          git clone --depth 1 https://x-access-token:${{ secrets.CROSS_REPO_TOKEN }}@git.shazhou.work/shazhou/ocas.git ../ocas
+          cd ../ocas/packages/cli-kit && npm install && npm install -D typescript && npx tsc
 
       - run: corepack enable && pnpm install
 

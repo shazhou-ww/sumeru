@@ -220,14 +220,18 @@ cli
 	.describe("List registered adapters")
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
-	.returns(listSchema, {
-		text: (value) =>
-			formatTableWithPagination(value, [
-				"name",
-				"providerMode",
-				"credentialEnv",
-			]),
-	})
+	.returns(
+		listSchema,
+		{
+			text: (value) =>
+				formatTableWithPagination(value, [
+					"name",
+					"providerMode",
+					"credentialEnv",
+				]),
+		},
+		{ defaultFormat: "text" },
+	)
 	.action(async (_args, flags, ctx) => {
 		const limit = (flags.limit as number | undefined) ?? 50;
 		const offset = (flags.offset as number | undefined) ?? 0;
@@ -288,10 +292,14 @@ cli
 	.arg("name", "Adapter name")
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
-	.returns(listSchema, {
-		text: (value) =>
-			formatTableWithPagination(value, ["id", "name", "contextWindow"]),
-	})
+	.returns(
+		listSchema,
+		{
+			text: (value) =>
+				formatTableWithPagination(value, ["id", "name", "contextWindow"]),
+		},
+		{ defaultFormat: "text" },
+	)
 	.action(async (args, flags, ctx) => {
 		const limit = (flags.limit as number | undefined) ?? 50;
 		const offset = (flags.offset as number | undefined) ?? 0;
@@ -327,10 +335,14 @@ cli
 	.describe("List registered providers")
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
-	.returns(listSchema, {
-		text: (value) =>
-			formatTableWithPagination(value, ["name", "apiType", "baseUrl"]),
-	})
+	.returns(
+		listSchema,
+		{
+			text: (value) =>
+				formatTableWithPagination(value, ["name", "apiType", "baseUrl"]),
+		},
+		{ defaultFormat: "text" },
+	)
 	.action(async (_args, flags, ctx) => {
 		const limit = (flags.limit as number | undefined) ?? 50;
 		const offset = (flags.offset as number | undefined) ?? 0;
@@ -474,9 +486,13 @@ cli
 	.arg("name", "Provider name")
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
-	.returns(listSchema, {
-		text: (value) => formatTableWithPagination(value, ["id"]),
-	})
+	.returns(
+		listSchema,
+		{
+			text: (value) => formatTableWithPagination(value, ["id"]),
+		},
+		{ defaultFormat: "text" },
+	)
 	.action(async (args, flags, ctx) => {
 		const limit = (flags.limit as number | undefined) ?? 50;
 		const offset = (flags.offset as number | undefined) ?? 0;
@@ -504,15 +520,19 @@ cli
 	.flag("provider", { type: "string", description: "Filter by provider" })
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
-	.returns(listSchema, {
-		text: (value) =>
-			formatTableWithPagination(value, [
-				"name",
-				"provider",
-				"model",
-				"contextWindow",
-			]),
-	})
+	.returns(
+		listSchema,
+		{
+			text: (value) =>
+				formatTableWithPagination(value, [
+					"name",
+					"provider",
+					"model",
+					"contextWindow",
+				]),
+		},
+		{ defaultFormat: "text" },
+	)
 	.action(async (_args, flags, ctx) => {
 		const limit = (flags.limit as number | undefined) ?? 50;
 		const offset = (flags.offset as number | undefined) ?? 0;
@@ -668,10 +688,19 @@ cli
 	.describe("List prototypes")
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
-	.returns(listSchema, {
-		text: (value) =>
-			formatTableWithPagination(value, ["name", "adapter", "model", "persona"]),
-	})
+	.returns(
+		listSchema,
+		{
+			text: (value) =>
+				formatTableWithPagination(value, [
+					"name",
+					"adapter",
+					"model",
+					"persona",
+				]),
+		},
+		{ defaultFormat: "text" },
+	)
 	.action(async (_args, flags, ctx) => {
 		const limit = (flags.limit as number | undefined) ?? 50;
 		const offset = (flags.offset as number | undefined) ?? 0;
@@ -816,21 +845,25 @@ cli
 	.describe("List personas")
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
-	.returns(listSchema, {
-		text: (value) => {
-			const rows = value as PaginatedArray<Record<string, unknown>>;
-			if (rows.length === 0) return "(empty)\n";
-			let output = rows
-				.map((p) => `[${p.name}]\n${p.instructions ?? ""}\n`)
-				.join("\n");
-			const total = rows._total;
-			const offset = rows._offset ?? 0;
-			if (total !== undefined && offset + rows.length < total) {
-				output += `(${String(rows.length)} of ${String(total)} shown. Use --offset ${String(offset + rows.length)} to see more.)\n`;
-			}
-			return output;
+	.returns(
+		listSchema,
+		{
+			text: (value) => {
+				const rows = value as PaginatedArray<Record<string, unknown>>;
+				if (rows.length === 0) return "(empty)\n";
+				let output = rows
+					.map((p) => `[${p.name}]\n${p.instructions ?? ""}\n`)
+					.join("\n");
+				const total = rows._total;
+				const offset = rows._offset ?? 0;
+				if (total !== undefined && offset + rows.length < total) {
+					output += `(${String(rows.length)} of ${String(total)} shown. Use --offset ${String(offset + rows.length)} to see more.)\n`;
+				}
+				return output;
+			},
 		},
-	})
+		{ defaultFormat: "text" },
+	)
 	.action(async (_args, flags, ctx) => {
 		const limit = (flags.limit as number | undefined) ?? 50;
 		const offset = (flags.offset as number | undefined) ?? 0;
@@ -924,26 +957,30 @@ cli
 	.describe("List sessions")
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
-	.returns(listSchema, {
-		text: (value) => {
-			const rows = value as PaginatedArray<Record<string, unknown>>;
-			const mapped = rows.map((s) => ({
-				...s,
-				task:
-					typeof s.task === "string" && s.task.length > 50
-						? `${s.task.slice(0, 47)}...`
-						: s.task,
-			})) as PaginatedArray<Record<string, unknown>>;
-			mapped._total = rows._total;
-			mapped._offset = rows._offset;
-			return formatTableWithPagination(mapped, [
-				"id",
-				"prototype",
-				"status",
-				"task",
-			]);
+	.returns(
+		listSchema,
+		{
+			text: (value) => {
+				const rows = value as PaginatedArray<Record<string, unknown>>;
+				const mapped = rows.map((s) => ({
+					...s,
+					task:
+						typeof s.task === "string" && s.task.length > 50
+							? `${s.task.slice(0, 47)}...`
+							: s.task,
+				})) as PaginatedArray<Record<string, unknown>>;
+				mapped._total = rows._total;
+				mapped._offset = rows._offset;
+				return formatTableWithPagination(mapped, [
+					"id",
+					"prototype",
+					"status",
+					"task",
+				]);
+			},
 		},
-	})
+		{ defaultFormat: "text" },
+	)
 	.action(async (_args, flags, ctx) => {
 		const limit = (flags.limit as number | undefined) ?? 50;
 		const offset = (flags.offset as number | undefined) ?? 0;
@@ -1179,43 +1216,47 @@ cli
 	.flag("system", { type: "boolean", description: "Include system prompt" })
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
-	.returns(listSchema, {
-		text: (value) => {
-			const turns = value as PaginatedArray<Record<string, unknown>>;
-			if (turns.length === 0) return "(empty)\n";
-			let output = turns
-				.map((turn) => {
-					const role = turn.role;
-					const ts = turn.timestamp ?? "";
-					let content: string;
-					if (role === "assistant") {
-						const parts: string[] = [];
-						if (turn.content) parts.push(String(turn.content));
-						const toolCalls = turn.toolCalls as
-							| Array<{ name: string; arguments: Record<string, unknown> }>
-							| undefined;
-						if (toolCalls && toolCalls.length > 0) {
-							for (const tc of toolCalls) {
-								parts.push(`→ ${tc.name}(${JSON.stringify(tc.arguments)})`);
+	.returns(
+		listSchema,
+		{
+			text: (value) => {
+				const turns = value as PaginatedArray<Record<string, unknown>>;
+				if (turns.length === 0) return "(empty)\n";
+				let output = turns
+					.map((turn) => {
+						const role = turn.role;
+						const ts = turn.timestamp ?? "";
+						let content: string;
+						if (role === "assistant") {
+							const parts: string[] = [];
+							if (turn.content) parts.push(String(turn.content));
+							const toolCalls = turn.toolCalls as
+								| Array<{ name: string; arguments: Record<string, unknown> }>
+								| undefined;
+							if (toolCalls && toolCalls.length > 0) {
+								for (const tc of toolCalls) {
+									parts.push(`→ ${tc.name}(${JSON.stringify(tc.arguments)})`);
+								}
 							}
+							content = parts.join("\n");
+						} else if (role === "tool") {
+							content = `${turn.name}: ${turn.result}`;
+						} else {
+							content = String(turn.content ?? "");
 						}
-						content = parts.join("\n");
-					} else if (role === "tool") {
-						content = `${turn.name}: ${turn.result}`;
-					} else {
-						content = String(turn.content ?? "");
-					}
-					return `[${role}] ${ts}\n${content}\n`;
-				})
-				.join("\n");
-			const total = turns._total;
-			const offset = turns._offset ?? 0;
-			if (total !== undefined && offset + turns.length < total) {
-				output += `(${String(turns.length)} of ${String(total)} shown. Use --offset ${String(offset + turns.length)} to see more.)\n`;
-			}
-			return output;
+						return `[${role}] ${ts}\n${content}\n`;
+					})
+					.join("\n");
+				const total = turns._total;
+				const offset = turns._offset ?? 0;
+				if (total !== undefined && offset + turns.length < total) {
+					output += `(${String(turns.length)} of ${String(total)} shown. Use --offset ${String(offset + turns.length)} to see more.)\n`;
+				}
+				return output;
+			},
 		},
-	})
+		{ defaultFormat: "text" },
+	)
 	.action(async (args, flags, ctx) => {
 		const watch = Boolean(flags.watch);
 		const system = Boolean(flags.system);
