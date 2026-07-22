@@ -28,5 +28,8 @@
 		"test:ci": "npx vitest run",
 		"test": "npx vitest run",
 		"test:integration": "npx vitest run --config vitest.integration.config.ts"
+	},
+	"devDependencies": {
+		"tsx": "^4.23.1"
 	}
 }
