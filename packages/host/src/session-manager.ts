@@ -702,6 +702,13 @@ export function createSessionManager(input: {
 		if (result.exitCode !== 0) {
 			throw new Error("adapter_reset_failed");
 		}
+		// Reset cleared adapter state — force re-init on next message.
+		const runtime = adapters.get(record.id);
+		if (runtime !== undefined) {
+			runtime.initialized = false;
+		}
+		record.initVersion = null;
+		persistManagedSession(record);
 	}
 
 	async function ensureContainerRunning(containerId: string): Promise<void> {
