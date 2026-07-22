@@ -1,28 +1,29 @@
 {
-  "name": "sumeru",
-  "description": "Agent house — HTTP service for multi-agent management with ocas recording",
-  "private": true,
-  "engines": {
-    "node": ">=24"
-  },
-  "type": "module",
-  "scripts": {
-    "build": "proman build",
-    "test": "proman test",
-    "test:ci": "pnpm -r --workspace-concurrency=1 run test:ci",
-    "check": "proman check",
-    "format": "proman format",
-    "typecheck": "npx tsc --build"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.0.0",
-    "@shazhou/proman": "^0.11.1",
-    "@types/node": "^25.9.3",
-    "typescript": "^5.8.0",
-    "vitest": "^3.2.0"
-  },
-  "packageManager": "pnpm@10.12.1",
-  "dependencies": {
-    "@ocas/cli-kit": "link:../ocas/packages/cli-kit"
-  }
+	"name": "sumeru",
+	"description": "Agent house — HTTP service for multi-agent management with ocas recording",
+	"private": true,
+	"engines": {
+		"node": ">=24"
+	},
+	"type": "module",
+	"scripts": {
+		"build": "proman build",
+		"test": "proman test",
+		"test:ci": "proman test --concurrency 1",
+		"check": "proman check",
+		"format": "proman format",
+		"typecheck": "npx tsc --build"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.0.0",
+		"@shazhou/proman": "^0.12.0",
+		"@shazhou/proman-core": "0.11.0",
+		"@types/node": "^25.9.3",
+		"typescript": "^5.8.0",
+		"vitest": "^3.2.0"
+	},
+	"packageManager": "pnpm@10.12.1",
+	"dependencies": {
+		"@ocas/cli-kit": "link:../ocas/packages/cli-kit"
+	}
 }

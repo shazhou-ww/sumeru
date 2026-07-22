@@ -19,8 +19,11 @@ importers:
         specifier: ^2.0.0
         version: 2.5.0
       '@shazhou/proman':
-        specifier: ^0.11.1
-        version: 0.11.1(@biomejs/biome@2.5.0)(typescript@5.9.3)(vite@7.3.5(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))(vitest@3.2.6(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))
+        specifier: ^0.12.0
+        version: 0.12.0(@biomejs/biome@2.5.0)(typescript@5.9.3)(vite@7.3.5(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))(vitest@3.2.6(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))
+      '@shazhou/proman-core':
+        specifier: 0.11.0
+        version: 0.11.0(@biomejs/biome@2.5.0)(typescript@5.9.3)(vite@7.3.5(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))(vitest@3.2.6(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))
       '@types/node':
         specifier: ^25.9.3
         version: 25.9.3
@@ -639,8 +642,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@shazhou/proman-core@0.10.2':
-    resolution: {integrity: sha512-EokjoHyo/MpTfRixYg2a4MOUq487baW+Em7oy/Zns+/mejQIQXIshvloYCTGmfEsoRt9l5zoGQ4CWg8/1BaY3w==}
+  '@shazhou/proman-core@0.11.0':
+    resolution: {integrity: sha512-C62j3ap+/Yd0INzS6Q+1EPxsZldOoHXx587XKeJpk0CO0SSCrf3YfBH7WO3enKeqQ+2W4ekpUDnS7T5OwVvmsA==}
     peerDependencies:
       '@biomejs/biome': ^2.0.0
       typescript: ^5.0.0
@@ -653,8 +656,8 @@ packages:
       wrangler:
         optional: true
 
-  '@shazhou/proman@0.11.1':
-    resolution: {integrity: sha512-0dHfTEy+0TLx46uGJqQmtyLGjMYpCS+Fjr8/iWdKyuv44eaWGUjAEkWXufJ/Liwhu2uAfAIh5H97YfyAiRQ0Dw==}
+  '@shazhou/proman@0.12.0':
+    resolution: {integrity: sha512-CgMBLOQh0wV5wWuU64Jxf+kLhjZpkwRSe211f3HN5NRxBDrIBg9jPT8qYG3JP/3h0Ci5GGw8spl7yn1ACfW+jA==}
     hasBin: true
     peerDependencies:
       '@biomejs/biome': ^2.0.0
@@ -1263,7 +1266,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.61.1':
     optional: true
 
-  '@shazhou/proman-core@0.10.2(@biomejs/biome@2.5.0)(typescript@5.9.3)(vite@7.3.5(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))(vitest@3.2.6(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))':
+  '@shazhou/proman-core@0.11.0(@biomejs/biome@2.5.0)(typescript@5.9.3)(vite@7.3.5(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))(vitest@3.2.6(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))':
     dependencies:
       '@biomejs/biome': 2.5.0
       typescript: 5.9.3
@@ -1272,10 +1275,10 @@ snapshots:
     optionalDependencies:
       vite: 7.3.5(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0)
 
-  '@shazhou/proman@0.11.1(@biomejs/biome@2.5.0)(typescript@5.9.3)(vite@7.3.5(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))(vitest@3.2.6(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))':
+  '@shazhou/proman@0.12.0(@biomejs/biome@2.5.0)(typescript@5.9.3)(vite@7.3.5(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))(vitest@3.2.6(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))':
     dependencies:
       '@biomejs/biome': 2.5.0
-      '@shazhou/proman-core': 0.10.2(@biomejs/biome@2.5.0)(typescript@5.9.3)(vite@7.3.5(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))(vitest@3.2.6(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))
+      '@shazhou/proman-core': 0.11.0(@biomejs/biome@2.5.0)(typescript@5.9.3)(vite@7.3.5(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))(vitest@3.2.6(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0))
       typescript: 5.9.3
       vitest: 3.2.6(@types/node@25.9.3)(tsx@4.23.1)(yaml@2.9.0)
     optionalDependencies:
