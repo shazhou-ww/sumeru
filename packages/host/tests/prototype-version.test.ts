@@ -281,8 +281,8 @@ describe("prototype lazy re-init", () => {
 			env: null,
 			model: null,
 		});
-		await waitUntil(() => initCount() >= 2);
-		expect(initCount()).toBe(2);
+		await waitUntil(() => initCount() >= 3);
+		expect(initCount()).toBe(3);
 		expect(manager.getSession(created.id)?.initVersion).toBe(
 			prototype.prototypeHash,
 		);

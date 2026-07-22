@@ -982,8 +982,10 @@ describe("runSessionLoop", () => {
 });
 
 describe("adapter harness configs", () => {
-	it("exports sarsapa no-op paths", () => {
-		expect(sarsapaHarness.resetPaths).toEqual([]);
+	it("exports sarsapa with session.jsonl reset path", () => {
+		expect(sarsapaHarness.resetPaths).toEqual([
+			expect.stringMatching(/.*\/.sarsapa\/session\.jsonl$/),
+		]);
 	});
 
 	it("exports codex harness with TOML writer and session reset path", () => {

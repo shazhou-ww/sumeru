@@ -141,7 +141,7 @@ export async function loadPrototypeInfo(
 		yamlPath,
 		prototypeHash,
 		composePath,
-		imageTag: null,
+		imageTag: prototype.image ?? null,
 	};
 }
 
@@ -191,6 +191,7 @@ export function mergePrototype(
 		persona: update.persona ?? existing.persona,
 		model: update.model !== undefined ? update.model : existing.model,
 		adapter: update.adapter ?? existing.adapter,
+		image: existing.image,
 		extensions:
 			update.extensions !== undefined ? update.extensions : existing.extensions,
 		defaults:
@@ -305,10 +306,17 @@ export function validatePrototype(
 			`Prototype ${path} field "adapter" must be a non-empty string`,
 		);
 	}
+	const imageRaw = obj.image;
+	const image =
+		imageRaw === undefined || imageRaw === null
+			? null
+			: typeof imageRaw === "string" && imageRaw.length > 0
+				? imageRaw
+				: null;
 	const defaults = parsePrototypeDefaults(obj.defaults, path);
 	const extensions =
 		parsePrototypeExtensions(obj.extensions, path, false) ?? null;
-	return { name, persona, model, adapter, extensions, defaults };
+	return { name, persona, model, adapter, image, extensions, defaults };
 }
 
 function parsePrototypeDefaults(

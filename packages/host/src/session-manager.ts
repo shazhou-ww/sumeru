@@ -299,10 +299,11 @@ export function createSessionManager(input: {
 			}
 			releaseRunningSlot();
 			if (isDockerImageMissingError(err)) {
-				const adapter = prototype.prototype.adapter;
-				throw new Error(
-					`image_not_found:Image ${image} not found.\nRun: sumeru image build ${adapter} --agent ${adapter}`,
-				);
+				const isSnapshot = prototype.imageTag !== null;
+				const hint = isSnapshot
+					? `Prototype ${body.prototype} is unusable — its image was removed. Rebuild or delete the prototype.`
+					: `Run: sumeru image build ${prototype.prototype.adapter} --agent ${prototype.prototype.adapter}`;
+				throw new Error(`image_not_found:Image ${image} not found.\n${hint}`);
 			}
 			throw err;
 		}
@@ -701,6 +702,13 @@ export function createSessionManager(input: {
 		if (result.exitCode !== 0) {
 			throw new Error("adapter_reset_failed");
 		}
+		// Reset cleared adapter state — force re-init on next message.
+		const runtime = adapters.get(record.id);
+		if (runtime !== undefined) {
+			runtime.initialized = false;
+		}
+		record.initVersion = null;
+		persistManagedSession(record);
 	}
 
 	async function ensureContainerRunning(containerId: string): Promise<void> {
