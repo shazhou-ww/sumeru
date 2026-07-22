@@ -299,10 +299,11 @@ export function createSessionManager(input: {
 			}
 			releaseRunningSlot();
 			if (isDockerImageMissingError(err)) {
-				const adapter = prototype.prototype.adapter;
-				throw new Error(
-					`image_not_found:Image ${image} not found.\nRun: sumeru image build ${adapter} --agent ${adapter}`,
-				);
+				const isSnapshot = prototype.imageTag !== null;
+				const hint = isSnapshot
+					? `Prototype ${body.prototype} is unusable — its image was removed. Rebuild or delete the prototype.`
+					: `Run: sumeru image build ${prototype.prototype.adapter} --agent ${prototype.prototype.adapter}`;
+				throw new Error(`image_not_found:Image ${image} not found.\n${hint}`);
 			}
 			throw err;
 		}

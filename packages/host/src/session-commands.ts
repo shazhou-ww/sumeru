@@ -301,7 +301,11 @@ async function registerSnapshotPrototype(
 	if (source === undefined) {
 		throw new Error("prototype_not_found");
 	}
-	const prototype = { ...source.prototype, name: snapshotName };
+	const prototype = {
+		...source.prototype,
+		name: snapshotName,
+		image: imageTag,
+	};
 	await writePrototypeFile(hostConfig.prototypesDir, prototype);
 	if (source.composePath !== null) {
 		const composeRaw = await readFile(source.composePath, "utf-8");

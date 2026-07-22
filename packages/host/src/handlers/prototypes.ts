@@ -74,8 +74,21 @@ export function createPrototypesHandler(hostConfig: LoadedHostConfig) {
 				return;
 			}
 			try {
+				const info = hostConfig.prototypes.get(name);
+				const imageTag = info?.imageTag ?? null;
 				await deletePrototypeFile(hostConfig.prototypesDir, name);
 				await removePrototypeFromConfig(hostConfig, name);
+				if (imageTag !== null) {
+					// Best-effort: remove the Docker image owned by this prototype
+					const { execFile } = await import("node:child_process");
+					const { promisify } = await import("node:util");
+					const execFileAsync = promisify(execFile);
+					try {
+						await execFileAsync("docker", ["rmi", imageTag]);
+					} catch {
+						// Image may already be removed — ignore
+					}
+				}
 				res.statusCode = 204;
 				res.end();
 			} catch (err) {

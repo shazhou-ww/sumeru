@@ -97,6 +97,7 @@ export function prototypeFromDockerLabels(input: {
 		persona,
 		model,
 		adapter: harness,
+		image: input.imageTag,
 		extensions: null,
 		defaults: null,
 	};
@@ -141,6 +142,7 @@ export function mergeDockerWithYaml(
 			adapter: docker.prototype.adapter,
 			persona,
 			model: docker.prototype.model ?? yaml.prototype.model,
+			image: docker.prototype.image,
 			extensions: yaml.prototype.extensions,
 			defaults: yaml.prototype.defaults ?? docker.prototype.defaults,
 		},
