@@ -91,9 +91,16 @@ async function writeHermesModelConfig(
 }
 
 const hermesDir = join(homedir(), ".hermes");
+const adapterDir = join(homedir(), ".hermes-adapter");
 
 export const hermesHarness: HarnessConfig = {
-	resetPaths: [join(hermesDir, "sessions")],
+	resetPaths: [
+		join(hermesDir, "sessions"),
+		join(hermesDir, "state.db"),
+		join(hermesDir, "state.db-wal"),
+		join(hermesDir, "state.db-shm"),
+		join(adapterDir, "session.json"),
+	],
 	modelConfigPath: join(hermesDir, "config.yaml"),
 	personaPath: join(hermesDir, "SOUL.md"),
 	skillsDir: join(hermesDir, "skills"),
