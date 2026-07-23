@@ -1,0 +1,46 @@
+name: "session create no task"
+description: |
+  创建无 task 的 session → idle 状态 → send 消息 → 轮询回复。
+  覆盖 SCENARIOS: 2.2。
+
+setup:
+  - "docker build -t sumeru/sarsapa:dev -f packages/sarsapa/Dockerfile . >/dev/null 2>&1; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+
+steps:
+  # ─── 2.2 创建 session（无 task）───
+
+  - command: 'export SID=$(sumeru session add atest-sarsapa 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
+    judge:
+      type: regex
+      expr: "SID=ses_[A-Z0-9]+"
+    timeout: 15
+
+  # ─── 确认 idle 状态（无 task 不会自动处理）───
+
+  - command: "sumeru session get $SID 2>&1 | head -10"
+    judge:
+      type: regex
+      expr: "Status: (idle|running)"
+
+  # ─── 3.1 send 消息恢复执行 ───
+
+  - command: 'sumeru session send $SID "Say hello" 2>&1'
+    judge:
+      type: regex
+      expr: "accepted message msg_"
+
+  # ─── 轮询等待回复 ───
+
+  - command: "sleep 5 && sumeru session turns $SID 2>&1 | head -10"
+    judge:
+      type: llm
+      prompt: "如果有 assistant 回复则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 5
+      interval: 5

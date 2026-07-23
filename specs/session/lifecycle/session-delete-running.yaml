@@ -1,0 +1,43 @@
+name: "session delete running"
+description: |
+  创建 session 并立即删除（running 状态），验证清理成功。
+  覆盖 SCENARIOS: 2.10。
+
+setup:
+  - "docker build -t sumeru/sarsapa:dev -f packages/sarsapa/Dockerfile . >/dev/null 2>&1; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+
+steps:
+  # ─── 2.10 创建 session 并立即删除（running 状态）───
+
+  - command: 'export SID=$(sumeru session add atest-sarsapa --task "count to 100 slowly" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
+    judge:
+      type: regex
+      expr: "SID=ses_[A-Z0-9]+"
+    timeout: 15
+
+  # 确认 session 存在
+
+  - command: "sumeru session get $SID 2>&1 | head -5"
+    judge:
+      type: regex
+      expr: "ID: ses_[A-Z0-9]+"
+
+  # 立即删除 running session
+
+  - command: "sumeru session rm $SID 2>&1"
+    judge:
+      type: regex
+      expr: "Removed"
+
+  # 删除后列表不应含该 session
+
+  - command: "sumeru session list 2>&1 | grep -q 'atest-sarsapa' && echo FOUND || echo CLEAN"
+    judge:
+      type: regex
+      expr: "^CLEAN$"

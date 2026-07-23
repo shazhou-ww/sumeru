@@ -1,0 +1,83 @@
+name: "session lifecycle"
+description: |
+  Session 全生命周期操作链：创建 → 轮询回复 → 列表 → 详情 → send 追加 → stop → 删除。
+  覆盖 SCENARIOS: 2.1, 2.5, 2.6, 3.1, 2.7, 2.9。
+  资源命名加 atest- 前缀避免冲突。
+
+setup:
+  - "docker build -t sumeru/sarsapa:dev -f packages/sarsapa/Dockerfile . >/dev/null 2>&1; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+
+steps:
+  # ─── 2.1 创建 session (happy path) ───
+
+  - command: 'export SID=$(sumeru session add atest-sarsapa --task "Remember: the secret code is ALPHA-7742. Reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
+    judge:
+      type: regex
+      expr: "SID=ses_[A-Z0-9]+"
+    timeout: 15
+
+  # ─── 2.5 列表应含该 session ───
+
+  - command: "sumeru session list 2>&1 | head -10"
+    judge:
+      type: llm
+      prompt: "输出应包含一个 session，prototype 列含 atest-sarsapa，status 为 running 或 idle"
+
+  # ─── 2.6 获取详情 ───
+
+  - command: "sumeru session get $SID 2>&1 | head -10"
+    judge:
+      type: regex
+      expr: "ID: ses_[A-Z0-9]+"
+
+  # ─── 轮询等待 assistant 首次回复 ───
+
+  - command: "sleep 5 && sumeru session turns $SID 2>&1 | head -10"
+    judge:
+      type: llm
+      prompt: "如果有 assistant 回复则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 5
+      interval: 5
+
+  # ─── 3.1 send 追加消息恢复执行 ───
+
+  - command: 'sumeru session send $SID "What is the secret code?" 2>&1'
+    judge:
+      type: regex
+      expr: "accepted message msg_"
+
+  - command: "sleep 5 && sumeru session turns $SID 2>&1 | tail -10"
+    judge:
+      type: llm
+      prompt: "最后的 assistant 回复应包含 ALPHA-7742。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 5
+      interval: 5
+
+  # ─── 2.7+2.8 stop session — sarsapa 回复完即 idle，stop idle 应报 409 ───
+
+  - command: "sumeru session stop $SID 2>&1; true"
+    judge:
+      type: llm
+      prompt: "输出应包含 error，提示 session already idle 或类似含义（因为 assistant 回复完 session 已转为 idle）"
+
+  # ─── 2.9 删除 session ───
+
+  - command: "sumeru session rm $SID 2>&1"
+    judge:
+      type: regex
+      expr: "Removed"
+
+  # ─── 删除后列表应为空 ───
+
+  - command: "sumeru session list 2>&1 | grep -q 'atest-sarsapa' && echo FOUND || echo CLEAN"
+    judge:
+      type: regex
+      expr: "^CLEAN$"
