@@ -2,9 +2,9 @@ suite: smoke
 description: 核心路径冒烟测试 — 确认系统没全崩，最快速跑完
 prerequisites:
   - Sumeru host running
-  - sumeru/hermes:dev image built
+  - sumeru/sarsapa:dev image built
   - LLM endpoint reachable
   - SQLite seeded with Provider + Model + Persona
 
 scenarios:
-  - session/create-and-start/tc-happy-path-hello-world.md
+  - session/lifecycle/session-lifecycle.yaml

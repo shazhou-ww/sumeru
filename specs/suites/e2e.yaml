@@ -1,12 +1,23 @@
 suite: e2e
-description: 端到端主干流程 — 覆盖 session 创建、model 切换、环境变量展开
+description: 端到端主干流程 — 覆盖 session 创建、命令、错误路径、CRUD、turns、restart
 prerequisites:
-  - Sumeru host running with host.yaml
-  - sumeru/hermes:dev image built from latest main
+  - Sumeru host running
+  - sumeru/sarsapa:dev image built
   - LLM endpoint reachable from container
   - SQLite seeded with Provider + Model + Persona
 
 scenarios:
-  - session/create-and-start/tc-happy-path-hello-world.md
-  - session/create-and-start/tc-env-var-expansion.md
-  - resume/model-hot-switch.md
+  - session/lifecycle/session-lifecycle.yaml
+  - session/lifecycle/session-create-no-task.yaml
+  - session/lifecycle/session-delete-running.yaml
+  - commands/session-commands.yaml
+  - errors/error-paths.yaml
+  - prototype/crud-lifecycle.yaml
+  - provider/crud-lifecycle.yaml
+  - model/crud-lifecycle.yaml
+  - persona/crud-lifecycle.yaml
+  - adapter/adapter-list.yaml
+  - turns/turns-pagination.yaml
+  - session/resume-after-restart/resume-after-restart.yaml
+  - session/snapshot-context-inherit/sarsapa-snapshot-inherit.yaml
+  - session/snapshot-context-inherit/hermes-snapshot-inherit.yaml
