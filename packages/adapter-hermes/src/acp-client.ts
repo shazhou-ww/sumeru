@@ -187,8 +187,11 @@ export function createAcpClient(options: AcpClientOptions): AcpClient {
 			return parseSessionIdResult(result, "session/new");
 		},
 
-		async resumeSession(sessionId: string): Promise<AcpResumeSessionResult> {
-			const result = await writeRequest("session/resume", { sessionId });
+		async resumeSession(
+			sessionId: string,
+			cwd: string,
+		): Promise<AcpResumeSessionResult> {
+			const result = await writeRequest("session/resume", { sessionId, cwd });
 			return parseSessionIdResult(result, "session/resume");
 		},
 
