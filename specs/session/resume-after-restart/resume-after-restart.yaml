@@ -1,0 +1,64 @@
+name: "resume after restart"
+description: |
+  Host 重启后 session 上下文恢复：创建 session 注入 secret → server restart → send 问 secret → 验证上下文不丢。
+  覆盖 SCENARIOS: 14.4。
+  资源命名加 atest- 前缀避免冲突。
+
+setup:
+  - "docker build -t sumeru/sarsapa:dev -f packages/sarsapa/Dockerfile . >/dev/null 2>&1; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+
+steps:
+  # ─── 创建 session，注入 secret ───
+
+  - command: 'export SID=$(sumeru session add atest-sarsapa --task "Remember: the secret code is ALPHA-7742. Reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
+    judge:
+      type: regex
+      expr: "SID=ses_[A-Z0-9]+"
+    timeout: 15
+
+  # ─── 等待回复确认 ───
+
+  - command: "sleep 5 && sumeru session turns $SID 2>&1 | head -10"
+    judge:
+      type: llm
+      prompt: "如果有 assistant 回复则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 5
+      interval: 5
+
+  # ─── 14.4 server restart ───
+
+  - command: "sumeru server restart 2>&1"
+    judge:
+      type: regex
+      expr: "Server restarted"
+
+  # ─── 等待 server 恢复 ───
+
+  - command: "sleep 3 && sumeru server status 2>&1"
+    judge:
+      type: regex
+      expr: "Status: running"
+
+  # ─── send 追加消息，验证上下文不丢 ───
+
+  - command: 'sumeru session send $SID "What is the secret code?" 2>&1'
+    judge:
+      type: regex
+      expr: "accepted message msg_"
+
+  # ─── 轮询等待回复 — 应仍知道 secret ───
+
+  - command: "sleep 5 && sumeru session turns $SID 2>&1 | tail -10"
+    judge:
+      type: llm
+      prompt: "最后的 assistant 回复应包含 ALPHA-7742（上下文在 restart 后未丢失）。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 5
+      interval: 5
