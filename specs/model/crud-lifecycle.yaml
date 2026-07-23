@@ -1,0 +1,57 @@
+name: "model CRUD lifecycle"
+description: |
+  Model CRUD 全流程：add → get → list → update → rm → get 404。
+  覆盖 SCENARIOS: 7.1-7.5。
+  依赖 atest-provider 存在，setup 中创建。
+
+setup:
+  - "sumeru model rm atest-model 2>/dev/null; true"
+  - "sumeru provider rm atest-provider 2>/dev/null; true"
+  - 'sumeru provider add atest-provider --api-type openai --base-url "https://example.com/v1" >/dev/null 2>&1; true'
+
+teardown:
+  - "sumeru model rm atest-model 2>/dev/null; true"
+  - "sumeru provider rm atest-provider 2>/dev/null; true"
+
+steps:
+  # ─── 7.3 add ───
+
+  - command: "sumeru model add atest-model --provider atest-provider --model test-model 2>&1"
+    judge:
+      type: regex
+      expr: "Created model atest-model"
+
+  # ─── 7.2 get ───
+
+  - command: "sumeru model get atest-model 2>&1 | head -10"
+    judge:
+      type: regex
+      expr: "Name: atest-model"
+
+  # ─── 7.1 list ───
+
+  - command: "sumeru model list 2>&1 | head -10"
+    judge:
+      type: regex
+      expr: "atest-model"
+
+  # ─── 7.4 update ───
+
+  - command: "sumeru model update atest-model --context-window 128k 2>&1"
+    judge:
+      type: regex
+      expr: "Updated model atest-model"
+
+  # ─── 7.5 rm ───
+
+  - command: "sumeru model remove atest-model 2>&1"
+    judge:
+      type: regex
+      expr: "Removed model atest-model"
+
+  # ─── get 404 ───
+
+  - command: "sumeru model get atest-model 2>&1; true"
+    judge:
+      type: llm
+      prompt: "输出应包含 error，提示 model not found"

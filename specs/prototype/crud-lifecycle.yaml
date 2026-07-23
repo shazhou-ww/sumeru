@@ -1,0 +1,41 @@
+name: "prototype CRUD lifecycle"
+description: |
+  Prototype CRUD 全流程：add → list 含 → rm → list 不含。
+  覆盖 SCENARIOS: 9.1, 9.2。
+
+setup:
+  - "docker build -t sumeru/sarsapa:dev -f packages/sarsapa/Dockerfile . >/dev/null 2>&1; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+
+teardown:
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+
+steps:
+  # ─── 9.1 add + list ───
+
+  - command: "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max 2>&1"
+    judge:
+      type: regex
+      expr: "Created prototype atest-sarsapa"
+
+  - command: "sumeru prototype list 2>&1 | head -10"
+    judge:
+      type: regex
+      expr: "atest-sarsapa"
+
+  - command: "sumeru prototype get atest-sarsapa 2>&1 | head -10"
+    judge:
+      type: regex
+      expr: "Name: atest-sarsapa"
+
+  # ─── 9.2 rm + list 不含 ───
+
+  - command: "sumeru prototype rm atest-sarsapa 2>&1"
+    judge:
+      type: regex
+      expr: "Removed prototype atest-sarsapa"
+
+  - command: "sumeru prototype list 2>&1 | grep -q 'atest-sarsapa' && echo FOUND || echo CLEAN"
+    judge:
+      type: regex
+      expr: "^CLEAN$"
