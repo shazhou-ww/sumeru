@@ -188,6 +188,35 @@ export function createClaudeCodeAdapter(
 		const model = resolveModel();
 		const args = buildArgs(message.content, sessionId, model);
 
+		// Build environment with model config
+		const spawnEnv: NodeJS.ProcessEnv = { ...process.env };
+		console.error(
+			"[DEBUG] initConfig.model:",
+			JSON.stringify(initConfig?.model, null, 2),
+		);
+		if (initConfig?.model.apiKey) {
+			spawnEnv.ANTHROPIC_API_KEY = initConfig.model.apiKey;
+			console.error(
+				"[DEBUG] Set ANTHROPIC_API_KEY:",
+				`${initConfig.model.apiKey.substring(0, 10)}...`,
+			);
+		}
+		if (
+			initConfig?.model.provider &&
+			typeof initConfig.model.provider !== "string" &&
+			initConfig.model.provider.endpoint
+		) {
+			spawnEnv.ANTHROPIC_BASE_URL = initConfig.model.provider.endpoint;
+			console.error(
+				"[DEBUG] Set ANTHROPIC_BASE_URL:",
+				initConfig.model.provider.endpoint,
+			);
+		}
+		console.error(
+			"[DEBUG] spawnEnv keys:",
+			Object.keys(spawnEnv).filter((k) => k.startsWith("ANTHROPIC")),
+		);
+
 		let streamResult: SpawnStreamResult;
 		try {
 			streamResult = streamingSpawnFn({
@@ -195,6 +224,7 @@ export function createClaudeCodeAdapter(
 				args,
 				timeoutMs: sendTimeoutMs,
 				cwd,
+				env: spawnEnv,
 			});
 		} catch (err) {
 			const detail = err instanceof Error ? err.message : String(err);

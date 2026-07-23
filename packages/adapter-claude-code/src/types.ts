@@ -62,6 +62,7 @@ export type SpawnArgs = {
 	args: string[];
 	timeoutMs: number;
 	cwd: string;
+	env?: NodeJS.ProcessEnv;
 };
 
 /** Result subtype from Claude Code's stream-json `result` line. */

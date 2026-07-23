@@ -683,7 +683,10 @@ export function createSessionManager(input: {
 		});
 		session.stdin.write(`${JSON.stringify(config)}\n`);
 		session.stdin.end();
-		const { exitCode } = await session.waitForExit();
+		const { exitCode, stderr } = await session.waitForExit();
+		if (stderr?.trim()) {
+			console.error(`[adapter-config ${record.id}] stderr:`, stderr.trim());
+		}
 		if (exitCode !== 0) {
 			throw new Error("adapter_config_failed");
 		}

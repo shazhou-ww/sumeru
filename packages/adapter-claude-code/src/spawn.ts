@@ -18,13 +18,14 @@ export const defaultStreamingSpawn: StreamingSpawnFn = ({
 	args,
 	timeoutMs,
 	cwd,
+	env,
 }: SpawnArgs): SpawnStreamResult => {
 	const startedAt = Date.now();
 	const child = spawn(command, args, {
 		stdio: ["ignore", "pipe", "pipe"],
 		windowsHide: true,
 		cwd,
-		env: process.env,
+		env: env ?? process.env,
 		shell: false,
 	});
 

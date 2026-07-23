@@ -1,0 +1,89 @@
+name: "claude-code snapshot context inherit"
+description: |
+  验证 claude-code adapter 在 snapshot 继承和隔离场景下的行为。
+  覆盖 SCENARIOS: 11.5, 2.1
+  使用本地 copilot-bridge (127.0.0.1:4142) 的 Anthropic endpoint。
+  资源命名加 atest- 前缀避免冲突。
+
+setup:
+  - "docker build -t sumeru/claude-code:dev -f packages/adapter-claude-code/Dockerfile . >/dev/null 2>&1; true"
+  - "sumeru prototype rm atest-claude-code 2>/dev/null; true"
+  - "sumeru prototype rm atest-claude-code-snap 2>/dev/null; true"
+  - "sumeru provider add atest-anthropic --api-type anthropic --base-url http://127.0.0.1:4142 --api-key dummy 2>/dev/null; true"
+  - "sumeru model add claude-sonnet-4.5 --provider atest-anthropic --model claude-sonnet-4.5 2>/dev/null; true"
+  - "sumeru prototype add atest-claude-code --adapter claude-code --model atest-anthropic:claude-sonnet-4.5"
+
+teardown:
+  - "sumeru session rm $SID_BASE 2>/dev/null; true"
+  - "sumeru session rm $SID_SKIP 2>/dev/null; true"
+  - "sumeru session rm $SID_RESET 2>/dev/null; true"
+  - "sumeru prototype rm atest-claude-code-snap 2>/dev/null; true"
+  - "sumeru prototype rm atest-claude-code 2>/dev/null; true"
+  - "sumeru model rm claude-sonnet-4.5 2>/dev/null; true"
+  - "sumeru provider rm atest-anthropic 2>/dev/null; true"
+  - "docker rmi sumeru/atest-claude-code-snap:dev 2>/dev/null; true"
+
+steps:
+  # ─── Phase 1: 创建 base session，注入 secret ───
+
+  - command: 'export SID_BASE=$(sumeru session add atest-claude-code --task "Remember this secret code: BETA-9911. Just reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "BASE=$SID_BASE"'
+    judge:
+      type: regex
+      expr: "BASE=ses_[A-Z0-9]+"
+    timeout: 30
+
+  # 等待 claude-code 回复——CLI 启动慢
+  - command: "sleep 10 && sumeru session turns $SID_BASE 2>&1 | tail -20"
+    judge:
+      type: llm
+      prompt: "如果有 assistant 回复且含 OK 或确认记住 secret 则 PASS。如果回复包含 not logged in 或 login 则 FAIL。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 8
+      interval: 5
+      backoff: false
+
+  # ─── Phase 2: snapshot ───
+
+  - command: "sumeru session snapshot $SID_BASE atest-claude-code-snap 2>&1 | tail -5"
+    judge:
+      type: regex
+      expr: "Snapshot created"
+
+  - command: "docker images sumeru/atest-claude-code-snap:dev --format '{{.Repository}}:{{.Tag}}'"
+    judge:
+      type: regex
+      expr: "atest-claude-code-snap:dev"
+
+  # ─── Path A: --skip-reset（继承上下文）───
+
+  - command: 'export SID_SKIP=$(sumeru session add atest-claude-code-snap --skip-reset --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SKIP=$SID_SKIP"'
+    judge:
+      type: regex
+      expr: "SKIP=ses_[A-Z0-9]+"
+    timeout: 30
+
+  - command: "sleep 10 && sumeru session turns $SID_SKIP 2>&1 | tail -20"
+    judge:
+      type: llm
+      prompt: "如果有 assistant 回复且包含 BETA-9911（上下文继承成功）则 PASS。如果回复 don't know 或 not sure 则 FAIL。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 8
+      interval: 5
+      backoff: false
+
+  # ─── Path B: 默认 reset（不继承上下文）───
+
+  - command: 'export SID_RESET=$(sumeru session add atest-claude-code-snap --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "RESET=$SID_RESET"'
+    judge:
+      type: regex
+      expr: "RESET=ses_[A-Z0-9]+"
+    timeout: 30
+
+  - command: "sleep 10 && sumeru session turns $SID_RESET 2>&1 | tail -20"
+    judge:
+      type: llm
+      prompt: "如果有 assistant 回复且不包含 BETA-9911（上下文被 reset 清除）则 PASS。如果回复包含 BETA-9911 则 FAIL。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 8
+      interval: 5
+      backoff: false
