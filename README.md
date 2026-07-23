@@ -108,8 +108,6 @@ packages/
   adapter-claude-code/ — Claude Code adapter
   adapter-cursor-agent/ — Cursor Agent adapter
   base/           — 基础 Docker image (Dockerfile)
-deploy/
-  sumeru.service  — systemd 部署配置
 ```
 
 ## Docker 架构
