@@ -6,6 +6,8 @@ tags: [persona, crud, lifecycle, sqlite]
 
 # Persona 完整 CRUD 生命周期
 
+> atest: [`crud-lifecycle.test.yaml`](./crud-lifecycle.test.yaml)
+
 Persona 是 Agent 角色配置（SQLite 实体，Phase 2 新增）。Persona = pure system prompt text.
 
 ## Persona 字段

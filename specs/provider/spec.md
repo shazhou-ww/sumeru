@@ -6,6 +6,8 @@ tags: [provider, crud, lifecycle, sqlite]
 
 # Provider 完整 CRUD 生命周期
 
+> atest: [`crud-lifecycle.test.yaml`](./crud-lifecycle.test.yaml)
+
 Provider 是 LLM 接入点配置（SQLite 实体，Phase 1 新增）。
 
 ## Provider 字段

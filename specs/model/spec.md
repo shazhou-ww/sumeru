@@ -6,6 +6,8 @@ tags: [model, crud, lifecycle, sqlite]
 
 # Model 完整 CRUD 生命周期
 
+> atest: [`crud-lifecycle.test.yaml`](./crud-lifecycle.test.yaml)
+
 Model 是 LLM 模型注册条目（SQLite 实体），嵌套在 Provider 下。完整标识为 `provider:name`（如 `copilot:claude-sonnet-4`）。
 
 ## Model 字段

@@ -6,6 +6,8 @@ tags: [errors, http, api, validation, 400, 404, 409, 500]
 
 # 标准 HTTP 错误响应
 
+> atest: [`error-paths.test.yaml`](./error-paths.test.yaml)
+
 所有 Sumeru Host API 端点共享统一的错误响应结构。本规范定义各 HTTP 错误码的触发条件、返回格式和具体场景。
 
 ## 错误响应体结构

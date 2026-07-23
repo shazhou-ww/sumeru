@@ -6,6 +6,8 @@ tags: [turns, pagination, session]
 
 # 列出 Session Turns 并支持分页
 
+> atest: [`turns-pagination.test.yaml`](./turns-pagination.test.yaml)
+
 Session 的 Turn 列表通过 `GET /sessions/:id/turns` 获取，支持基于游标的 `?after=<id>` 分页机制。
 
 ## 背景

@@ -6,6 +6,8 @@ tags: [prototype, crud, yaml, validation]
 
 # Prototype CRUD Lifecycle
 
+> atest: [`crud-lifecycle.test.yaml`](./crud-lifecycle.test.yaml)
+
 ## Prototype 字段
 
 | 字段 | 类型 | 必填 | 说明 |

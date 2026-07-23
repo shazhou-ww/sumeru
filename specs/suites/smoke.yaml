@@ -7,4 +7,4 @@ prerequisites:
   - SQLite seeded with Provider + Model + Persona
 
 scenarios:
-  - session/lifecycle/session-lifecycle.yaml
+  - session/lifecycle/session-lifecycle.test.yaml

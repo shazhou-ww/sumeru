@@ -5,6 +5,8 @@ tags: [e2e, session, resume, persistence, sarsapa]
 
 # Session Resume After Host Restart
 
+> atest: [`resume-after-restart.test.yaml`](./resume-after-restart.test.yaml)
+
 Host 重启后，sarsapa session 通过 JSONL 持久化恢复对话上下文。
 
 ## 机制
