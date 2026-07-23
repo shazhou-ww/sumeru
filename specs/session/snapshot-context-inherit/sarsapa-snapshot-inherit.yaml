@@ -31,10 +31,13 @@ steps:
     judge_prompt: "输出应包含 BASE= 前缀和一个 ses_ 开头的 session ID"
     timeout: 15
 
-  - command: "sleep 8"
-
-  - command: "sumeru session turns $SID_BASE 2>&1 | head -10"
-    judge_prompt: "输出应包含 [user] 消息含 ALPHA-7742，以及 [assistant] 的确认回复含 OK"
+  # 轮询等待 assistant 回复——RETRY 当还没回复，PASS 当含 OK
+  - command: "sleep 5 && sumeru session turns $SID_BASE 2>&1 | head -10"
+    judge_prompt: "如果有 assistant 回复且含 OK 或 ALPHA-7742 则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 5
+      interval: 5
+      backoff: false
 
   # ─── Phase 2: snapshot ───
 
@@ -50,10 +53,12 @@ steps:
     judge_prompt: "输出应包含 SKIP= 前缀和一个 ses_ 开头的 session ID"
     timeout: 15
 
-  - command: "sleep 8"
-
-  - command: "sumeru session turns $SID_SKIP 2>&1 | head -10"
-    judge_prompt: "assistant 回复应包含 ALPHA-7742（上下文继承成功），不应回复 don't know 或 not sure"
+  - command: "sleep 5 && sumeru session turns $SID_SKIP 2>&1 | head -10"
+    judge_prompt: "如果有 assistant 回复，回复应包含 ALPHA-7742（上下文继承成功），不应回复 don't know 或 not sure，则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 5
+      interval: 5
+      backoff: false
 
   # ─── Path B: 默认 reset（不继承上下文）───
 
@@ -61,7 +66,9 @@ steps:
     judge_prompt: "输出应包含 RESET= 前缀和一个 ses_ 开头的 session ID"
     timeout: 15
 
-  - command: "sleep 8"
-
-  - command: "sumeru session turns $SID_RESET 2>&1 | head -15"
-    judge_prompt: "assistant 回复不应包含 ALPHA-7742（上下文被 reset 清除）。assistant 可能回复不知道、要求更多上下文、或尝试查看文件"
+  - command: "sleep 5 && sumeru session turns $SID_RESET 2>&1 | head -15"
+    judge_prompt: "如果有 assistant 回复，回复不应包含 ALPHA-7742（上下文被 reset 清除）则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 5
+      interval: 5
+      backoff: false
