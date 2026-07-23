@@ -29,12 +29,16 @@ steps:
   # ─── Phase 1: 创建 base session，注入 secret ───
 
   - command: 'export SID_BASE=$(sumeru session add atest-hermes --task "Remember this: the secret code is BETA-9911. Reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "BASE=$SID_BASE"'
-    judge_prompt: "输出应包含 BASE= 前缀和一个 ses_ 开头的 session ID"
+    judge:
+      type: regex
+      expr: "BASE=ses_[A-Z0-9]+"
     timeout: 30
 
   # 轮询等待 assistant 回复——hermes ACP 启动慢
   - command: "sleep 10 && sumeru session turns $SID_BASE 2>&1 | head -10"
-    judge_prompt: "如果有 assistant 回复且含 OK 或 BETA-9911 则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    judge:
+      type: llm
+      prompt: "如果有 assistant 回复且含 OK 或 BETA-9911 则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
     retry:
       max: 6
       interval: 5
@@ -43,19 +47,27 @@ steps:
   # ─── Phase 2: snapshot ───
 
   - command: "sumeru session snapshot $SID_BASE atest-hermes-snap 2>&1"
-    judge_prompt: "输出应包含 'Snapshot created' 和 image 名 sumeru/atest-hermes-snap:dev"
+    judge:
+      type: regex
+      expr: "Snapshot created"
 
   - command: "docker images sumeru/atest-hermes-snap:dev --format '{{.Repository}}:{{.Tag}}'"
-    judge_prompt: "输出应为 sumeru/atest-hermes-snap:dev"
+    judge:
+      type: regex
+      expr: "atest-hermes-snap:dev"
 
   # ─── Path A: --skip-reset（继承上下文）───
 
   - command: 'export SID_SKIP=$(sumeru session add atest-hermes-snap --skip-reset --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SKIP=$SID_SKIP"'
-    judge_prompt: "输出应包含 SKIP= 前缀和一个 ses_ 开头的 session ID"
+    judge:
+      type: regex
+      expr: "SKIP=ses_[A-Z0-9]+"
     timeout: 30
 
   - command: "sleep 10 && sumeru session turns $SID_SKIP 2>&1 | head -10"
-    judge_prompt: "如果有 assistant 回复，回复应包含 BETA-9911（上下文继承成功），不应回复 don't know 或 not sure，则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    judge:
+      type: llm
+      prompt: "如果有 assistant 回复，回复应包含 BETA-9911（上下文继承成功），不应回复 don't know 或 not sure，则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
     retry:
       max: 6
       interval: 5
@@ -64,11 +76,15 @@ steps:
   # ─── Path B: 默认 reset（不继承上下文）───
 
   - command: 'export SID_RESET=$(sumeru session add atest-hermes-snap --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "RESET=$SID_RESET"'
-    judge_prompt: "输出应包含 RESET= 前缀和一个 ses_ 开头的 session ID"
+    judge:
+      type: regex
+      expr: "RESET=ses_[A-Z0-9]+"
     timeout: 30
 
   - command: "sleep 10 && sumeru session turns $SID_RESET 2>&1 | head -15"
-    judge_prompt: "如果有 assistant 回复，回复不应包含 BETA-9911（上下文被 reset 清除）则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    judge:
+      type: llm
+      prompt: "如果有 assistant 回复，回复不应包含 BETA-9911（上下文被 reset 清除）则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
     retry:
       max: 6
       interval: 5
