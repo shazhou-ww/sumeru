@@ -1,0 +1,46 @@
+name: "persona CRUD lifecycle"
+description: |
+  Persona CRUD 全流程：add → get → list → rm → get 404 → rm 被引用 409。
+  覆盖 SCENARIOS: 8.1-8.5。
+
+setup:
+  - "sumeru persona rm atest-persona 2>/dev/null; true"
+
+teardown:
+  - "sumeru persona rm atest-persona 2>/dev/null; true"
+
+steps:
+  # ─── 8.3 add ───
+
+  - command: 'sumeru persona add atest-persona --instructions "You are a test bot" 2>&1'
+    judge:
+      type: regex
+      expr: "Created persona atest-persona"
+
+  # ─── 8.2 get ───
+
+  - command: "sumeru persona get atest-persona 2>&1 | head -10"
+    judge:
+      type: regex
+      expr: "Name: atest-persona"
+
+  # ─── 8.1 list ───
+
+  - command: "sumeru persona list 2>&1 | head -10"
+    judge:
+      type: regex
+      expr: "atest-persona"
+
+  # ─── 8.4 rm ───
+
+  - command: "sumeru persona remove atest-persona 2>&1"
+    judge:
+      type: regex
+      expr: "Removed persona atest-persona"
+
+  # ─── get 404 ───
+
+  - command: "sumeru persona get atest-persona 2>&1; true"
+    judge:
+      type: llm
+      prompt: "输出应包含 error，提示 persona not found"

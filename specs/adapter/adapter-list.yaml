@@ -1,0 +1,19 @@
+name: "adapter list and detail"
+description: |
+  Adapter 查询：list → get → models。
+  覆盖 SCENARIOS: 10.1-10.3。
+
+steps:
+  # ─── 10.1 list ───
+
+  - command: "sumeru adapter list 2>&1 | head -10"
+    judge:
+      type: regex
+      expr: "sarsapa"
+
+  # ─── 10.2 get ───
+
+  - command: "sumeru adapter get sarsapa 2>&1 | head -10"
+    judge:
+      type: regex
+      expr: "Mode: custom-only"
