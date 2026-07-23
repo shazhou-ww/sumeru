@@ -1,6 +1,6 @@
 # Prototype CRUD Lifecycle
 
-> atest: [`crud-lifecycle.test.yaml`](./crud-lifecycle.test.yaml)
+> atest: [`prototype-crud.test.yaml`](../atest/prototype-crud.test.yaml)
 
 ## Prototype 字段
 
@@ -10,7 +10,6 @@
 | persona | string | ✓ | Must reference existing Persona in SQLite |
 | model | string\|null | conditional | Format "provider:name"; must exist in SQLite. Null only if adapter.providerMode === "builtin-only" |
 | adapter | string | ✓ | Must reference existing adapter in adapter registry |
-| extensions | string[]\|null | ✗ | Each must reference existing Extension in hostConfig.extensions |
 | image | string\|null | ✗ | Docker image override |
 
 ### API
@@ -26,172 +25,168 @@
 
 ```json
 { "type": "@sumeru/prototype-list", "value": [...] }
-{ "type": "@sumeru/prototype", "value": { "name": "...", "persona": "...", "model": "...", "adapter": "...", "extensions": [...], "image": null } }
+{ "type": "@sumeru/prototype", "value": { "name": "...", "persona": "...", "model": "...", "adapter": "...", "image": null } }
 ```
 
 ---
 
-## Given
-- Host is running and healthy
-- SQLite contains Persona "coder" and Model "openai:gpt-4"
-- Adapter registry contains adapter "docker"
-- hostConfig.extensions contains "mcp-filesystem"
+## Scenario: 列出所有 Prototype
 
-## When — list prototypes (empty)
-```bash
-curl -s http://localhost:3000/prototypes
-```
+**When** `GET /prototypes`
 
-## Then — 200 empty list
-```json
-{ "type": "@sumeru/prototype-list", "value": [] }
-```
+**Then** 200，返回 `@sumeru/prototype-list`
+
+**Then** 每项包含 name、persona、model、adapter
 
 ---
 
-## When — create prototype via PUT
+## Scenario: 创建 Prototype
+
+**Given** Host is running and healthy
+
+**Given** SQLite contains Persona "coder" and Model "openai:gpt-4"
+
+**Given** Adapter registry contains adapter "docker"
+
+**When**
 ```bash
 curl -s -X PUT http://localhost:3000/prototypes/my-agent \
   -H "Content-Type: application/json" \
-  -d '{"persona":"coder","model":"openai:gpt-4","adapter":"docker","extensions":["mcp-filesystem"]}'
+  -d '{"persona":"coder","model":"openai:gpt-4","adapter":"docker"}'
 ```
 
-## Then — 201 created
+**Then** 201 created
 ```json
-{ "type": "@sumeru/prototype", "value": { "name": "my-agent", "persona": "coder", "model": "openai:gpt-4", "adapter": "docker", "extensions": ["mcp-filesystem"], "image": null } }
+{ "type": "@sumeru/prototype", "value": { "name": "my-agent", "persona": "coder", "model": "openai:gpt-4", "adapter": "docker", "image": null } }
 ```
 
 ---
 
-## When — get prototype
-```bash
-curl -s http://localhost:3000/prototypes/my-agent
-```
+## Scenario: 获取 Prototype
 
-## Then — 200 prototype detail
+**When** `GET /prototypes/my-agent`
+
+**Then** 200 prototype detail
 ```json
-{ "type": "@sumeru/prototype", "value": { "name": "my-agent", "persona": "coder", "model": "openai:gpt-4", "adapter": "docker", "extensions": ["mcp-filesystem"], "image": null } }
+{ "type": "@sumeru/prototype", "value": { "name": "my-agent", "persona": "coder", "model": "openai:gpt-4", "adapter": "docker", "image": null } }
 ```
 
 ---
 
-## When — update prototype (merge)
+## Scenario: 更新 Prototype (merge)
+
+**When**
 ```bash
 curl -s -X PUT http://localhost:3000/prototypes/my-agent \
   -H "Content-Type: application/json" \
   -d '{"model":"anthropic:claude-3"}'
 ```
 
-## Then — 200 updated (merged fields)
+**Then** 200 updated (merged fields)
 ```json
-{ "type": "@sumeru/prototype", "value": { "name": "my-agent", "persona": "coder", "model": "anthropic:claude-3", "adapter": "docker", "extensions": ["mcp-filesystem"], "image": null } }
+{ "type": "@sumeru/prototype", "value": { "name": "my-agent", "persona": "coder", "model": "anthropic:claude-3", "adapter": "docker", "image": null } }
 ```
 
 ---
 
-## When — delete prototype
-```bash
-curl -s -X DELETE http://localhost:3000/prototypes/my-agent
-```
+## Scenario: 删除 Prototype
 
-## Then — 204 No Content
+**When** `DELETE /prototypes/my-agent`
 
----
+**Then** 204 No Content
 
-## When — get deleted prototype
-```bash
-curl -s http://localhost:3000/prototypes/my-agent
-```
+**When** `GET /prototypes/my-agent`
 
-## Then — 404
-```json
-{ "type": "@sumeru/error", "value": { "code": "prototype_not_found", "message": "Prototype not found" } }
-```
+**Then** 404 `prototype_not_found`
 
 ---
 
-## When — create with nonexistent persona
+## Scenario: 创建时 Persona 不存在
+
+**Given** Persona "nonexistent" 不存在
+
+**When**
 ```bash
 curl -s -X PUT http://localhost:3000/prototypes/bad-agent \
   -H "Content-Type: application/json" \
   -d '{"persona":"nonexistent","model":"openai:gpt-4","adapter":"docker"}'
 ```
 
-## Then — 400 persona_not_found
+**Then** 400 `persona_not_found`
 ```json
 { "type": "@sumeru/error", "value": { "code": "persona_not_found", "message": "Persona not found" } }
 ```
 
 ---
 
-## When — create with nonexistent adapter
+## Scenario: 创建时 Adapter 不存在
+
+**Given** Adapter "nonexistent" 不存在
+
+**When**
 ```bash
 curl -s -X PUT http://localhost:3000/prototypes/bad-agent \
   -H "Content-Type: application/json" \
   -d '{"persona":"coder","model":"openai:gpt-4","adapter":"nonexistent"}'
 ```
 
-## Then — 400 adapter_not_found
+**Then** 400 `adapter_not_found`
 ```json
 { "type": "@sumeru/error", "value": { "code": "adapter_not_found", "message": "Adapter not found" } }
 ```
 
 ---
 
-## When — create with invalid model format
+## Scenario: 创建时 Model 不存在
+
+**Given** Model "openai:nonexistent" 不存在
+
+**When**
 ```bash
 curl -s -X PUT http://localhost:3000/prototypes/bad-agent \
   -H "Content-Type: application/json" \
-  -d '{"persona":"coder","model":"invalid-format","adapter":"docker"}'
+  -d '{"persona":"coder","model":"openai:nonexistent","adapter":"docker"}'
 ```
 
-## Then — 400 model_not_found
+**Then** 400 `model_not_found`
 ```json
 { "type": "@sumeru/error", "value": { "code": "model_not_found", "message": "Model not found" } }
 ```
 
 ---
 
-## When — create with null model on non-builtin-only adapter
+## Scenario: 非 builtin-only Adapter 时 Model 为 null
+
+**Given** Adapter "docker" 的 providerMode === "custom-only"
+
+**When**
 ```bash
 curl -s -X PUT http://localhost:3000/prototypes/bad-agent \
   -H "Content-Type: application/json" \
   -d '{"persona":"coder","model":null,"adapter":"docker"}'
 ```
 
-## Then — 400 model_required
+**Then** 400 `model_required`
 ```json
 { "type": "@sumeru/error", "value": { "code": "model_required", "message": "Model is required for this adapter" } }
 ```
 
 ---
 
-## When — create with nonexistent extension
+## Scenario: builtin-only Adapter 时 Model 为 null
+
+**Given** Adapter "claude-code" 的 providerMode === "builtin-only"
+
+**When**
 ```bash
-curl -s -X PUT http://localhost:3000/prototypes/bad-agent \
+curl -s -X PUT http://localhost:3000/prototypes/my-agent \
   -H "Content-Type: application/json" \
-  -d '{"persona":"coder","model":"openai:gpt-4","adapter":"docker","extensions":["nonexistent"]}'
+  -d '{"persona":"coder","model":null,"adapter":"claude-code"}'
 ```
 
-## Then — 400 extension_not_found
+**Then** 201 created（model 为 null 合法）
 ```json
-{ "type": "@sumeru/error", "value": { "code": "extension_not_found", "message": "Extension not found" } }
-```
-
----
-
-## When — PUT with YAML body
-```bash
-curl -s -X PUT http://localhost:3000/prototypes/yaml-agent \
-  -H "Content-Type: application/yaml" \
-  -d 'persona: coder
-model: openai:gpt-4
-adapter: docker'
-```
-
-## Then — 201 created
-```json
-{ "type": "@sumeru/prototype", "value": { "name": "yaml-agent", "persona": "coder", "model": "openai:gpt-4", "adapter": "docker", "extensions": null, "image": null } }
+{ "type": "@sumeru/prototype", "value": { "name": "my-agent", "persona": "coder", "model": null, "adapter": "claude-code", "image": null } }
 ```
 
 ---
