@@ -6,6 +6,8 @@ tags: [session, commands, model, reset, snapshot, chat, exec]
 
 # Session Commands
 
+> atest: [`session-commands.test.yaml`](./session-commands.test.yaml)
+
 ## API
 
 | Method | Path | 说明 |
