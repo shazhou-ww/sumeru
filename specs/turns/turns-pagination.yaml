@@ -1,0 +1,63 @@
+name: "turns pagination"
+description: |
+  Turns 全量查询 + 分页（after=N）。
+  覆盖 SCENARIOS: 5.1, 5.2。
+
+setup:
+  - "docker build -t sumeru/sarsapa:dev -f packages/sarsapa/Dockerfile . >/dev/null 2>&1; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+
+steps:
+  # ─── 创建 session + 第一条消息 ───
+
+  - command: 'export SID=$(sumeru session add atest-sarsapa --task "Remember: code is ALPHA-7742. Reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
+    judge:
+      type: regex
+      expr: "SID=ses_[A-Z0-9]+"
+    timeout: 15
+
+  # ─── 等待第一条回复 ───
+
+  - command: "sleep 5 && sumeru session turns $SID 2>&1 | head -10"
+    judge:
+      type: llm
+      prompt: "如果有 assistant 回复则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 5
+      interval: 5
+
+  # ─── 追加第二条消息 ───
+
+  - command: 'sumeru session send $SID "What is the code?" 2>&1'
+    judge:
+      type: regex
+      expr: "accepted message msg_"
+
+  # ─── 等待第二条回复 ───
+
+  - command: "sleep 5 && sumeru session turns $SID 2>&1 | tail -10"
+    judge:
+      type: llm
+      prompt: "最后的 assistant 回复应包含 ALPHA-7742。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 5
+      interval: 5
+
+  # ─── 5.1 全量查询 — 应包含所有 turns ───
+
+  - command: "sumeru session turns $SID 2>&1 | grep -c '\\[user\\]' | head -1"
+    judge:
+      type: llm
+      prompt: "输出应包含数字 2（表示有 2 条 user 消息）"
+
+  # ─── 5.2 分页 after=1 — 只返回第 2 条之后的 turn ───
+
+  - command: "sumeru session turns $SID --after 1 2>&1 | head -15"
+    judge:
+      type: llm
+      prompt: "输出应只包含第 2 轮对话（What is the code + assistant 回复），不应包含第 1 轮（Remember: code is ALPHA-7742）"
