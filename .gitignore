@@ -7,3 +7,6 @@ false/
 data/
 .pnpm-store
 .build/
+
+# atest trace output
+*.jsonl
