@@ -28,6 +28,9 @@ const INIT_CONFIG: AdapterInitConfig = {
 type MockServerOptions = {
 	sessionId: string;
 	onPrompt: (content: string, emit: (update: AcpSessionUpdate) => void) => void;
+	// When set, session/resume responds with the nested _meta.hermes.sessionProvenance
+	// shape instead of a top-level sessionId (real hermes behavior, #279).
+	resumeNestedSessionId?: string;
 };
 
 // Drive an adapter `handle()` generator to completion, collecting the emitted
@@ -102,7 +105,21 @@ function createMockAcpProcess(options: MockServerOptions): AcpProcess {
 			return;
 		}
 		if (parsed.method === "session/resume") {
-			writeResponse(parsed.id, { sessionId: options.sessionId });
+			if (typeof options.resumeNestedSessionId === "string") {
+				writeResponse(parsed.id, {
+					_meta: {
+						hermes: {
+							sessionProvenance: {
+								acpSessionId: options.resumeNestedSessionId,
+							},
+						},
+					},
+					models: {},
+					modes: {},
+				});
+			} else {
+				writeResponse(parsed.id, { sessionId: options.sessionId });
+			}
 			return;
 		}
 		if (parsed.method === "session/set_mode") {
@@ -1066,5 +1083,32 @@ describe("@sumeru/adapter-hermes — acp-client", () => {
 			result: "file1.txt",
 			durationMs: 42,
 		});
+	});
+
+	it("resumeSession extracts sessionId from _meta.hermes.sessionProvenance (#279)", async () => {
+		const resumedSessionId = "d2c9e661-resume-279";
+		const client = createAcpClient({
+			command: "hermes",
+			args: ["acp", "--accept-hooks"],
+			cwd: process.cwd(),
+			clientInfo: { name: "test-client", version: "0.0.1" },
+			spawnProcess: () =>
+				createMockAcpProcess({
+					sessionId: resumedSessionId,
+					resumeNestedSessionId: resumedSessionId,
+					onPrompt: (_content, emit) => {
+						emit({
+							sessionUpdate: "agent_message_chunk",
+							content: { type: "text", text: "resumed" },
+						});
+					},
+				}),
+		});
+
+		await client.initialize();
+		// The mock server responds to session/resume with NO top-level sessionId,
+		// only _meta.hermes.sessionProvenance.acpSessionId — the real hermes shape.
+		const result = await client.resumeSession(resumedSessionId, process.cwd());
+		expect(result.sessionId).toBe(resumedSessionId);
 	});
 });

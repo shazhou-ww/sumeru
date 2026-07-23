@@ -236,10 +236,26 @@ function parseSessionIdResult(
 	result: unknown,
 	method: string,
 ): { sessionId: string } {
-	if (!isRecord(result) || typeof result.sessionId !== "string") {
+	if (!isRecord(result)) {
 		throw new Error(`ACP ${method} returned invalid sessionId`);
 	}
-	return { sessionId: result.sessionId };
+	// session/new: sessionId at the top level of the result.
+	if (typeof result.sessionId === "string") {
+		return { sessionId: result.sessionId };
+	}
+	// session/resume: hermes omits the top-level sessionId and nests it under
+	// _meta.hermes.sessionProvenance.acpSessionId instead (#279).
+	const meta = result._meta;
+	if (isRecord(meta)) {
+		const hermes = meta.hermes;
+		if (isRecord(hermes)) {
+			const provenance = hermes.sessionProvenance;
+			if (isRecord(provenance) && typeof provenance.acpSessionId === "string") {
+				return { sessionId: provenance.acpSessionId };
+			}
+		}
+	}
+	throw new Error(`ACP ${method} returned invalid sessionId`);
 }
 
 function parseSessionUpdate(
