@@ -2,13 +2,14 @@
 
 > Sumeru E2E 测试用 atest 覆盖的 test case 规划。
 > 设计原则：**所有场景都用 atest**，每步选合适的 judge 类型：
-> - `judge_prompt`（LLM）— 不确定输出，语义判定
-> - `judge`（表达式，如 JSONata/regex）— 确定输出，精确匹配（待 atest 实现）
-> - 无 judge（transition）— exit code 0=PASS，非0=FAIL
+> - `judge: { type: llm }` — 不确定输出，语义判定
+> - `judge: { type: regex | jsonata }` — 确定输出，精确匹配
+> - 无 `judge`（transition）— exit code 0=PASS，非0=FAIL
 >
 > 前提：`.sumeru/.env` 不含 OPENAI/ANTHROPIC env（避免 hermes 401）。
 > Adapter 覆盖 sarsapa + hermes（纯本地 LLM，无需外部 API key）。
 > 资源命名 `atest-` 前缀避免冲突。
+> atest ≥ 0.2.0（judge 对象格式）。
 
 ---
 
