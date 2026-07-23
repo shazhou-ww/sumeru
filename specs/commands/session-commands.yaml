@@ -1,0 +1,74 @@
+name: "session commands"
+description: |
+  Session 命令复合操作链：exec → model 切换 → snapshot → reset。
+  覆盖 SCENARIOS: 11.2, 11.3, 11.4, 11.5。
+  资源命名加 atest- 前缀避免冲突。
+  注：reset 后 send 不回复是已知 bug（#281 评论：reset 清 session.jsonl 导致
+  message resume 读不到 initConfig），暂不测 reset 后 send。
+
+setup:
+  - "docker build -t sumeru/sarsapa:dev -f packages/sarsapa/Dockerfile . >/dev/null 2>&1; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - "sumeru prototype rm atest-sarsapa-snap 2>/dev/null; true"
+  - "docker rmi sumeru/atest-sarsapa-snap:dev 2>/dev/null; true"
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - "sumeru prototype rm atest-sarsapa-snap 2>/dev/null; true"
+  - "docker rmi sumeru/atest-sarsapa-snap:dev 2>/dev/null; true"
+
+steps:
+  # ─── 创建 session ───
+
+  - command: 'export SID=$(sumeru session add atest-sarsapa --task "Remember: the secret code is ALPHA-7742. Reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
+    judge:
+      type: regex
+      expr: "SID=ses_[A-Z0-9]+"
+    timeout: 15
+
+  # ─── 11.2 exec — 容器内执行 shell ───
+
+  - command: "sumeru session exec $SID -- echo hello 2>&1"
+    judge:
+      type: regex
+      expr: "hello"
+
+  # ─── 等待 task 回复 ───
+
+  - command: "sleep 5 && sumeru session turns $SID 2>&1 | head -10"
+    judge:
+      type: llm
+      prompt: "如果有 assistant 回复则 PASS。如果只有 user 消息还没有 assistant 回复则 RETRY"
+    retry:
+      max: 5
+      interval: 5
+
+  # ─── 11.3 model 切换 ───
+
+  - command: "sumeru session model $SID qwen3.7-max 2>&1"
+    judge:
+      type: regex
+      expr: "qwen3.7-max"
+
+  # ─── 11.5 snapshot — 在 reset 之前做 ───
+
+  - command: "sumeru session snapshot $SID atest-sarsapa-snap 2>&1"
+    judge:
+      type: regex
+      expr: "Snapshot created"
+
+  # ─── 11.4 reset — 清上下文 ───
+
+  - command: "sumeru session reset $SID 2>&1"
+    judge:
+      type: regex
+      expr: "reset ses_"
+
+  # ─── reset 后 session 应仍可 get（验证 session 存在）───
+
+  - command: "sumeru session get $SID 2>&1 | head -5"
+    judge:
+      type: regex
+      expr: "ID: ses_[A-Z0-9]+"
