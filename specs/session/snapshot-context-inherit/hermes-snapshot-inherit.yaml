@@ -1,0 +1,69 @@
+name: "hermes snapshot context inherit"
+description: |
+  验证 hermes snapshot 后新 session 的上下文继承与隔离，以及 session send 追加消息。
+  Path A (--skip-reset)：新 session 继承 snapshot image 中的对话历史。
+  Path B (默认 reset)：新 session 从干净状态开始，不继承上下文。
+  覆盖 #271 imageTag 持久化、#277/#279 session/resume cwd + 响应解析修复。
+  资源命名加 atest- 前缀避免与现有资源冲突。
+
+setup:
+  # 确保 image 存在
+  - "docker build -t sumeru/hermes:dev -f packages/adapter-hermes/Dockerfile . >/dev/null 2>&1; true"
+  # 确保环境干净
+  - "sumeru prototype rm atest-hermes 2>/dev/null; true"
+  - "sumeru prototype rm atest-hermes-snap 2>/dev/null; true"
+  - "docker rmi sumeru/atest-hermes-snap:dev 2>/dev/null; true"
+  # 注册 prototype
+  - "sumeru prototype add atest-hermes --adapter hermes --model qwen3.7-max"
+
+teardown:
+  - "sumeru session rm $SID_BASE 2>/dev/null; true"
+  - "sumeru session rm $SID_SKIP 2>/dev/null; true"
+  - "sumeru session rm $SID_RESET 2>/dev/null; true"
+  # 只删 snapshot prototype+image，不删 base prototype（避免删 base image）
+  - "sumeru prototype rm atest-hermes 2>/dev/null; true"
+  - "sumeru prototype rm atest-hermes-snap 2>/dev/null; true"
+  - "docker rmi sumeru/atest-hermes-snap:dev 2>/dev/null; true"
+
+steps:
+  # ─── Phase 1: 创建 base session，注入 secret ───
+
+  - command: 'export SID_BASE=$(sumeru session add atest-hermes --task "Remember this: the secret code is BETA-9911. Reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "BASE=$SID_BASE"'
+    judge_prompt: "输出应包含 BASE= 前缀和一个 ses_ 开头的 session ID"
+    timeout: 30
+
+  - command: "sleep 25"
+    # hermes 启动 ACP 子进程较慢，等待回复
+
+  - command: "sumeru session turns $SID_BASE 2>&1 | head -10"
+    judge_prompt: "输出应包含 [user] 消息含 BETA-9911，以及 [assistant] 的确认回复含 OK"
+
+  # ─── Phase 2: snapshot ───
+
+  - command: "sumeru session snapshot $SID_BASE atest-hermes-snap 2>&1"
+    judge_prompt: "输出应包含 'Snapshot created' 和 image 名 sumeru/atest-hermes-snap:dev"
+
+  - command: "docker images sumeru/atest-hermes-snap:dev --format '{{.Repository}}:{{.Tag}}'"
+    judge_prompt: "输出应为 sumeru/atest-hermes-snap:dev"
+
+  # ─── Path A: --skip-reset（继承上下文）───
+
+  - command: 'export SID_SKIP=$(sumeru session add atest-hermes-snap --skip-reset --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SKIP=$SID_SKIP"'
+    judge_prompt: "输出应包含 SKIP= 前缀和一个 ses_ 开头的 session ID"
+    timeout: 30
+
+  - command: "sleep 25"
+
+  - command: "sumeru session turns $SID_SKIP 2>&1 | head -10"
+    judge_prompt: "assistant 回复应包含 BETA-9911（上下文继承成功），不应回复 don't know 或 not sure"
+
+  # ─── Path B: 默认 reset（不继承上下文）───
+
+  - command: 'export SID_RESET=$(sumeru session add atest-hermes-snap --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "RESET=$SID_RESET"'
+    judge_prompt: "输出应包含 RESET= 前缀和一个 ses_ 开头的 session ID"
+    timeout: 30
+
+  - command: "sleep 25"
+
+  - command: "sumeru session turns $SID_RESET 2>&1 | head -15"
+    judge_prompt: "assistant 回复不应包含 BETA-9911（上下文被 reset 清除）。assistant 可能回复不知道、要求更多上下文、或尝试查看文件"

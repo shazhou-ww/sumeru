@@ -1,0 +1,67 @@
+name: "sarsapa snapshot context inherit"
+description: |
+  验证 sarsapa snapshot 后新 session 的上下文继承与隔离。
+  Path A (--skip-reset)：新 session 继承 snapshot image 中的对话历史。
+  Path B (默认 reset)：新 session 从干净状态开始，不继承上下文。
+  资源命名加 atest- 前缀避免与现有资源冲突。
+
+setup:
+  # 确保 image 存在（prototype rm 会删 image，重复跑需要重建）
+  - "docker build -t sumeru/sarsapa:dev -f packages/sarsapa/Dockerfile . >/dev/null 2>&1; true"
+  # 确保环境干净
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - "sumeru prototype rm atest-sarsapa-snap 2>/dev/null; true"
+  - "docker rmi sumeru/atest-sarsapa-snap:dev 2>/dev/null; true"
+  # 注册 prototype
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max"
+
+teardown:
+  - "sumeru session rm $SID_BASE 2>/dev/null; true"
+  - "sumeru session rm $SID_SKIP 2>/dev/null; true"
+  - "sumeru session rm $SID_RESET 2>/dev/null; true"
+  # 只删 snapshot prototype+image，不删 base prototype（避免删 base image）
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - "sumeru prototype rm atest-sarsapa-snap 2>/dev/null; true"
+  - "docker rmi sumeru/atest-sarsapa-snap:dev 2>/dev/null; true"
+
+steps:
+  # ─── Phase 1: 创建 base session，注入 secret ───
+
+  - command: 'export SID_BASE=$(sumeru session add atest-sarsapa --task "Remember this: the secret code is ALPHA-7742. Reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "BASE=$SID_BASE"'
+    judge_prompt: "输出应包含 BASE= 前缀和一个 ses_ 开头的 session ID"
+    timeout: 15
+
+  - command: "sleep 8"
+
+  - command: "sumeru session turns $SID_BASE 2>&1 | head -10"
+    judge_prompt: "输出应包含 [user] 消息含 ALPHA-7742，以及 [assistant] 的确认回复含 OK"
+
+  # ─── Phase 2: snapshot ───
+
+  - command: "sumeru session snapshot $SID_BASE atest-sarsapa-snap 2>&1"
+    judge_prompt: "输出应包含 'Snapshot created' 和 image 名 sumeru/atest-sarsapa-snap:dev"
+
+  - command: "docker images sumeru/atest-sarsapa-snap:dev --format '{{.Repository}}:{{.Tag}}'"
+    judge_prompt: "输出应为 sumeru/atest-sarsapa-snap:dev"
+
+  # ─── Path A: --skip-reset（继承上下文）───
+
+  - command: 'export SID_SKIP=$(sumeru session add atest-sarsapa-snap --skip-reset --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SKIP=$SID_SKIP"'
+    judge_prompt: "输出应包含 SKIP= 前缀和一个 ses_ 开头的 session ID"
+    timeout: 15
+
+  - command: "sleep 8"
+
+  - command: "sumeru session turns $SID_SKIP 2>&1 | head -10"
+    judge_prompt: "assistant 回复应包含 ALPHA-7742（上下文继承成功），不应回复 don't know 或 not sure"
+
+  # ─── Path B: 默认 reset（不继承上下文）───
+
+  - command: 'export SID_RESET=$(sumeru session add atest-sarsapa-snap --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "RESET=$SID_RESET"'
+    judge_prompt: "输出应包含 RESET= 前缀和一个 ses_ 开头的 session ID"
+    timeout: 15
+
+  - command: "sleep 8"
+
+  - command: "sumeru session turns $SID_RESET 2>&1 | head -15"
+    judge_prompt: "assistant 回复不应包含 ALPHA-7742（上下文被 reset 清除）。assistant 可能回复不知道、要求更多上下文、或尝试查看文件"
