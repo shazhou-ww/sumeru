@@ -1,9 +1,3 @@
----
-scenario: Model 完整 CRUD 生命周期
-feature: Model CRUD API
-tags: [model, crud, lifecycle, sqlite]
----
-
 # Model 完整 CRUD 生命周期
 
 > atest: [`crud-lifecycle.test.yaml`](./crud-lifecycle.test.yaml)

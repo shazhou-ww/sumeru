@@ -1,9 +1,3 @@
----
-scenario: Prototype CRUD lifecycle — create, read, update, delete YAML-file-based prototypes
-feature: Prototype Management
-tags: [prototype, crud, yaml, validation]
----
-
 # Prototype CRUD Lifecycle
 
 > atest: [`crud-lifecycle.test.yaml`](./crud-lifecycle.test.yaml)

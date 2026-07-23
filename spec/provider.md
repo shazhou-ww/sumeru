@@ -1,9 +1,3 @@
----
-scenario: Provider 完整 CRUD 生命周期
-feature: Provider CRUD API
-tags: [provider, crud, lifecycle, sqlite]
----
-
 # Provider 完整 CRUD 生命周期
 
 > atest: [`crud-lifecycle.test.yaml`](./crud-lifecycle.test.yaml)

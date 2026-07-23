@@ -1,9 +1,3 @@
----
-scenario: Adapter 列表与详情
-feature: Adapter List API
-tags: [adapter, read, list]
----
-
 # Adapter 列表与详情
 
 > atest: [`adapter-list.test.yaml`](./adapter-list.test.yaml)
