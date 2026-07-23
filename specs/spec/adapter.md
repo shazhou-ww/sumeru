@@ -1,6 +1,6 @@
 # Adapter 列表与详情
 
-> atest: [`adapter-list.test.yaml`](./adapter-list.test.yaml)
+> atest: [`adapter-list.test.yaml`](../atest/adapter-list.test.yaml)
 
 Adapter 是 Sumeru 支持的 agent 运行时类型。每个 adapter 在构建时注册到 Host 的 adapter registry，通过 manifest 声明其能力。Adapter 为只读实体——不支持 CRUD，仅在编译/部署时注册。
 
