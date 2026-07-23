@@ -1,7 +1,8 @@
 name: "error paths"
 description: |
-  错误路径复合操作链：不存在的 prototype → 404，stop idle → 409，send running → 409，不存在的 session → 404。
-  覆盖 SCENARIOS: 2.3, 2.8, 3.2, 13.4。
+  错误路径复合操作链：不存在的 prototype → 404，stop idle → 409，send running → 409，
+  不存在的 session → 404，缺参数 → error，invalid after → error。
+  覆盖 SCENARIOS: 2.3, 2.8, 3.2, 13.2, 13.4。
   资源命名加 atest- 前缀避免冲突。
 
 setup:
@@ -62,3 +63,17 @@ steps:
     judge:
       type: llm
       prompt: "输出应包含 error，提示 session not found 或类似含义"
+
+  # ─── 13.2 缺必填参数 → error/help ───
+
+  - command: "sumeru session add 2>&1; true"
+    judge:
+      type: llm
+      prompt: "输出应包含 usage/help 信息或 error，提示缺少参数"
+
+  # ─── invalid after 参数 → error ───
+
+  - command: "sumeru session turns $SID --after abc 2>&1; true"
+    judge:
+      type: llm
+      prompt: "输出应包含 error，提示 after 参数无效或非数字"
