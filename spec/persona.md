@@ -1,9 +1,3 @@
----
-scenario: Persona 完整 CRUD 生命周期
-feature: Persona CRUD API
-tags: [persona, crud, lifecycle, sqlite]
----
-
 # Persona 完整 CRUD 生命周期
 
 > atest: [`crud-lifecycle.test.yaml`](./crud-lifecycle.test.yaml)

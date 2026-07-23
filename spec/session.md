@@ -1,7 +1,241 @@
+# Session Commands
+
+> atest: [`session-commands.test.yaml`](./session-commands.test.yaml)
+
+## API
+
+| Method | Path | 说明 |
+|--------|------|------|
+| POST | /sessions/:id/commands | Dispatch command to running session |
+
+### Command Types
+
+| type | 说明 | Response |
+|------|------|----------|
+| model | Switch session model | 200 sync |
+| reset | Clear context, optionally re-init persona | 202 async |
+| install-skill | Write skill files into container | 200 sync |
+| snapshot | Docker commit + register new prototype | 200 sync |
+| chat | Submit message to session | 202 async |
+| exec | Execute shell command in container | 200 sync |
+
+### 响应信封
+
+```json
+{ "type": "@sumeru/command-result", "value": { "command": "model", "result": { ... } } }
+```
+
 ---
-scenario: 所有端点的标准 HTTP 错误响应契约
-feature: error-responses
-tags: [errors, http, api, validation, 400, 404, 409, 500]
+
+## Given
+- Host is running and healthy
+- Session "sess-001" exists and is idle
+- Model "anthropic:claude-3" exists in SQLite
+
+## When — switch model
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"model","provider":"anthropic","model":"claude-3"}'
+```
+
+## Then — 200 model switched
+```json
+{ "type": "@sumeru/command-result", "value": { "command": "model", "result": { "provider": "anthropic", "model": "claude-3" } } }
+```
+
+---
+
+## When — switch to nonexistent model
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"model","provider":"fake","model":"nonexistent"}'
+```
+
+## Then — 404 model_not_found
+```json
+{ "type": "@sumeru/error", "value": { "code": "model_not_found", "message": "Model not found" } }
+```
+
+---
+
+## When — switch model with invalid format
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"model","provider":"","model":""}'
+```
+
+## Then — 400 model_invalid_format
+```json
+{ "type": "@sumeru/error", "value": { "code": "model_invalid_format", "message": "Invalid model ID format. Expected format: provider:name" } }
+```
+
+---
+
+## When — reset session
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"reset","persona":null}'
+```
+
+## Then — 202 accepted (async)
+```json
+{ "type": "@sumeru/command-result", "value": { "command": "reset", "status": "accepted" } }
+```
+
+---
+
+## When — reset session with new persona
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"reset","persona":"analyst"}'
+```
+
+## Then — 202 accepted
+```json
+{ "type": "@sumeru/command-result", "value": { "command": "reset", "status": "accepted" } }
+```
+
+---
+
+## When — install skill
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"install-skill","name":"web-scraper","content":null,"files":[{"path":"scraper.py","content":"import requests..."}]}'
+```
+
+## Then — 200 skill installed
+```json
+{ "type": "@sumeru/command-result", "value": { "command": "install-skill", "result": { "name": "web-scraper", "filesWritten": 1 } } }
+```
+
+---
+
+## When — snapshot session
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"snapshot","name":"my-snapshot"}'
+```
+
+## Then — 200 snapshot created
+```json
+{ "type": "@sumeru/command-result", "value": { "command": "snapshot", "result": { "prototype": "my-snapshot" } } }
+```
+
+---
+
+## When — chat message
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"chat","content":"Hello, world!","messageId":null,"env":null,"model":null}'
+```
+
+## Then — 202 accepted (async)
+```json
+{ "type": "@sumeru/command-result", "value": { "command": "chat", "status": "accepted" } }
+```
+
+---
+
+## When — chat while session is busy
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"chat","content":"Another message","messageId":null,"env":null,"model":null}'
+```
+
+## Then — 409 session_busy
+```json
+{ "type": "@sumeru/error", "value": { "code": "session_busy", "message": "Session is already processing a request" } }
+```
+
+---
+
+## When — exec command
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"exec","command":"ls -la /workspace"}'
+```
+
+## Then — 200 exec result
+```json
+{ "type": "@sumeru/command-result", "value": { "command": "exec", "result": { "output": "total 8\ndrwxr-xr-x ..." } } }
+```
+
+---
+
+## When — command to nonexistent session
+```bash
+curl -s -X POST http://localhost:3000/sessions/nonexistent/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"model","provider":"anthropic","model":"claude-3"}'
+```
+
+## Then — 404 session_not_found
+```json
+{ "type": "@sumeru/error", "value": { "code": "session_not_found", "message": "Session not found" } }
+```
+
+---
+
+## When — invalid JSON body
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d 'not json'
+```
+
+## Then — 400 invalid_json
+```json
+{ "type": "@sumeru/error", "value": { "code": "invalid_json", "message": "Request body is not valid JSON" } }
+```
+
+---
+
+## When — invalid command type
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"invalid"}'
+```
+
+## Then — 400 invalid_request
+```json
+{ "type": "@sumeru/error", "value": { "code": "invalid_request", "message": "Invalid command type" } }
+```
+
+---
+
+## When — adapter not ready
+```bash
+curl -s -X POST http://localhost:3000/sessions/sess-001/commands \
+  -H "Content-Type: application/json" \
+  -d '{"type":"chat","content":"hello","messageId":null,"env":null,"model":null}'
+```
+
+## Then — 503 adapter_unavailable
+```json
+{ "type": "@sumeru/error", "value": { "code": "adapter_unavailable", "message": "Adapter is not ready" } }
+```
+
+---
+
+## Notes
+- Commands are discriminated by the "type" field in the request body
+- "model" and "exec" are synchronous (200), "reset" and "chat" are asynchronous (202)
+- "install-skill" writes files directly into the running container
+- "snapshot" performs docker commit and registers the result as a new prototype
+- session_busy (409) only applies to "chat" commands when session is already processing
+- CLI: `sumeru session model <id> <model-id>`, `sumeru reset <id>`, `sumeru snapshot <id>`
+
 ---
 
 # 标准 HTTP 错误响应
@@ -697,3 +931,209 @@ curl -X PUT http://localhost:7900/prototypes/new-proto \
 - `writeSessionError()` 是 session 相关操作的统一错误映射函数，按 error message 字符串 switch 到对应 HTTP 状态码
 - `writePrototypeError()` 和 `writeSkillError()` 分别处理 prototype/skill 操作的错误映射
 - `adapter_io_error` 通过 SSE 事件流推送而非 HTTP 响应返回
+
+---
+
+# Session Resume After Host Restart
+
+> atest: [`resume-after-restart.test.yaml`](./resume-after-restart.test.yaml)
+
+Host 重启后，sarsapa session 通过 JSONL 持久化恢复对话上下文。
+
+## 机制
+
+### Adapter 协议扩展
+
+`AdapterImpl` 新增可选 `resume?(): boolean | Promise<boolean>`：
+- 返回 `true` → adapter 已从持久化数据恢复，发 `ready`，跳过 `init`
+- 返回 `false` / 未实现 → 等待 Host 发 `init`
+
+### Host 行为
+
+- 新 session（`initVersion === null`）：发 `init`
+- 已初始化 session（`initVersion !== null`）：不发 `init`，等 adapter 自行 resume
+
+### Sarsapa JSONL 持久化
+
+路径：容器内 `/workspace/.sarsapa/session.jsonl`
+
+```jsonl
+{"type":"init","system":"...","model":{...}}
+{"role":"user","content":"hello","toolCalls":null,"toolCallId":null}
+{"role":"assistant","content":"Hi!","toolCalls":null,"toolCallId":null}
+```
+
+- `init` 时写入第一行
+- 每个 turn（user/assistant/tool）追加一行
+- 重启时读取 → 重建 Conversation + initConfig
+
+---
+
+# 列出 Session Turns 并支持分页
+
+> atest: [`turns-pagination.test.yaml`](./turns-pagination.test.yaml)
+
+Session 的 Turn 列表通过 `GET /sessions/:id/turns` 获取，支持基于游标的 `?after=<id>` 分页机制。
+
+## 背景
+
+Turn 是 OCAS 执行过程中持久化的对话记录，每个 Turn 拥有递增整数 `id`。客户端可通过轮询 `?after=<lastSeenId>` 增量获取新 Turn。
+
+---
+
+## Scenario: 获取 Session 的全部 Turns
+
+**Given** 存在一个 Session（id = `ses-abc`），其中包含 3 条 Turn 记录
+
+**When** 发送请求：
+
+```http
+GET /sessions/ses-abc/turns
+```
+
+**Then** 响应状态码为 `200`，body 为 Turn 数组信封：
+
+```json
+{
+  "turns": [
+    { "id": 0, "role": "assistant", "content": "...", "toolCalls": [], "tokenUsage": {"input":100,"output":50,"cached":0}, "durationMs": 320, "timestamp": "..." },
+    { "id": 1, "role": "tool", "callId": "call_1", "name": "bash", "result": "...", "durationMs": 150, "timestamp": "..." },
+    { "id": 2, "role": "assistant", "content": "...", "toolCalls": [], "tokenUsage": {"input":200,"output":80,"cached":50}, "durationMs": 410, "timestamp": "..." }
+  ]
+}
+```
+
+---
+
+## Scenario: 使用 `?after=<id>` 增量分页
+
+**Given** 存在一个 Session（id = `ses-abc`），包含 id 为 0–4 的 Turn
+
+**When** 发送请求：
+
+```http
+GET /sessions/ses-abc/turns?after=2
+```
+
+**Then** 响应状态码为 `200`，仅返回 id > 2 的 Turn：
+
+```json
+{
+  "turns": [
+    { "id": 3, "role": "tool", "callId": "call_2", "name": "read_file", "result": "...", "durationMs": 90, "timestamp": "..." },
+    { "id": 4, "role": "assistant", "content": "...", "toolCalls": [], "tokenUsage": {"input":300,"output":120,"cached":100}, "durationMs": 500, "timestamp": "..." }
+  ]
+}
+```
+
+---
+
+## Scenario: `?after` 参数非法（非整数）
+
+**Given** 存在一个 Session（id = `ses-abc`）
+
+**When** 发送请求：
+
+```http
+GET /sessions/ses-abc/turns?after=abc
+```
+
+**Then** 响应状态码为 `400`：
+
+```json
+{
+  "error": {
+    "code": "invalid_request",
+    "message": "Query parameter 'after' must be a non-negative integer (got 'abc')"
+  }
+}
+```
+
+---
+
+## Scenario: `?after` 参数为超大数（非安全整数）
+
+**Given** 存在一个 Session（id = `ses-abc`）
+
+**When** 发送请求：
+
+```http
+GET /sessions/ses-abc/turns?after=99999999999999999999
+```
+
+**Then** 响应状态码为 `400`：
+
+```json
+{
+  "error": {
+    "code": "invalid_request",
+    "message": "Query parameter 'after' must be a non-negative integer (got '99999999999999999999')"
+  }
+}
+```
+
+---
+
+## Scenario: Session 不存在
+
+**Given** 不存在 id 为 `ses-ghost` 的 Session
+
+**When** 发送请求：
+
+```http
+GET /sessions/ses-ghost/turns
+```
+
+**Then** 响应状态码为 `404`：
+
+```json
+{
+  "error": {
+    "code": "session_not_found",
+    "message": "Session not found"
+  }
+}
+```
+
+---
+
+## User Turns
+
+GET /sessions/:id/turns now returns user turns (role=user) in addition to assistant and tool turns.
+
+### UserTurn type
+
+```typescript
+type UserTurn = {
+  id: number;
+  role: "user";
+  content: string;
+  timestamp: string; // ISO 8601
+}
+```
+
+### Query parameter: `system=true`
+
+Query parameter `system=true` includes system prompt turns (rendered as role=user with [system] prefix).
+
+```http
+GET /sessions/ses-abc/turns?system=true
+```
+
+When `system=true`, the system prompt is included as the first turn with `role: "user"` and content prefixed with `[system]`.
+
+---
+
+## 实现细节
+
+| 行为 | 说明 |
+|------|------|
+| 路由 | `GET /sessions/:id/turns` |
+| 分页参数 | `?after=<id>`，返回 id 严格大于该值的 Turn |
+| `after` 校验 | 必须为非负整数（`/^\d+$/`），且为安全整数（`Number.isSafeInteger`） |
+| Session 不存在 | 返回 `404` + `session_not_found` |
+| 空 `after` | 等同于不带参数，返回全部 Turn |
+| Turn 类型 | `AssistantTurn \| ToolTurn \| UserTurn`，由 `role` 区分 |
+| `system` 参数 | `?system=true` 时在响应开头插入 system prompt turn |
+
+源码参考：`packages/host/src/handlers/turns.ts`

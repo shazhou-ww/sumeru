@@ -7,17 +7,17 @@ prerequisites:
   - SQLite seeded with Provider + Model + Persona
 
 scenarios:
-  - session/lifecycle/session-lifecycle.test.yaml
-  - session/lifecycle/session-create-no-task.test.yaml
-  - session/lifecycle/session-delete-running.test.yaml
-  - commands/session-commands.test.yaml
-  - errors/error-paths.test.yaml
-  - prototype/crud-lifecycle.test.yaml
-  - provider/crud-lifecycle.test.yaml
-  - model/crud-lifecycle.test.yaml
-  - persona/crud-lifecycle.test.yaml
-  - adapter/adapter-list.test.yaml
-  - turns/turns-pagination.test.yaml
-  - session/resume-after-restart/resume-after-restart.test.yaml
-  - session/snapshot-context-inherit/sarsapa-snapshot-inherit.test.yaml
-  - session/snapshot-context-inherit/hermes-snapshot-inherit.test.yaml
+  - atest/session-lifecycle.test.yaml
+  - atest/session-create-no-task.test.yaml
+  - atest/session-delete-running.test.yaml
+  - atest/session-commands.test.yaml
+  - atest/error-paths.test.yaml
+  - atest/prototype-crud.test.yaml
+  - atest/provider-crud.test.yaml
+  - atest/model-crud.test.yaml
+  - atest/persona-crud.test.yaml
+  - atest/adapter-list.test.yaml
+  - atest/turns-pagination.test.yaml
+  - atest/resume-after-restart.test.yaml
+  - atest/snapshot-inherit-sarsapa.test.yaml
+  - atest/snapshot-inherit-hermes.test.yaml
