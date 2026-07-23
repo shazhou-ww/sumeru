@@ -100,6 +100,7 @@ export const hermesHarness: HarnessConfig = {
 		join(hermesDir, "state.db-wal"),
 		join(hermesDir, "state.db-shm"),
 		join(adapterDir, "session.json"),
+		join(hermesDir, "memories"),
 	],
 	modelConfigPath: join(hermesDir, "config.yaml"),
 	personaPath: join(hermesDir, "SOUL.md"),
