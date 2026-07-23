@@ -29,16 +29,16 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 2.1 | 创建 session（happy path） | `POST /sessions` | `sumeru session add <proto> [--project <p>] [--task <t>]` | ✅ atest: `session-lifecycle.test.yaml` |
-| 2.2 | 创建 session（minimal, no project/task） | `POST /sessions` (`project`/`task` omitted) | `sumeru session add <proto>` | ✅ atest: `session-create-no-task.test.yaml` |
+| 2.1 | 创建 session（happy path） | `POST /sessions` | `sumeru session add <proto> [--project <p>] [--task <t>]` | ✅ atest: `specs/atest/session-lifecycle.test.yaml` |
+| 2.2 | 创建 session（minimal, no project/task） | `POST /sessions` (`project`/`task` omitted) | `sumeru session add <proto>` | ✅ atest: `specs/atest/session-create-no-task.test.yaml` |
 | 2.3 | 创建 session（prototype 不存在） | `POST /sessions` → 404 | `sumeru session add ghost` → error | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
 | 2.4 | 创建 session（project 路径越界） | `POST /sessions` → 400 | — (CLI 不直传越界路径) | [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md) |
-| 2.5 | 列出所有 sessions | `GET /sessions` | `sumeru session list` | ✅ atest: `session-lifecycle.test.yaml` |
-| 2.6 | 获取 session 详情 | `GET /sessions/:id` | `sumeru session get <id>` | ✅ atest: `session-lifecycle.test.yaml` |
-| 2.7 | 停止 running session | `POST /sessions/:id/stop` | `sumeru session stop <id>` | ✅ atest: `session-lifecycle.test.yaml` |
-| 2.8 | 停止已 idle session（409） | `POST /sessions/:id/stop` → 409 | `sumeru session stop <id>` → error | ✅ atest: `session-lifecycle.test.yaml` + `errors/error-paths.test.yaml` |
-| 2.9 | 删除 idle session | `DELETE /sessions/:id` | `sumeru session remove <id>` | ✅ atest: `session-lifecycle.test.yaml` |
-| 2.10 | 删除 running session | `DELETE /sessions/:id` | `sumeru session remove <id>` | ✅ atest: `session-delete-running.test.yaml` |
+| 2.5 | 列出所有 sessions | `GET /sessions` | `sumeru session list` | ✅ atest: `specs/atest/session-lifecycle.test.yaml` |
+| 2.6 | 获取 session 详情 | `GET /sessions/:id` | `sumeru session get <id>` | ✅ atest: `specs/atest/session-lifecycle.test.yaml` |
+| 2.7 | 停止 running session | `POST /sessions/:id/stop` | `sumeru session stop <id>` | ✅ atest: `specs/atest/session-lifecycle.test.yaml` |
+| 2.8 | 停止已 idle session（409） | `POST /sessions/:id/stop` → 409 | `sumeru session stop <id>` → error | ✅ atest: `specs/atest/session-lifecycle.test.yaml` + `errors/error-paths.test.yaml` |
+| 2.9 | 删除 idle session | `DELETE /sessions/:id` | `sumeru session remove <id>` | ✅ atest: `specs/atest/session-lifecycle.test.yaml` |
+| 2.10 | 删除 running session | `DELETE /sessions/:id` | `sumeru session remove <id>` | ✅ atest: `specs/atest/session-delete-running.test.yaml` |
 | 2.11 | 并发排队（FIFO） | `POST /sessions`（满额时阻塞） | — (Host 内部调度，非用户可控操作) | [session/concurrency-fifo-queue/spec.md](./session/concurrency-fifo-queue/spec.md) |
 
 ---
@@ -47,7 +47,7 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 3.1 | 向 idle session 发消息恢复执行 | `POST /sessions/:id/messages` | `sumeru session send <id> "msg"` | ✅ atest: `session-lifecycle.test.yaml` |
+| 3.1 | 向 idle session 发消息恢复执行 | `POST /sessions/:id/messages` | `sumeru session send <id> "msg"` | ✅ atest: `specs/atest/session-lifecycle.test.yaml` |
 | 3.2 | 向 running session 发消息（409） | `POST /sessions/:id/messages` → 409 | `sumeru session send <id> "msg"` → error | [resume/message-resume-idle.md](./resume/message-resume-idle.md) |
 | 3.3 | 发消息时切换 Model（hot-switch） | `POST /sessions/:id/messages` + `"model":"..."` | 🚧 [#246](https://git.shazhou.work/shazhou/sumeru/issues/246) `--model` flag 缺失 | [resume/model-hot-switch.md](./resume/model-hot-switch.md) |
 | 3.4 | 发消息时注入环境变量 | `POST /sessions/:id/messages` + `"env":{...}` | 🚧 [#246](https://git.shazhou.work/shazhou/sumeru/issues/246) `--env` flag 缺失 | 📋 spec 待补 (#246 blocks) |
@@ -72,8 +72,8 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 5.1 | 全量查询 turns | `GET /sessions/:id/turns` | `sumeru session turns <id>` | ✅ atest: `turns-turns-pagination.test.yaml` |
-| 5.2 | 分页查询（after=N） | `GET /sessions/:id/turns?after=N` | `sumeru session turns <id> --after N` | ✅ atest: `turns-turns-pagination.test.yaml` |
+| 5.1 | 全量查询 turns | `GET /sessions/:id/turns` | `sumeru session turns <id>` | ✅ atest: `specs/atest/turns-turns-pagination.test.yaml` |
+| 5.2 | 分页查询（after=N） | `GET /sessions/:id/turns?after=N` | `sumeru session turns <id> --after N` | ✅ atest: `specs/atest/turns-turns-pagination.test.yaml` |
 | 5.3 | Turn discriminated union | turn 结构区分 assistant / tool | — (数据结构定义，非独立操作) | [turns/turn-discriminated-union/spec.md](./turns/turn-discriminated-union/spec.md) |
 | 5.4 | 时间过滤（before=ISO） | `GET /sessions/:id/turns?before=<ISO>` | — (watch 内部使用) | [session/turns-watch/spec.md](./session/turns-watch/spec.md) |
 | 5.5 | Watch 实时监视 | `GET /sessions/:id/turns/watch` (SSE) | `sumeru session turns <id> -w` | [session/turns-watch/spec.md](./session/turns-watch/spec.md) |
@@ -86,12 +86,12 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 6.1 | 列出 providers | `GET /providers` | `sumeru provider list` | ✅ atest: `provider-crud-lifecycle.test.yaml` |
-| 6.2 | 获取 provider 详情 | `GET /providers/:name` | `sumeru provider get <name>` | ✅ atest: `provider-crud-lifecycle.test.yaml` |
-| 6.3 | 创建 provider | `PUT /providers/:name` | `sumeru provider add <name> --api-type --base-url` | ✅ atest: `provider-crud-lifecycle.test.yaml` |
-| 6.4 | 更新 provider | `PUT /providers/:name` | `sumeru provider update <name> --api-type/--base-url/--api-key` | ✅ atest: `provider-crud-lifecycle.test.yaml` |
-| 6.5 | 删除 provider | `DELETE /providers/:name` | `sumeru provider remove <name>` | ✅ atest: `provider-crud-lifecycle.test.yaml` |
-| 6.6 | 删除被 Model 引用的 provider（409） | `DELETE /providers/:name` → 409 | `sumeru provider remove <name>` → error | ✅ atest: `provider-crud-lifecycle.test.yaml` |
+| 6.1 | 列出 providers | `GET /providers` | `sumeru provider list` | ✅ atest: `specs/atest/provider-crud-lifecycle.test.yaml` |
+| 6.2 | 获取 provider 详情 | `GET /providers/:name` | `sumeru provider get <name>` | ✅ atest: `specs/atest/provider-crud-lifecycle.test.yaml` |
+| 6.3 | 创建 provider | `PUT /providers/:name` | `sumeru provider add <name> --api-type --base-url` | ✅ atest: `specs/atest/provider-crud-lifecycle.test.yaml` |
+| 6.4 | 更新 provider | `PUT /providers/:name` | `sumeru provider update <name> --api-type/--base-url/--api-key` | ✅ atest: `specs/atest/provider-crud-lifecycle.test.yaml` |
+| 6.5 | 删除 provider | `DELETE /providers/:name` | `sumeru provider remove <name>` | ✅ atest: `specs/atest/provider-crud-lifecycle.test.yaml` |
+| 6.6 | 删除被 Model 引用的 provider（409） | `DELETE /providers/:name` → 409 | `sumeru provider remove <name>` → error | ✅ atest: `specs/atest/provider-crud-lifecycle.test.yaml` |
 
 ---
 
@@ -99,11 +99,11 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 7.1 | 列出 models | `GET /models` 或 `GET /providers/:name/models` | `sumeru model list [--provider <name>]` | ✅ atest: `model-crud-lifecycle.test.yaml` |
-| 7.2 | 获取 model 详情 | `GET /providers/:name/models/:modelName` | `sumeru model get <provider:name>` | ✅ atest: `model-crud-lifecycle.test.yaml` |
-| 7.3 | 创建 model | `PUT /providers/:name/models/:modelName` | `sumeru model add <provider:name> --model <api-model>` | ✅ atest: `model-crud-lifecycle.test.yaml` |
-| 7.4 | 更新 model | `PUT /providers/:name/models/:modelName` | `sumeru model update <provider:name> --model/--context-window` | ✅ atest: `model-crud-lifecycle.test.yaml` |
-| 7.5 | 删除 model | `DELETE /providers/:name/models/:modelName` | `sumeru model remove <provider:name>` | ✅ atest: `model-crud-lifecycle.test.yaml` |
+| 7.1 | 列出 models | `GET /models` 或 `GET /providers/:name/models` | `sumeru model list [--provider <name>]` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
+| 7.2 | 获取 model 详情 | `GET /providers/:name/models/:modelName` | `sumeru model get <provider:name>` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
+| 7.3 | 创建 model | `PUT /providers/:name/models/:modelName` | `sumeru model add <provider:name> --model <api-model>` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
+| 7.4 | 更新 model | `PUT /providers/:name/models/:modelName` | `sumeru model update <provider:name> --model/--context-window` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
+| 7.5 | 删除 model | `DELETE /providers/:name/models/:modelName` | `sumeru model remove <provider:name>` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
 
 ---
 
@@ -111,10 +111,10 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 8.1 | 列出 personas | `GET /personas` | `sumeru persona list` | ✅ atest: `persona-crud-lifecycle.test.yaml` |
-| 8.2 | 获取 persona 详情 | `GET /personas/:name` | `sumeru persona get <name>` | ✅ atest: `persona-crud-lifecycle.test.yaml` |
-| 8.3 | 创建 persona | `PUT /personas/:name` | `sumeru persona add <name> --instructions` | ✅ atest: `persona-crud-lifecycle.test.yaml` |
-| 8.4 | 删除 persona | `DELETE /personas/:name` | `sumeru persona remove <name>` | ✅ atest: `persona-crud-lifecycle.test.yaml` |
+| 8.1 | 列出 personas | `GET /personas` | `sumeru persona list` | ✅ atest: `specs/atest/persona-crud-lifecycle.test.yaml` |
+| 8.2 | 获取 persona 详情 | `GET /personas/:name` | `sumeru persona get <name>` | ✅ atest: `specs/atest/persona-crud-lifecycle.test.yaml` |
+| 8.3 | 创建 persona | `PUT /personas/:name` | `sumeru persona add <name> --instructions` | ✅ atest: `specs/atest/persona-crud-lifecycle.test.yaml` |
+| 8.4 | 删除 persona | `DELETE /personas/:name` | `sumeru persona remove <name>` | ✅ atest: `specs/atest/persona-crud-lifecycle.test.yaml` |
 | 8.5 | 删除被 Prototype 引用的 persona（409） | `DELETE /personas/:name` → 409 | `sumeru persona remove <name>` → error | 📋 spec 待补 |
 
 ---
@@ -123,8 +123,8 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 9.1 | 列出 prototypes | `GET /prototypes` | `sumeru prototype list` | ✅ atest: `prototype-crud-lifecycle.test.yaml` |
-| 9.2 | 删除 prototype | `DELETE /prototypes/:name` | `sumeru prototype remove <name>` | ✅ atest: `prototype-crud-lifecycle.test.yaml` |
+| 9.1 | 列出 prototypes | `GET /prototypes` | `sumeru prototype list` | ✅ atest: `specs/atest/prototype-crud-lifecycle.test.yaml` |
+| 9.2 | 删除 prototype | `DELETE /prototypes/:name` | `sumeru prototype remove <name>` | ✅ atest: `specs/atest/prototype-crud-lifecycle.test.yaml` |
 
 ---
 
@@ -132,8 +132,8 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 10.1 | 列出 adapters | `GET /adapters` | `sumeru adapter list` | ✅ atest: `adapter-adapter-list.test.yaml` |
-| 10.2 | 获取 adapter 详情 | `GET /adapters/:name` | `sumeru adapter get <name>` | ✅ atest: `adapter-adapter-list.test.yaml` |
+| 10.1 | 列出 adapters | `GET /adapters` | `sumeru adapter list` | ✅ atest: `specs/atest/adapter-adapter-list.test.yaml` |
+| 10.2 | 获取 adapter 详情 | `GET /adapters/:name` | `sumeru adapter get <name>` | ✅ atest: `specs/atest/adapter-adapter-list.test.yaml` |
 | 10.3 | 列出 adapter 内置模型 | `GET /adapters/:name/models` | `sumeru adapter models <name>` | 📋 spec 待补 |
 
 ---
@@ -145,11 +145,11 @@
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
 | 11.1 | 发消息（唯一入口） | `POST /sessions/:id/messages` | `sumeru session send <id> "msg" [--model] [--env]` | [resume/message-resume-idle.md](./resume/message-resume-idle.md) |
-| 11.2 | 容器内执行 shell | `POST /sessions/:id/commands` `{"type":"exec",...}` | `sumeru session exec <id> -- <command...>` | ✅ atest: `session-commands.test.yaml` |
-| 11.3 | 切换 model | `POST /sessions/:id/commands` `{"type":"model",...}` | `sumeru session model <id> <model-id>` | ✅ atest: `session-commands.test.yaml` |
-| 11.4 | 清上下文 | `POST /sessions/:id/commands` `{"type":"reset",...}` | `sumeru session reset <id> [--persona]` | ✅ atest: `session-commands.test.yaml` |
-| 11.5 | snapshot（docker commit） | `POST /sessions/:id/commands` `{"type":"snapshot",...}` | `sumeru session snapshot <id> <name>` | ✅ atest: `session-commands.test.yaml` |
-| 11.6 | snapshot 输出可读性 | — | `sumeru session snapshot` 多行格式 | ✅ atest: `session-commands.test.yaml` |
+| 11.2 | 容器内执行 shell | `POST /sessions/:id/commands` `{"type":"exec",...}` | `sumeru session exec <id> -- <command...>` | ✅ atest: `specs/atest/session-commands.test.yaml` |
+| 11.3 | 切换 model | `POST /sessions/:id/commands` `{"type":"model",...}` | `sumeru session model <id> <model-id>` | ✅ atest: `specs/atest/session-commands.test.yaml` |
+| 11.4 | 清上下文 | `POST /sessions/:id/commands` `{"type":"reset",...}` | `sumeru session reset <id> [--persona]` | ✅ atest: `specs/atest/session-commands.test.yaml` |
+| 11.5 | snapshot（docker commit） | `POST /sessions/:id/commands` `{"type":"snapshot",...}` | `sumeru session snapshot <id> <name>` | ✅ atest: `specs/atest/session-commands.test.yaml` |
+| 11.6 | snapshot 输出可读性 | — | `sumeru session snapshot` 多行格式 | ✅ atest: `specs/atest/session-commands.test.yaml` |
 
 ---
 
@@ -183,7 +183,7 @@
 | 14.1 | unhandledRejection 守卫 | — (进程级) | — (内部行为) | [host/unhandled-rejection-guard.md](./host/unhandled-rejection-guard.md) |
 | 14.2 | markIdle 缺失 session 守卫 | — (内部) | — (内部行为) | [host/mark-idle-missing-session-guard.md](./host/mark-idle-missing-session-guard.md) |
 | 14.3 | Adapter 异常退出后 Host 存活 | — (端到端不变量) | — (内部行为) | [host/adapter-abnormal-exit-resilience.md](./host/adapter-abnormal-exit-resilience.md) |
-| 14.4 | Host 重启后 session 上下文恢复 | — (adapter JSONL 持久化) | `server restart` → `session send` 上下文不丢 | ✅ atest: `resume-after-restart.test.yaml` |
+| 14.4 | Host 重启后 session 上下文恢复 | — (adapter JSONL 持久化) | `server restart` → `session send` 上下文不丢 | ✅ atest: `specs/atest/resume-after-restart.test.yaml` |
 
 ---
 

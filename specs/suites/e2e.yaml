@@ -7,17 +7,17 @@ prerequisites:
   - SQLite seeded with Provider + Model + Persona
 
 scenarios:
-  - atest/session-lifecycle.test.yaml
-  - atest/session-create-no-task.test.yaml
-  - atest/session-delete-running.test.yaml
-  - atest/session-commands.test.yaml
-  - atest/error-paths.test.yaml
-  - atest/prototype-crud.test.yaml
-  - atest/provider-crud.test.yaml
-  - atest/model-crud.test.yaml
-  - atest/persona-crud.test.yaml
-  - atest/adapter-list.test.yaml
-  - atest/turns-pagination.test.yaml
-  - atest/resume-after-restart.test.yaml
-  - atest/snapshot-inherit-sarsapa.test.yaml
-  - atest/snapshot-inherit-hermes.test.yaml
+  - specs/atest/session-lifecycle.test.yaml
+  - specs/atest/session-create-no-task.test.yaml
+  - specs/atest/session-delete-running.test.yaml
+  - specs/atest/session-commands.test.yaml
+  - specs/atest/error-paths.test.yaml
+  - specs/atest/prototype-crud.test.yaml
+  - specs/atest/provider-crud.test.yaml
+  - specs/atest/model-crud.test.yaml
+  - specs/atest/persona-crud.test.yaml
+  - specs/atest/adapter-list.test.yaml
+  - specs/atest/turns-pagination.test.yaml
+  - specs/atest/resume-after-restart.test.yaml
+  - specs/atest/snapshot-inherit-sarsapa.test.yaml
+  - specs/atest/snapshot-inherit-hermes.test.yaml
