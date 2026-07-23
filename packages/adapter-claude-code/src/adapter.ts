@@ -136,7 +136,11 @@ export function createClaudeCodeAdapter(
 	async function init(config: AdapterInitConfig): Promise<void> {
 		initConfig = config;
 		await writeInitArtifacts(config, resolveHomeDir());
-		await persistState({ sessionId: null, initConfig: config });
+		const existing = loadPersistedState();
+		await persistState({
+			sessionId: existing?.sessionId ?? null,
+			initConfig: config,
+		});
 	}
 
 	async function resume(): Promise<boolean> {

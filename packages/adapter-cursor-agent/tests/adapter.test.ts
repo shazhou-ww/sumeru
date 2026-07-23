@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -544,10 +545,75 @@ describe("createCursorAgentAdapter — handle()", () => {
 			homeDir,
 		});
 		await adapter.init(INIT_CONFIG);
-		const content = 'Say "hello"\nnewline\t🎉';
+		const content = 'Say "hello"\nnewline	🎉';
 		await drainHandle(
 			adapter.handle({ messageId: "m1", content, project: null }),
 		);
 		expect(calls[0]?.args[1]).toBe(content);
+	});
+
+	it("init() resets sessionId to null when no prior state exists", async () => {
+		const homeDir = await makeHomeDir();
+		const adapter = createCursorAgentAdapter({ homeDir });
+		await adapter.init(INIT_CONFIG);
+		// Runtime calls resume() before handle() on every message subcommand.
+		// With no prior state, init() wrote sessionId:null, so resume() loads
+		// that and native id stays null.
+		expect(await adapter.resume()).toBe(true);
+		expect(adapter.getNativeId?.() ?? null).toBeNull();
+	});
+
+	it("init() preserves the existing sessionId from session.json (#274)", async () => {
+		const homeDir = await makeHomeDir();
+		const existingSessionId = "snapshot-session-7742";
+		// Seed a snapshot-style session.json with a real sessionId.
+		const stateDir = join(homeDir, ".cursor-agent-adapter");
+		mkdirSync(stateDir, { recursive: true });
+		writeFileSync(
+			join(stateDir, "session.json"),
+			JSON.stringify({ sessionId: existingSessionId, initConfig: INIT_CONFIG }),
+			"utf-8",
+		);
+
+		const { calls, streamingSpawnFn } = fakeStreamingSpawn({
+			stdout: loadFixture("ca-stream.simple.ndjson"),
+		});
+		const adapter = createCursorAgentAdapter({
+			streamingSpawnFn,
+			homeDir,
+		});
+		await adapter.init(INIT_CONFIG);
+		// Runtime path: resume() reloads the preserved sessionId into memory.
+		expect(await adapter.resume()).toBe(true);
+		expect(adapter.getNativeId?.()).toBe(existingSessionId);
+
+		await drainHandle(
+			adapter.handle({ messageId: "m1", content: "hi", project: null }),
+		);
+
+		// The spawn must include --resume <existingSessionId>, proving
+		// init() preserved the snapshot sessionId rather than nulling it.
+		const args = calls[0]?.args;
+		expect(args).toContain("--resume");
+		const resumeIdx = args?.indexOf("--resume") ?? -1;
+		expect(args?.[resumeIdx + 1]).toBe(existingSessionId);
+	});
+
+	it("resume() restores the sessionId preserved by init()", async () => {
+		const homeDir = await makeHomeDir();
+		const existingSessionId = "snapshot-session-9988";
+		const stateDir = join(homeDir, ".cursor-agent-adapter");
+		mkdirSync(stateDir, { recursive: true });
+		writeFileSync(
+			join(stateDir, "session.json"),
+			JSON.stringify({ sessionId: existingSessionId, initConfig: INIT_CONFIG }),
+			"utf-8",
+		);
+
+		const adapter = createCursorAgentAdapter({ homeDir });
+		await adapter.init(INIT_CONFIG);
+
+		expect(await adapter.resume()).toBe(true);
+		expect(adapter.getNativeId?.()).toBe(existingSessionId);
 	});
 });
