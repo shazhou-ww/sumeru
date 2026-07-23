@@ -167,9 +167,9 @@ function wrapClientWithCallLog(
 			calls.push({ method: "newSession", args: [cwd] });
 			return client.newSession(cwd);
 		},
-		async resumeSession(sessionId: string) {
-			calls.push({ method: "resumeSession", args: [sessionId] });
-			return client.resumeSession(sessionId);
+		async resumeSession(sessionId: string, cwd: string) {
+			calls.push({ method: "resumeSession", args: [sessionId, cwd] });
+			return client.resumeSession(sessionId, cwd);
 		},
 		async setMode(sessionId: string, modeId: string) {
 			calls.push({ method: "setMode", args: [sessionId, modeId] });
@@ -926,6 +926,65 @@ describe("@sumeru/adapter-hermes — adapter", () => {
 			"prompt",
 		]);
 		expect(acpClientFactory.calls[5]?.args[0]).toBe(nativeId);
+		// Regression #277: session/resume must carry the cwd param.
+		expect(acpClientFactory.calls[5]?.args[1]).toBe(process.cwd());
+	});
+
+	it("resumeSession receives the message cwd param (#277)", async () => {
+		const hermesDir = mkdtempSync(join(tmpdir(), "hermes-resume-cwd-"));
+		const homeDir = mkdtempSync(join(tmpdir(), "hermes-resume-cwd-home-"));
+		const nativeId = "20260627_180000_abcd12";
+		const projectCwd = "/tmp/project-277";
+		const acpClientFactory = createRecordingAcpClientFactory({
+			sessionId: nativeId,
+			onPrompt: (_content, emit) => {
+				emit({
+					sessionUpdate: "agent_message_chunk",
+					content: { type: "text", text: "ok" },
+				});
+			},
+		});
+		const first = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			homeDir,
+			acpClientFactory,
+		});
+		await first.init(INIT_CONFIG);
+		const firstGen = first.handle({
+			messageId: "msg_1",
+			content: "ping",
+			project: projectCwd,
+		});
+		while (true) {
+			const step = await firstGen.next();
+			if (step.done === true) break;
+		}
+
+		const second = createHermesAdapter({
+			profile: "test",
+			hermesDir,
+			homeDir,
+			acpClientFactory,
+		});
+		expect(await second.resume?.()).toBe(true);
+
+		const secondGen = second.handle({
+			messageId: "msg_2",
+			content: "pong",
+			project: projectCwd,
+		});
+		while (true) {
+			const step = await secondGen.next();
+			if (step.done === true) break;
+		}
+
+		const resumeCall = acpClientFactory.calls.find(
+			(call) => call.method === "resumeSession",
+		);
+		expect(resumeCall).toBeDefined();
+		expect(resumeCall?.args[0]).toBe(nativeId);
+		expect(resumeCall?.args[1]).toBe(projectCwd);
 	});
 });
 

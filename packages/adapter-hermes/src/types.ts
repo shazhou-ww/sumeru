@@ -89,7 +89,10 @@ export type AcpPromptResult = Record<string, unknown>;
 export type AcpClient = {
 	initialize(): Promise<AcpInitializeResult>;
 	newSession(cwd: string): Promise<AcpNewSessionResult>;
-	resumeSession(sessionId: string): Promise<AcpResumeSessionResult>;
+	resumeSession(
+		sessionId: string,
+		cwd: string,
+	): Promise<AcpResumeSessionResult>;
 	setMode(sessionId: string, modeId: string): Promise<void>;
 	prompt(
 		sessionId: string,

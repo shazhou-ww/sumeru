@@ -170,7 +170,7 @@ export function createHermesAdapter(
 		if (targetSessionId !== null) {
 			if (activeSessionId !== targetSessionId) {
 				await withTimeout(
-					client.resumeSession(targetSessionId),
+					client.resumeSession(targetSessionId, cwd),
 					ACP_INIT_TIMEOUT_MS,
 					"ACP session/resume timed out",
 				);
