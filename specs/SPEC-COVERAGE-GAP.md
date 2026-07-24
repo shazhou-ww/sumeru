@@ -78,6 +78,18 @@
 
 ### Section 2 - Session 生命周期
 
+- [ ] **2.1** - Session 列表分页
+  - API: `GET /sessions?limit=<n>&offset=<n>`
+  - CLI: `sumeru session list [--limit n] [--offset n]`
+  - Spec: [session/session-list-pagination/spec.md](./session/session-list-pagination/spec.md)
+  - 难度: 中
+
+- [ ] **2.2** - 按 ID 获取 Session
+  - API: `GET /sessions/:id`
+  - CLI: `sumeru session get <id>`
+  - Spec: [session/session-get-by-id/spec.md](./session/session-get-by-id/spec.md)
+  - 难度: 低
+
 - [x] **2.3** - 创建 session（prototype 不存在）
   - API: `POST /sessions` → 404
   - CLI: `sumeru session add ghost` → error
@@ -241,9 +253,10 @@
   - Spec: [adapter/adapter-sarsapa-agent-loop/spec.md](./adapter/adapter-sarsapa-agent-loop/spec.md)
   - 难度: 中
 
-- [ ] **A1.3** - Wire tool call ID
+- [x] **A1.3** - Wire tool call ID
   - 验证点: callId 正确透传
   - Spec: [adapter/adapter-sarsapa-agent-loop/spec.md](./adapter/adapter-sarsapa-agent-loop/spec.md)
+  - atest: `specs/atest/sarsapa-wire-tool-call-id.test.yaml` ✅
   - 难度: 低
 
 - [ ] **A1.4** - Error resilience
@@ -253,9 +266,10 @@
 
 #### A2. Claude Code Stream Parser
 
-- [ ] **A2.1** - Text-only assistant turn
+- [x] **A2.1** - Text-only assistant turn
   - 验证点: 纯文本响应解析
   - Spec: [adapter/adapter-claude-code-stream-parser/spec.md](./adapter/adapter-claude-code-stream-parser/spec.md)
+  - atest: `specs/atest/sarsapa-text-only-turn.test.yaml` ✅
   - 难度: 低
 
 - [ ] **A2.2** - Tool use + output backfill
@@ -263,9 +277,10 @@
   - Spec: [adapter/adapter-claude-code-stream-parser/spec.md](./adapter/adapter-claude-code-stream-parser/spec.md)
   - 难度: 中
 
-- [ ] **A2.3** - Result line token usage
+- [x] **A2.3** - Result line token usage
   - 验证点: `result` 行提取 token 统计
   - Spec: [adapter/adapter-claude-code-stream-parser/spec.md](./adapter/adapter-claude-code-stream-parser/spec.md)
+  - atest: `specs/atest/sarsapa-token-usage.test.yaml` ✅
   - 难度: 低
 
 - [ ] **A2.4** - Error handling
@@ -300,9 +315,9 @@
 ## 统计
 
 - **总计**: 47 个场景
-- **待补充**: 34 个
+- **待补充**: 31 个
 - **被阻塞**: 2 个
-- **已完成**: 13 个
+- **已完成**: 16 个
 
 ### 已完成清单
 - ✅ 1.1 - 查询 Host 状态 (server-status.test.yaml)
@@ -318,6 +333,11 @@
 - ✅ 13.4 - 404 Session not found (error-paths.test.yaml)
 - ✅ 13.5 - 404 Prototype not found (error-paths.test.yaml)
 - ✅ 13.6 - 409 Session already idle (error-paths.test.yaml)
+- ✅ 13.7 - 409 Provider in use (provider-in-use-409.test.yaml)
+- ✅ A1.3 - Wire tool call ID (sarsapa-wire-tool-call-id.test.yaml)
+- ✅ A2.1 - Text-only assistant turn (sarsapa-text-only-turn.test.yaml)
+- ✅ A2.3 - Result line token usage (sarsapa-token-usage.test.yaml)
+
 ### 按优先级分布
 - 🔴 被阻塞: 2 个
 - 🟡 高优先级: 3 个 (1.2, 1.3, 1.4)
