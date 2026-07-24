@@ -1,0 +1,26 @@
+name: session-list-pagination
+description: |
+  验证 Session 列表支持分页参数。
+  覆盖 SCENARIOS: 2.1
+
+setup:
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max 2>/dev/null || true"
+
+teardown:
+  - "sumeru session rm $SID1 2>/dev/null || true"
+  - "sumeru session rm $SID2 2>/dev/null || true"
+  - "sumeru session rm $SID3 2>/dev/null || true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null || true"
+
+steps:
+  - name: "创建 3 个 sessions"
+    command: "export SID1=$(sumeru session add atest-sarsapa --task 'Test 1' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && export SID2=$(sumeru session add atest-sarsapa --task 'Test 2' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && export SID3=$(sumeru session add atest-sarsapa --task 'Test 3' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo 'Created 3 sessions'"
+    expect: "Created 3 sessions"
+
+  - name: "验证默认列表包含所有 sessions"
+    command: "sumeru session list 2>&1"
+    expect: "atest-sarsapa"
+
+  - name: "验证 limit 参数限制结果数量"
+    command: "sumeru session list --limit 2 2>&1 | grep -c 'ses_' || echo 0"
+    expect: "2"

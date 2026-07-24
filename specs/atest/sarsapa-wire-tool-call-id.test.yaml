@@ -1,0 +1,24 @@
+name: "sarsapa-wire-tool-call-id"
+description: |
+  验证 Sarsapa 适配器正确传递 tool call ID。
+  覆盖 SCENARIOS: A1.3
+
+setup:
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max 2>/dev/null || true"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null || true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null || true"
+
+steps:
+  - name: "创建 session 触发工具调用"
+    command: "export SID=$(sumeru session add atest-sarsapa --task 'Read the file /home/node/package.json and tell me the package name' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
+
+  - name: "等待 session 完成并验证工具调用"
+    command: "sleep 10 && sumeru session turns $SID 2>&1"
+    expect: "→"
+
+  - name: "验证 JSON 格式包含 callId"
+    command: "sumeru session turns $SID --format json 2>&1 | jq -r '.turns[] | select(.role == \"tool\") | .callId' | head -1"
+    expect: "call_"

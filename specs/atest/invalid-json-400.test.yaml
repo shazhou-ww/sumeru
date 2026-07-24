@@ -1,0 +1,12 @@
+name: invalid-json-400
+description: |
+  Test that sending invalid JSON returns 400 error.
+  Covers scenario 13.1.
+
+setup: []
+teardown: []
+
+steps:
+  - name: Send invalid JSON to session messages endpoint
+    command: "curl -s -X POST http://localhost:7900/sessions/nonexistent/messages -H 'Content-Type: application/json' -d '{invalid json}' 2>&1"
+    expect: "invalid_json"
