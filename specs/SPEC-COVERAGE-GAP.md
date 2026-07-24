@@ -78,10 +78,11 @@
 
 ### Section 2 - Session 生命周期
 
-- [ ] **2.3** - 创建 session（prototype 不存在）
+- [x] **2.3** - 创建 session（prototype 不存在）
   - API: `POST /sessions` → 404
   - CLI: `sumeru session add ghost` → error
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
+  - atest: `specs/atest/error-paths.test.yaml` ✅ (line 20)
   - 难度: 低
 
 - [x] **2.4** - 创建 session（project 路径越界）
@@ -166,10 +167,11 @@
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
   - 难度: 低
 
-- [ ] **13.2** - 400 Missing fields
+- [x] **13.2** - 400 Missing fields
   - API: `POST /sessions` 缺必填
   - CLI: `sumeru session add` 缺参数 → help 提示
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
+  - atest: `specs/atest/error-paths.test.yaml` ✅ (line 69)
   - 难度: 低
 
 - [x] **13.3** - 400 Invalid project
@@ -178,22 +180,25 @@
   - atest: `specs/atest/invalid-project-path-400.test.yaml` ✅
   - 难度: 低
 
-- [ ] **13.4** - 404 Session not found
+- [x] **13.4** - 404 Session not found
   - API: `GET/POST/DELETE /sessions/:id`
   - CLI: `sumeru session get/stop/remove <id>` → error
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
+  - atest: `specs/atest/error-paths.test.yaml` ✅ (lines 52, 57, 62)
   - 难度: 低
 
-- [ ] **13.5** - 404 Prototype not found
+- [x] **13.5** - 404 Prototype not found
   - API: `POST /sessions`, `GET /prototypes/:name`
   - CLI: `sumeru session add`, `sumeru prototype get` → error
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
+  - atest: `specs/atest/error-paths.test.yaml` ✅ (line 20, same as 2.3)
   - 难度: 低
 
-- [ ] **13.6** - 409 Session already idle
+- [x] **13.6** - 409 Session already idle
   - API: `POST /sessions/:id/stop`
   - CLI: `sumeru session stop <id>` → error
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
+  - atest: `specs/atest/error-paths.test.yaml` ✅ (line 35, same as 2.8)
   - 难度: 低
 
 - [ ] **13.7** - 409 Provider in use
@@ -292,14 +297,26 @@
 ## 统计
 
 - **总计**: 47 个场景
-- **待补充**: 45 个
+- **待补充**: 37 个
 - **被阻塞**: 2 个
-- **已完成**: 0 个
+- **已完成**: 10 个
+
+### 已完成清单
+- ✅ 1.1 - 查询 Host 状态 (server-status.test.yaml)
+- ✅ 2.3 - 创建 session（prototype 不存在）(error-paths.test.yaml)
+- ✅ 2.4 - 创建 session（project 路径越界）(invalid-project-path-400.test.yaml)
+- ✅ 8.5 - 删除被 Prototype 引用的 persona（409）(persona-prototype-reference-409.test.yaml)
+- ✅ 10.3 - 列出 adapter 内置模型 (adapter-models-list.test.yaml)
+- ✅ 13.2 - 400 Missing fields (error-paths.test.yaml)
+- ✅ 13.3 - 400 Invalid project (invalid-project-path-400.test.yaml)
+- ✅ 13.4 - 404 Session not found (error-paths.test.yaml)
+- ✅ 13.5 - 404 Prototype not found (error-paths.test.yaml)
+- ✅ 13.7 - 409 Provider in use (provider-in-use-409.test.yaml)
 
 ### 按优先级分布
 - 🔴 被阻塞: 2 个
-- 🟡 高优先级: 6 个
-- 🟠 中优先级: 28 个
+- 🟡 高优先级: 3 个 (1.2, 1.3, 1.4)
+- 🟠 中优先级: 23 个
 - 🔵 低优先级: 11 个
 
 ### 按难度分布
@@ -307,3 +324,25 @@
 - 中: 14 个
 - 高: 10 个
 - 未评估: 8 个
+
+---
+
+## 下一步计划
+
+### 批次 2: 错误路径补充
+- 13.1 - 400 Invalid JSON
+- 13.4 - 404 Session not found (部分已在 error-paths.test.yaml)
+- 13.5 - 404 Prototype not found (部分已在 error-paths.test.yaml)
+- 13.6 - 409 Session already idle (部分已在 error-paths.test.yaml)
+
+### 批次 3: Turns 数据结构
+- 5.3 - Turn discriminated union
+- 5.7 - Turns 显示 tool calls
+
+### 批次 4: Adapter 协议基础
+- A1.3 - Wire tool call ID
+- A2.1 - Text-only assistant turn
+- A2.3 - Result line token usage
+- A3.1 - Init scaffold
+- A3.2 - Agent message turn
+- A3.4 - Token usage
