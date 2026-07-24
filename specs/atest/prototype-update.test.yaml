@@ -1,0 +1,71 @@
+name: prototype-update
+description: Test Prototype update operations (7.4)
+setup:
+  - sumeru prototype remove test-proto-update || true
+teardown:
+  - sumeru prototype remove test-proto-update || true
+steps:
+  - name: "创建测试 prototype"
+    command: "sumeru prototype add test-proto-update --model qwen3.7-max --adapter sarsapa"
+    expect: "Created prototype test-proto-update"
+
+  - name: "验证初始状态"
+    command: "sumeru prototype get test-proto-update --format json"
+    expect:
+      - type: json_path
+        path: $.model
+        value: qwen3.7-max
+      - type: json_path
+        path: $.adapter
+        value: sarsapa
+
+  - name: "更新 model"
+    command: "sumeru prototype update test-proto-update --model gpt-4o"
+    expect: "Updated prototype test-proto-update"
+
+  - name: "验证 model 已更新"
+    command: "sumeru prototype get test-proto-update --format json"
+    expect:
+      - type: json_path
+        path: $.model
+        value: gpt-4o
+
+  - name: "更新 adapter"
+    command: "sumeru prototype update test-proto-update --adapter hermes"
+    expect: "Updated prototype test-proto-update"
+
+  - name: "验证 adapter 已更新"
+    command: "sumeru prototype get test-proto-update --format json"
+    expect:
+      - type: json_path
+        path: $.adapter
+        value: hermes
+
+  - name: "更新 persona"
+    command: "sumeru prototype update test-proto-update --persona default"
+    expect: "Updated prototype test-proto-update"
+
+  - name: "验证 persona 已更新"
+    command: "sumeru prototype get test-proto-update --format json"
+    expect:
+      - type: json_path
+        path: $.persona
+        value: default
+
+  - name: "同时更新多个字段"
+    command: "sumeru prototype update test-proto-update --model qwen3.7-max --adapter sarsapa"
+    expect: "Updated prototype test-proto-update"
+
+  - name: "验证多字段更新"
+    command: "sumeru prototype get test-proto-update --format json"
+    expect:
+      - type: json_path
+        path: $.model
+        value: qwen3.7-max
+      - type: json_path
+        path: $.adapter
+        value: sarsapa
+
+  - name: "清理测试数据"
+    command: "sumeru prototype remove test-proto-update"
+    expect: "Removed prototype test-proto-update"

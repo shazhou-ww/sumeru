@@ -1,0 +1,29 @@
+name: session-delete
+description: Test session delete functionality (2.7)
+
+setup:
+  - "sumeru prototype add test-delete-proto --model qwen3.7-max --adapter sarsapa 2>/dev/null || true"
+
+teardown:
+  - "sumeru prototype rm test-delete-proto 2>/dev/null || true"
+
+steps:
+  - name: "2.7: 创建 session"
+    command: "export SID=$(sumeru session add test-delete-proto 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
+
+  - name: "2.7: 发送消息"
+    command: "sumeru session send $SID 'Hello' 2>&1 && sleep 5"
+    expect: "Message sent"
+
+  - name: "2.7: 验证 session 存在"
+    command: "sumeru session get $SID 2>&1 | grep 'ID:'"
+    expect: "ses_"
+
+  - name: "2.7: 删除 session"
+    command: "sumeru session rm $SID 2>&1"
+    expect: "Removed"
+
+  - name: "2.7: 验证 session 已删除"
+    command: "sumeru session get $SID 2>&1 || echo 'Delete verified'"
+    expect: "Delete verified"

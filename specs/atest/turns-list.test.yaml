@@ -1,0 +1,30 @@
+name: turns-list
+description: Test basic turns list functionality (5.1)
+
+setup:
+  - "sumeru prototype add test-turns-list --model qwen3.7-max --adapter sarsapa 2>/dev/null || true"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null || true"
+  - "sumeru prototype rm test-turns-list 2>/dev/null || true"
+
+steps:
+  - name: "5.1: 创建 session"
+    command: "export SID=$(sumeru session add test-turns-list 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
+
+  - name: "5.1: 发送消息触发多轮对话"
+    command: "sumeru session send $SID 'Say hello and then list 3 colors' 2>&1"
+    expect: "Message sent"
+
+  - name: "5.1: 等待 assistant 回复"
+    command: "sleep 10 && sumeru session turns $SID 2>&1 | head -20"
+    expect: "hello"
+
+  - name: "5.1: 验证 turns 列表包含 user 消息"
+    command: "sumeru session turns $SID 2>&1"
+    expect: "Say hello"
+
+  - name: "5.1: 验证 turns 列表包含 assistant 回复"
+    command: "sumeru session turns $SID 2>&1"
+    expect: "colors"

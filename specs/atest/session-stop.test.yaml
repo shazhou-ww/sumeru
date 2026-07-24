@@ -1,0 +1,30 @@
+name: session-stop
+description: Test session stop functionality (2.5)
+
+setup:
+  - "sumeru prototype add test-stop-proto --model qwen3.7-max --adapter sarsapa 2>/dev/null || true"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null || true"
+  - "sumeru prototype rm test-stop-proto 2>/dev/null || true"
+
+steps:
+  - name: "2.5: 创建 session"
+    command: "export SID=$(sumeru session add test-stop-proto 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
+
+  - name: "2.5: 发送长任务消息"
+    command: "sumeru session send $SID 'Count from 1 to 100 slowly, one number per line' 2>&1"
+    expect: "Message sent"
+
+  - name: "2.5: 等待任务开始"
+    command: "sleep 5 && sumeru session get $SID 2>&1 | grep -E 'Status: (running|working)'"
+    expect: "running"
+
+  - name: "2.5: 停止 session"
+    command: "sumeru session stop $SID 2>&1"
+    expect: "Stopped"
+
+  - name: "2.5: 验证 session 已停止"
+    command: "sleep 2 && sumeru session get $SID 2>&1 | grep 'Status:'"
+    expect: "stopped"

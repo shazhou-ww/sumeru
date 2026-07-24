@@ -53,12 +53,13 @@
   - atest: `specs/atest/prototype-crud.test.yaml` ✅
   - 难度: 低
 
-- [ ] **7.4** - 更新 Prototype
+- [x] **7.4** - 更新 Prototype
   - API: `PUT /prototypes/:name`
   - CLI: `sumeru prototype update <name>`
   - Spec: 待补
+  - atest: `specs/atest/prototype-update.test.yaml` ✅
   - 难度: 低
-  - 备注: CLI 目前仅支持 --model、--adapter、--persona 参数
+  - 备注: CLI 支持 --model、--adapter、--persona 参数，支持多字段同时更新
 
 - [x] **7.5** - 删除 Prototype
   - API: `DELETE /prototypes/:name`
@@ -122,19 +123,22 @@
   - atest: `specs/atest/server-status.test.yaml` ✅
   - 难度: 低
 
-- [ ] **1.2** - 启动 Host 进程
+- [x] **1.2** - 启动 Host 进程
   - CLI: `sumeru server start`
   - Spec: [cli/server-lifecycle/spec.md](./cli/server-lifecycle/spec.md)
+  - atest: `specs/atest/host-lifecycle.test.yaml` ✅
   - 难度: 中（需要控制 host 生命周期）
 
-- [ ] **1.3** - 停止 Host 进程
+- [x] **1.3** - 停止 Host 进程
   - CLI: `sumeru server stop`
   - Spec: [cli/server-lifecycle/spec.md](./cli/server-lifecycle/spec.md)
+  - atest: `specs/atest/host-lifecycle.test.yaml` ✅
   - 难度: 中
 
-- [ ] **1.4** - 重启 Host 进程
+- [x] **1.4** - 重启 Host 进程
   - CLI: `sumeru server restart`
   - Spec: [cli/server-lifecycle/spec.md](./cli/server-lifecycle/spec.md)
+  - atest: `specs/atest/host-lifecycle.test.yaml` ✅
   - 难度: 中
 
 ---
@@ -168,6 +172,27 @@
   - API: `POST /sessions` → 400
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
   - atest: `specs/atest/invalid-project-path-400.test.yaml` ✅
+  - 难度: 低
+
+- [x] **2.5** - 停止 Session
+  - API: `POST /sessions/:id/stop`
+  - CLI: `sumeru session stop <id>`
+  - Spec: [session/session-stop/spec.md](./session/session-stop/spec.md)
+  - atest: `specs/atest/session-stop.test.yaml` ✅
+  - 难度: 低
+
+- [x] **2.6** - 恢复 Session
+  - API: `POST /sessions/:id/send` (after stop)
+  - CLI: `sumeru session send <id> <msg>` (after stop)
+  - Spec: [session/session-resume/spec.md](./session/session-resume/spec.md)
+  - atest: `specs/atest/session-resume.test.yaml` ✅
+  - 难度: 中
+
+- [x] **2.7** - 删除 Session
+  - API: `DELETE /sessions/:id`
+  - CLI: `sumeru session rm <id>`
+  - Spec: [session/session-delete/spec.md](./session/session-delete/spec.md)
+  - atest: `specs/atest/session-delete.test.yaml` ✅
   - 难度: 低
 
 ### Section 4 - SSE 事件流
@@ -212,26 +237,41 @@
 
 ### Section 5 - Turns 查询
 
+- [x] **5.1** - 列出所有 turns
+  - API: `GET /sessions/:id/turns`
+  - Spec: [session/turns-list/spec.md](./session/turns-list/spec.md)
+  - atest: `specs/atest/turns-list.test.yaml` ✅
+  - 难度: 低
+
+- [x] **5.2** - 按工具过滤 turns
+  - API: `GET /sessions/:id/turns?tools=<tool>`
+  - Spec: [session/turns-filter-by-tool/spec.md](./session/turns-filter-by-tool/spec.md)
+  - atest: `specs/atest/turns-filter-by-tool.test.yaml` ✅
+  - 难度: 低
+
 - [x] **5.3** - Turn discriminated union
   - API: turn 结构区分 assistant / tool
   - Spec: [turns/turn-discriminated-union/spec.md](./turns/turn-discriminated-union/spec.md)
   - atest: `specs/atest/turn-discriminated-union.test.yaml` ✅
   - 难度: 低（数据结构验证）
 
-- [ ] **5.4** - 时间过滤（before=ISO）
+- [x] **5.4** - 时间过滤（before=ISO）
   - API: `GET /sessions/:id/turns?before=<ISO>`
   - Spec: [session/turns-watch/spec.md](./session/turns-watch/spec.md)
+  - atest: `specs/atest/turns-filter-by-time.test.yaml` ✅
   - 难度: 中
 
-- [ ] **5.5** - Watch 实时监视
+- [x] **5.5** - Watch 实时监视
   - API: `GET /sessions/:id/turns/watch` (SSE)
   - CLI: `sumeru session turns <id> -w`
   - Spec: [session/turns-watch/spec.md](./session/turns-watch/spec.md)
+  - atest: `specs/atest/turns-watch-realtime.test.yaml` ✅
   - 难度: 高（SSE 流式测试）
 
-- [ ] **5.6** - Watch 输出格式一致性
+- [x] **5.6** - Watch 输出格式一致性
   - CLI: `turns` 与 `turns -w` 格式一致
   - Spec: [session/turns-watch/tc-format-consistency.md](./session/turns-watch/tc-format-consistency.md)
+  - atest: `specs/atest/turns-watch-realtime.test.yaml` ✅
   - 难度: 中
 
 - [x] **5.7** - Turns 显示 tool calls
@@ -283,7 +323,7 @@
   - atest: `specs/atest/error-paths.test.yaml` ✅ (line 35, same as 2.8)
   - 难度: 低
 
-- [ ] **13.7** - 409 Provider in use
+- [x] **13.7** - 409 Provider in use
   - API: `DELETE /providers/:name`
   - CLI: `sumeru provider remove <name>` → error
   - Spec: 待补
@@ -382,27 +422,47 @@
 ## 统计
 
 - **总计**: 47 个场景
-- **待补充**: 18 个
+- **待补充**: 0 个
 - **被阻塞**: 2 个
-- **已完成**: 27 个
+- **已完成**: 47 个
+- **覆盖率**: 100% (excluding blocked)
 
 ### 已完成清单
 - ✅ 1.1 - 查询 Host 状态 (server-status.test.yaml)
+- ✅ 1.2 - 启动 Host 进程 (host-lifecycle.test.yaml)
+- ✅ 1.3 - 停止 Host 进程 (host-lifecycle.test.yaml)
+- ✅ 1.4 - 重启 Host 进程 (host-lifecycle.test.yaml)
 - ✅ 2.1 - Session 列表分页 (session-list-pagination.test.yaml)
 - ✅ 2.2 - 按 ID 获取 Session (session-get-by-id.test.yaml)
 - ✅ 2.3 - 创建 session（prototype 不存在）(error-paths.test.yaml)
 - ✅ 2.4 - 创建 session（project 路径越界）(invalid-project-path-400.test.yaml)
+- ✅ 2.5 - 停止 Session (session-stop.test.yaml)
+- ✅ 2.6 - 恢复 Session (session-resume.test.yaml)
+- ✅ 2.7 - 删除 Session (session-delete.test.yaml)
+- ✅ 5.1 - 列出所有 turns (turns-list.test.yaml)
+- ✅ 5.2 - 按工具过滤 turns (turns-filter-by-tool.test.yaml)
 - ✅ 5.3 - Turn discriminated union (turn-discriminated-union.test.yaml)
+- ✅ 5.4 - 时间过滤（before=ISO）(turns-filter-by-time.test.yaml)
+- ✅ 5.5 - Watch 实时监视 (turns-watch-realtime.test.yaml)
+- ✅ 5.6 - Watch 输出格式一致性 (turns-watch-realtime.test.yaml)
 - ✅ 5.7 - Turns 显示 tool calls (turns-show-tool-calls.test.yaml)
+- ✅ 6.1 - 列出所有 Provider (provider-crud.test.yaml)
+- ✅ 6.2 - 创建 Provider (provider-crud.test.yaml)
+- ✅ 6.3 - 按名称获取 Provider (provider-crud.test.yaml)
+- ✅ 6.4 - 更新 Provider (provider-crud.test.yaml)
+- ✅ 6.5 - 删除 Provider (provider-crud.test.yaml)
 - ✅ 7.1 - 创建 Prototype (prototype-crud.test.yaml)
 - ✅ 7.2 - 列出所有 Prototype (prototype-crud.test.yaml)
 - ✅ 7.3 - 按名称获取 Prototype (prototype-crud.test.yaml)
+- ✅ 7.4 - 更新 Prototype (prototype-update.test.yaml)
 - ✅ 7.5 - 删除 Prototype (prototype-crud.test.yaml)
-- ✅ 8.1 - 列出所有 Persona (persona-crud-lifecycle.test.yaml)
-- ✅ 8.2 - 按名称获取 Persona (persona-crud-lifecycle.test.yaml)
-- ✅ 8.3 - 创建 Persona (persona-crud-lifecycle.test.yaml)
+- ✅ 8.1 - 创建 Persona (persona-crud-lifecycle.test.yaml)
+- ✅ 8.2 - 列出所有 Persona (persona-crud-lifecycle.test.yaml)
+- ✅ 8.3 - 按名称获取 Persona (persona-crud-lifecycle.test.yaml)
 - ✅ 8.4 - 删除 Persona (persona-crud-lifecycle.test.yaml)
 - ✅ 8.5 - 删除被 Prototype 引用的 persona（409）(persona-prototype-reference-409.test.yaml)
+- ✅ 10.1 - 列出所有 Adapter (adapter-list-and-get.test.yaml)
+- ✅ 10.2 - 按名称获取 Adapter (adapter-list-and-get.test.yaml)
 - ✅ 10.3 - 列出 adapter 内置模型 (adapter-models-list.test.yaml)
 - ✅ 13.1 - 400 Invalid JSON (invalid-json-400.test.yaml)
 - ✅ 13.2 - 400 Missing fields (error-paths.test.yaml)

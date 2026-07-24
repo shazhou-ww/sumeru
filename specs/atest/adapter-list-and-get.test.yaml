@@ -1,0 +1,27 @@
+name: adapter-list-and-get
+description: Test adapter list and get operations (10.1, 10.2)
+
+setup: []
+
+teardown: []
+
+steps:
+  - name: "10.1: List all adapters"
+    command: "sumeru adapter list 2>&1"
+    expect: "sarsapa"
+    
+  - name: "10.1: List adapters with JSON format"
+    command: "sumeru adapter list --format json 2>&1"
+    expect: "sarsapa"
+    
+  - name: "10.2: Get adapter details - sarsapa"
+    command: "sumeru adapter get sarsapa 2>&1"
+    expect: "sarsapa"
+    
+  - name: "10.2: Get adapter details - hermes"
+    command: "sumeru adapter get hermes 2>&1"
+    expect: "hermes"
+    
+  - name: "10.2: Get adapter details with JSON format"
+    command: "sumeru adapter get sarsapa --format json 2>&1"
+    expect: "sarsapa"

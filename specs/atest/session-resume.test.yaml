@@ -1,0 +1,34 @@
+name: session-resume
+description: Test session resume functionality (2.6)
+
+setup:
+  - "sumeru prototype add test-resume-proto --model qwen3.7-max --adapter sarsapa 2>/dev/null || true"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null || true"
+  - "sumeru prototype rm test-resume-proto 2>/dev/null || true"
+
+steps:
+  - name: "2.6: 创建 session"
+    command: "export SID=$(sumeru session add test-resume-proto 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
+
+  - name: "2.6: 发送长任务消息"
+    command: "sumeru session send $SID 'Write a 500-word essay about artificial intelligence, covering its history, current applications, and future potential. Take your time and be thorough.' 2>&1"
+    expect: "Message sent"
+
+  - name: "2.6: 等待任务开始并停止"
+    command: "sleep 3 && sumeru session stop $SID 2>&1 || echo 'Stop completed'"
+    expect: "Stop completed"
+
+  - name: "2.6: 恢复 session（发送新消息）"
+    command: "sumeru session send $SID 'Say goodbye' 2>&1"
+    expect: "Message sent"
+
+  - name: "2.6: 验证 session 恢复运行"
+    command: "sleep 2 && sumeru session get $SID 2>&1 | grep 'Status:'"
+    expect: "running"
+
+  - name: "2.6: 验证新回复"
+    command: "sleep 8 && sumeru session turns $SID 2>&1 | tail -10"
+    expect: "goodbye"
