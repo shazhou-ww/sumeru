@@ -1,0 +1,15 @@
+name: "invalid-project-path-400"
+description: |
+  验证创建 session 时 project 路径越界返回 400。
+  覆盖 SCENARIOS: 2.4, 13.3
+
+setup:
+  - "sumeru prototype add atest-proto --adapter sarsapa --model qwen3.7-max 2>/dev/null || true"
+
+teardown:
+  - "sumeru prototype remove atest-proto 2>/dev/null || true"
+
+steps:
+  - name: "Try to create session with path outside workspaceRoot"
+    command: "sumeru session add atest-proto --project /etc/passwd --task 'test' 2>&1; true"
+    expect: "project_path_out_of_bounds"

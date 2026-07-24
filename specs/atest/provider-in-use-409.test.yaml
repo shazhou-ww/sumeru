@@ -1,0 +1,25 @@
+name: "provider-in-use-409"
+description: |
+  验证删除被 model 引用的 provider 返回 409。
+  覆盖 SCENARIOS: 13.7
+
+setup:
+  - "sumeru provider add test-409-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true"
+  - "sumeru model add test-409-model --provider test-409-provider --model test-model 2>/dev/null || true"
+
+teardown:
+  - "sumeru model remove test-409-model 2>/dev/null || true"
+  - "sumeru provider remove test-409-provider 2>/dev/null || true"
+
+steps:
+  - name: "Verify provider exists"
+    command: "sumeru provider get test-409-provider 2>&1"
+    expect: "test-409-provider"
+    
+  - name: "Try to delete provider in use - should fail"
+    command: "sumeru provider remove test-409-provider 2>&1; true"
+    expect: "provider_in_use"
+    
+  - name: "Verify provider still exists"
+    command: "sumeru provider get test-409-provider 2>&1"
+    expect: "test-409-provider"
