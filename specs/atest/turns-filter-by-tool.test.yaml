@@ -1,0 +1,24 @@
+name: turns-filter-by-tool
+description: |
+  验证 Turns 列表支持按工具过滤。
+  覆盖 SCENARIOS: 5.2
+
+setup:
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max 2>/dev/null || true"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null || true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null || true"
+
+steps:
+  - name: "创建会触发工具调用的 Session"
+    command: "export SID=$(sumeru session add atest-sarsapa --task 'List files in current directory' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
+
+  - name: "等待 Session 完成"
+    command: "sleep 15 && sumeru session turns $SID 2>&1"
+    expect: "→"
+
+  - name: "验证 JSON 输出包含工具调用"
+    command: "sumeru session turns $SID --format json 2>&1 | jq '.turns[] | select(.role == \"assistant\") | .toolCalls | length' | head -1"
+    expect: "^[1-9]"

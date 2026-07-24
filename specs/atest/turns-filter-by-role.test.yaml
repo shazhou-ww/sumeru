@@ -1,0 +1,32 @@
+name: turns-filter-by-role
+description: |
+  验证 Turns 列表支持按角色过滤。
+  覆盖 SCENARIOS: 5.4
+
+setup:
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max 2>/dev/null || true"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null || true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null || true"
+
+steps:
+  - name: "创建会触发工具调用的 Session"
+    command: "export SID=$(sumeru session add atest-sarsapa --task 'Read /etc/hostname' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
+
+  - name: "等待 Session 完成"
+    command: "sleep 15 && sumeru session turns $SID 2>&1"
+    expect: "→"
+
+  - name: "验证 JSON 输出包含 user 角色"
+    command: "sumeru session turns $SID --format json 2>&1 | jq '.turns[] | select(.role == \"user\")' | head -5"
+    expect: "Read /etc/hostname"
+
+  - name: "验证 JSON 输出包含 assistant 角色"
+    command: "sumeru session turns $SID --format json 2>&1 | jq '.turns[] | select(.role == \"assistant\")' | head -5"
+    expect: "\"role\": \"assistant\""
+
+  - name: "验证 JSON 输出包含 tool 角色"
+    command: "sumeru session turns $SID --format json 2>&1 | jq '.turns[] | select(.role == \"tool\")' | head -5"
+    expect: "\"role\": \"tool\""

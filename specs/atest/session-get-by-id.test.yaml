@@ -1,0 +1,28 @@
+name: session-get-by-id
+description: |
+  验证可以通过 ID 获取 Session 详情。
+  覆盖 SCENARIOS: 2.2
+
+setup:
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max 2>/dev/null || true"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null || true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null || true"
+
+steps:
+  - name: "创建 Session"
+    command: "export SID=$(sumeru session add atest-sarsapa --task 'Hello' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
+
+  - name: "通过 ID 获取 Session 详情"
+    command: "sumeru session get $SID 2>&1"
+    expect: "$SID"
+
+  - name: "验证 JSON 格式输出"
+    command: "sumeru session get $SID --format json 2>&1 | jq -r '.id'"
+    expect: "$SID"
+
+  - name: "验证包含 prototype 信息"
+    command: "sumeru session get $SID --format json 2>&1 | jq -r '.prototype'"
+    expect: "atest-sarsapa"
