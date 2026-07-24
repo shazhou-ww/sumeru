@@ -1,0 +1,22 @@
+name: turns-show-tool-calls
+description: |
+  Test that turns display tool calls in format "→ name(args)".
+  Covers scenario 5.7.
+
+setup:
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max 2>/dev/null || true"
+  - "mkdir -p ~/.sumeru/workspace/atest-proj"
+  - "echo 'test file' > ~/.sumeru/workspace/atest-proj/test.txt"
+
+teardown:
+  - "sumeru prototype remove atest-sarsapa 2>/dev/null || true"
+  - "rm -rf ~/.sumeru/workspace/atest-proj"
+
+steps:
+  - name: "Create session that triggers tool call"
+    command: 'export SID=$(sumeru session add atest-sarsapa --project atest-proj --task "List files in current directory" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
+    expect: "SID=ses_"
+    
+  - name: "Get turns in text format and verify tool call display"
+    command: "sleep 10 && sumeru session turns $SID 2>&1"
+    expect: "→"
