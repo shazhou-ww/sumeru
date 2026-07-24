@@ -1,89 +1,65 @@
-name: "codex snapshot context inherit"
+name: snapshot-inherit-codex
 description: |
-  验证 codex adapter 在 snapshot 继承和隔离场景下的行为。
-  覆盖 SCENARIOS: 11.5, 2.1
-  使用本地 copilot-bridge (127.0.0.1:4142) 的 OpenAI-compatible endpoint。
-  资源命名加 atest- 前缀避免冲突。
+  验证 codex 适配器的 snapshot 继承功能。
+  创建 session -> snapshot -> 从 snapshot 创建新 session -> 验证继承
 
 setup:
-  - "docker build -t sumeru/codex:dev -f packages/adapter-codex/Dockerfile . >/dev/null 2>&1; true"
-  - "sumeru prototype rm atest-codex 2>/dev/null; true"
-  - "sumeru prototype rm atest-codex-snap 2>/dev/null; true"
-  - "sumeru provider add atest-bridge --api-type openai --base-url http://127.0.0.1:4142/v1 --api-key dummy 2>/dev/null; true"
-  - "sumeru model add claude-sonnet-4.6 --provider atest-bridge --model claude-sonnet-4.6 2>/dev/null; true"
-  - "sumeru prototype add atest-codex --adapter codex --model claude-sonnet-4.6"
+  - sumeru provider add test-openai --api-type openai --base-url http://127.0.0.1:4142 --api-key dummy 2>/dev/null || true
+  - sumeru model add gpt-4 --provider test-openai --model gpt-4 2>/dev/null || true
+  - sumeru prototype add atest-codex --adapter codex --model gpt-4 2>/dev/null || true
 
 teardown:
-  - "sumeru session rm $SID_BASE 2>/dev/null; true"
-  - "sumeru session rm $SID_SKIP 2>/dev/null; true"
-  - "sumeru session rm $SID_RESET 2>/dev/null; true"
-  - "sumeru prototype rm atest-codex-snap 2>/dev/null; true"
-  - "sumeru prototype rm atest-codex 2>/dev/null; true"
-  - "sumeru model remove claude-sonnet-4.6 2>/dev/null; true"
-  - "sumeru provider remove atest-bridge 2>/dev/null; true"
-  - "docker rmi sumeru/atest-codex-snap:dev 2>/dev/null; true"
+  - sumeru session rm $SID_BASE $SID_SKIP $SID_RESET 2>/dev/null || true
+  - sumeru prototype rm atest-codex atest-codex-snap 2>/dev/null || true
+  - sumeru model rm gpt-4 2>/dev/null || true
+  - sumeru provider rm test-openai 2>/dev/null || true
+  - docker rmi sumeru/atest-codex-snap:dev 2>/dev/null || true
 
 steps:
-  # ─── Phase 1: 创建 base session，注入 secret ───
+  - name: "创建 base session 并注入 secret"
+    command: "sumeru session add atest-codex --task 'Remember this secret code: DELTA-3388. Reply OK.'"
+    expect: "Session .* created"
 
-  - command: 'export SID_BASE=$(sumeru session add atest-codex --task "Remember this secret code: GAMMA-5577. Just reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "BASE=$SID_BASE"'
-    judge:
-      type: regex
-      expr: "BASE=ses_[A-Z0-9]+"
-    timeout: 30
+  - name: "提取 base session ID"
+    command: "export SID_BASE=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID_BASE"
+    expect: "ses_"
 
-  # 等待 codex 回复
-  - command: "sleep 15 && sumeru session turns $SID_BASE 2>&1 | tail -20"
-    judge:
-      type: llm
-      prompt: "如果有 assistant 回复且含 OK 或确认记住 secret 则 PASS。如果回复包含 error、unauthorized、not logged in 则 FAIL。如果只有 user 消息还没有 assistant 回复则 RETRY"
-    retry:
-      max: 10
-      interval: 5
-      backoff: false
+  - name: "等待回复"
+    command: "sleep 10 && sumeru session turns $SID_BASE 2>&1"
+    expect: "OK"
 
-  # ─── Phase 2: snapshot ───
+  - name: "创建 snapshot"
+    command: "sumeru session snapshot $SID_BASE atest-codex-snap"
+    expect: "Snapshot created"
 
-  - command: "sumeru session snapshot $SID_BASE atest-codex-snap 2>&1 | tail -5"
-    judge:
-      type: regex
-      expr: "Snapshot created"
+  - name: "验证 snapshot image 存在"
+    command: "docker images | grep atest-codex-snap"
+    expect: "atest-codex-snap"
 
-  - command: "docker images sumeru/atest-codex-snap:dev --format '{{.Repository}}:{{.Tag}}'"
-    judge:
-      type: regex
-      expr: "atest-codex-snap:dev"
+  - name: "创建 snapshot prototype"
+    command: "sumeru prototype add atest-codex-snap --adapter codex --model gpt-4 --image sumeru/atest-codex-snap:dev"
+    expect: "Prototype .* created"
 
-  # ─── Path A: --skip-reset（继承上下文）───
+  - name: "从 snapshot 创建新 session (--skip-reset 继承上下文)"
+    command: "sumeru session add atest-codex-snap --skip-reset --task 'What is the secret code?'"
+    expect: "Session .* created"
 
-  - command: 'export SID_SKIP=$(sumeru session add atest-codex-snap --skip-reset --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SKIP=$SID_SKIP"'
-    judge:
-      type: regex
-      expr: "SKIP=ses_[A-Z0-9]+"
-    timeout: 30
+  - name: "提取 skip-reset session ID"
+    command: "export SID_SKIP=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID_SKIP"
+    expect: "ses_"
 
-  - command: "sleep 15 && sumeru session turns $SID_SKIP 2>&1 | tail -20"
-    judge:
-      type: llm
-      prompt: "如果有 assistant 回复且包含 GAMMA-5577（上下文继承成功）则 PASS。如果回复 don't know 或 not sure 则 FAIL。如果只有 user 消息还没有 assistant 回复则 RETRY"
-    retry:
-      max: 10
-      interval: 5
-      backoff: false
+  - name: "验证继承的上下文包含 secret code"
+    command: "sleep 10 && sumeru session turns $SID_SKIP 2>&1"
+    expect: "DELTA-3388"
 
-  # ─── Path B: 默认 reset（不继承上下文）───
+  - name: "从 snapshot 创建新 session (默认 reset 不继承上下文)"
+    command: "sumeru session add atest-codex-snap --task 'What is the secret code?'"
+    expect: "Session .* created"
 
-  - command: 'export SID_RESET=$(sumeru session add atest-codex-snap --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "RESET=$SID_RESET"'
-    judge:
-      type: regex
-      expr: "RESET=ses_[A-Z0-9]+"
-    timeout: 30
+  - name: "提取 reset session ID"
+    command: "export SID_RESET=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID_RESET"
+    expect: "ses_"
 
-  - command: "sleep 15 && sumeru session turns $SID_RESET 2>&1 | tail -20"
-    judge:
-      type: llm
-      prompt: "如果有 assistant 回复且不包含 GAMMA-5577（上下文被 reset 清除）则 PASS。如果回复包含 GAMMA-5577 则 FAIL。如果只有 user 消息还没有 assistant 回复则 RETRY"
-    retry:
-      max: 10
-      interval: 5
-      backoff: false
+  - name: "验证不继承上下文 (回复不应包含 secret code)"
+    command: "sleep 10 && sumeru session turns $SID_RESET 2>&1"
+    expect: "don't know|not sure|no idea"

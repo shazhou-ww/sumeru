@@ -12,7 +12,11 @@ teardown:
 
 steps:
   - name: "创建 session 触发工具调用"
-    command: "export SID=$(sumeru session add atest-sarsapa --task 'Read the file /home/node/package.json and tell me the package name' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    command: "sumeru session add atest-sarsapa --task 'Read the file /home/node/package.json and tell me the package name'"
+    expect: "Session .* created"
+
+  - name: "提取 session ID"
+    command: "export SID=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
     expect: "ses_"
 
   - name: "等待 session 完成并验证工具调用"

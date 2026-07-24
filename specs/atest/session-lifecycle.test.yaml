@@ -16,11 +16,14 @@ teardown:
 steps:
   # ─── 2.1 创建 session (happy path) ───
 
-  - command: 'export SID=$(sumeru session add atest-sarsapa --task "Remember: the secret code is ALPHA-7742. Reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
-    judge:
-      type: regex
-      expr: "SID=ses_[A-Z0-9]+"
+  - name: "创建 session"
+    command: "sumeru session add atest-sarsapa --task \"Remember: the secret code is ALPHA-7742. Reply OK.\""
+    expect: "Session .* created"
     timeout: 15
+
+  - name: "提取 session ID"
+    command: "export SID=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
 
   # ─── 2.5 列表应含该 session ───
 
