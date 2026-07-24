@@ -77,11 +77,16 @@ function parseInitLine(line: string): InitLine | null {
 	if (!isRecord(parsed.model) || typeof parsed.model.name !== "string") {
 		return null;
 	}
-	const instructions = typeof parsed.instructions === "string" ? parsed.instructions : "";
+	const instructions =
+		typeof parsed.instructions === "string" ? parsed.instructions : "";
 	const skills: Array<{ name: string; content: string }> = [];
 	if (Array.isArray(parsed.skills)) {
 		for (const s of parsed.skills) {
-			if (isRecord(s) && typeof s.name === "string" && typeof s.content === "string") {
+			if (
+				isRecord(s) &&
+				typeof s.name === "string" &&
+				typeof s.content === "string"
+			) {
 				skills.push({ name: s.name, content: s.content });
 			}
 		}
