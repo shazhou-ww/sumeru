@@ -65,11 +65,8 @@ export function createSarsapaAdapter(
 	function restoreFromStore(): boolean {
 		const stored = sessionStore.load();
 		if (stored === null) return false;
-		initConfig = {
-			instructions: stored.instructions || "",
-			skills: stored.skills,
-			model: stored.model,
-		};
+		// Only restore conversation history, not initConfig.
+		// initConfig is always set from host config (via init() or before resume()).
 		conversation = createConversation(stored.system);
 		conversation.turns.push(...stored.turns);
 		return true;
@@ -79,10 +76,15 @@ export function createSarsapaAdapter(
 		initConfig = config;
 		const system = buildSystemPrompt(config);
 		if (sessionStore.exists()) {
-			// Already have context (e.g. from snapshot image) — update config only,
-			// preserve conversation history.
-			restoreFromStore();
-			conversation.system = system;
+			// Already have context (e.g. from snapshot image) — preserve conversation
+			// history but use the new config from host for system prompt.
+			const stored = sessionStore.load();
+			if (stored !== null) {
+				conversation = createConversation(system);
+				conversation.turns.push(...stored.turns);
+			} else {
+				conversation = createConversation(system);
+			}
 		} else {
 			conversation = createConversation(system);
 			sessionStore.writeInit(system, config);
