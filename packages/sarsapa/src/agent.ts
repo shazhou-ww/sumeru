@@ -65,8 +65,14 @@ export function createSarsapaAdapter(
 	function restoreFromStore(): boolean {
 		const stored = sessionStore.load();
 		if (stored === null) return false;
-		// Only restore conversation history, not initConfig.
-		// initConfig is always set from host config (via init() or before resume()).
+		// Restore initConfig from store for subcommand mode where config and
+		// message run in separate docker exec processes. In session-loop mode,
+		// init() is called in the same process and takes precedence.
+		initConfig = {
+			instructions: stored.instructions || "",
+			skills: stored.skills,
+			model: stored.model,
+		};
 		conversation = createConversation(stored.system);
 		conversation.turns.push(...stored.turns);
 		return true;
