@@ -8,20 +8,30 @@ teardown: []
 steps:
   - name: "10.1: List all adapters"
     command: "sumeru adapter list 2>&1"
-    expect: "sarsapa"
+    judge:
+      type: regex
+      expr: "sarsapa"
     
   - name: "10.1: List adapters with JSON format"
     command: "sumeru adapter list --format json 2>&1"
-    expect: "sarsapa"
+    judge:
+      type: regex
+      expr: "sarsapa"
     
   - name: "10.2: Get adapter details - sarsapa"
     command: "sumeru adapter get sarsapa 2>&1"
-    expect: "sarsapa"
+    judge:
+      type: regex
+      expr: "sarsapa"
     
   - name: "10.2: Get adapter details - hermes"
     command: "sumeru adapter get hermes 2>&1"
-    expect: "hermes"
+    judge:
+      type: regex
+      expr: "hermes"
     
   - name: "10.2: Get adapter details with JSON format"
     command: "sumeru adapter get sarsapa --format json 2>&1"
-    expect: "sarsapa"
+    judge:
+      type: regex
+      expr: "sarsapa"

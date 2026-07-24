@@ -13,20 +13,30 @@ teardown:
 steps:
   - name: "创建会触发工具调用的 Session"
     command: "export SID=$(sumeru session add atest-sarsapa --task 'Read /etc/hostname' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "等待 Session 完成"
     command: "sleep 15 && sumeru session turns $SID 2>&1"
-    expect: "→"
+    judge:
+      type: regex
+      expr: "→"
 
   - name: "验证 JSON 输出包含 user 角色"
     command: "sumeru session turns $SID --format json 2>&1 | jq '.turns[] | select(.role == \"user\")' | head -5"
-    expect: "Read /etc/hostname"
+    judge:
+      type: regex
+      expr: "Read /etc/hostname"
 
   - name: "验证 JSON 输出包含 assistant 角色"
     command: "sumeru session turns $SID --format json 2>&1 | jq '.turns[] | select(.role == \"assistant\")' | head -5"
-    expect: "\"role\": \"assistant\""
+    judge:
+      type: regex
+      expr: "\"role\": \"assistant\""
 
   - name: "验证 JSON 输出包含 tool 角色"
     command: "sumeru session turns $SID --format json 2>&1 | jq '.turns[] | select(.role == \"tool\")' | head -5"
-    expect: "\"role\": \"tool\""
+    judge:
+      type: regex
+      expr: "\"role\": \"tool\""

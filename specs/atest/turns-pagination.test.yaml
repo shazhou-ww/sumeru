@@ -13,13 +13,20 @@ teardown:
   - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
 
 steps:
-  # ─── 创建 session + 第一条消息 ───
+  # ─── 创建 session ───
 
-  - command: 'export SID=$(sumeru session add atest-sarsapa --task "Remember: code is ALPHA-7742. Reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
+  - name: "创建 session"
+    command: "sumeru session add atest-sarsapa --task \"Remember: code is ALPHA-7742. Reply OK.\""
     judge:
       type: regex
-      expr: "SID=ses_[A-Z0-9]+"
+      expr: "Session .* created"
     timeout: 15
+
+  - name: "提取 session ID"
+    command: "export SID=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    judge:
+      type: regex
+      expr: "ses_"
 
   # ─── 等待第一条回复 ───
 

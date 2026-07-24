@@ -11,16 +11,24 @@ teardown:
 steps:
   - name: "创建 Persona"
     command: "sumeru persona add atest-persona --instructions 'You are a helpful assistant.' 2>&1"
-    expect: "Persona 'atest-persona' added"
+    judge:
+      type: regex
+      expr: "Persona 'atest-persona' added"
 
   - name: "列出所有 Personas"
     command: "sumeru persona list 2>&1"
-    expect: "atest-persona"
+    judge:
+      type: regex
+      expr: "atest-persona"
 
   - name: "获取 Persona 详情"
     command: "sumeru persona get atest-persona 2>&1"
-    expect: "helpful assistant"
+    judge:
+      type: regex
+      expr: "helpful assistant"
 
   - name: "验证 JSON 格式输出"
     command: "sumeru persona get atest-persona --format json 2>&1 | jq -r '.instructions'"
-    expect: "helpful assistant"
+    judge:
+      type: regex
+      expr: "helpful assistant"

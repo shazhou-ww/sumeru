@@ -15,12 +15,18 @@ teardown:
 steps:
   - name: "Verify prototype exists and references persona"
     command: "sumeru prototype get test-409-proto 2>&1"
-    expect: "test-409-persona"
+    judge:
+      type: regex
+      expr: "test-409-persona"
     
   - name: "Try to delete referenced persona - should fail with persona_in_use error"
     command: "sumeru persona remove test-409-persona 2>&1; true"
-    expect: "persona_in_use"
+    judge:
+      type: regex
+      expr: "persona_in_use"
     
   - name: "Verify persona still exists after failed deletion"
     command: "sumeru persona get test-409-persona 2>&1"
-    expect: "test-409-persona"
+    judge:
+      type: regex
+      expr: "test-409-persona"

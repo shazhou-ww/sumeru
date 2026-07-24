@@ -11,20 +11,30 @@ teardown:
 steps:
   - name: "2.5: 创建 session"
     command: "export SID=$(sumeru session add test-stop-proto 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "2.5: 发送长任务消息"
     command: "sumeru session send $SID 'Count from 1 to 100 slowly, one number per line' 2>&1"
-    expect: "Message sent"
+    judge:
+      type: regex
+      expr: "Message sent"
 
   - name: "2.5: 等待任务开始"
     command: "sleep 5 && sumeru session get $SID 2>&1 | grep -E 'Status: (running|working)'"
-    expect: "running"
+    judge:
+      type: regex
+      expr: "running"
 
   - name: "2.5: 停止 session"
     command: "sumeru session stop $SID 2>&1"
-    expect: "Stopped"
+    judge:
+      type: regex
+      expr: "Stopped"
 
   - name: "2.5: 验证 session 已停止"
     command: "sleep 2 && sumeru session get $SID 2>&1 | grep 'Status:'"
-    expect: "stopped"
+    judge:
+      type: regex
+      expr: "stopped"

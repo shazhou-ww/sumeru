@@ -13,16 +13,24 @@ teardown:
 steps:
   - name: "创建简单问答 session（无需工具）"
     command: "export SID=$(sumeru session add atest-sarsapa --task 'What is 2 + 2? Just give me the number.' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "等待并验证文本响应"
     command: "sleep 5 && sumeru session turns $SID 2>&1"
-    expect: "4"
+    judge:
+      type: regex
+      expr: "4"
 
   - name: "验证 JSON 格式包含 assistant 角色"
     command: "sumeru session turns $SID --format json 2>&1 | jq -r '.turns[-1].role'"
-    expect: "assistant"
+    judge:
+      type: regex
+      expr: "assistant"
 
   - name: "验证最终轮次无工具调用"
     command: "sumeru session turns $SID --format json 2>&1 | jq '.turns[-1].toolCalls | length' 2>/dev/null || echo '0'"
-    expect: "0"
+    judge:
+      type: regex
+      expr: "0"

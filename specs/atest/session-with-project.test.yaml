@@ -18,11 +18,18 @@ teardown:
 steps:
   # ─── 创建带 --project 的 session ───
 
-  - command: 'export SID=$(sumeru session add atest-sarsapa --project atest-project --task "Read README.md and tell me the secret code inside" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
+  - name: "创建 session"
+    command: "sumeru session add atest-sarsapa --project atest-project --task \"Read README.md and tell me the secret code inside\""
     judge:
       type: regex
-      expr: "SID=ses_[A-Z0-9]+"
+      expr: "Session .* created"
     timeout: 15
+
+  - name: "提取 session ID"
+    command: "export SID=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    judge:
+      type: regex
+      expr: "ses_"
 
   # ─── session get 确认 project 字段 ───
 

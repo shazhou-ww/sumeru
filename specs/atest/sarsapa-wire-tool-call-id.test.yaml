@@ -12,13 +12,25 @@ teardown:
 
 steps:
   - name: "创建 session 触发工具调用"
-    command: "export SID=$(sumeru session add atest-sarsapa --task 'Read the file /home/node/package.json and tell me the package name' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    command: "sumeru session add atest-sarsapa --task 'Read the file /home/node/package.json and tell me the package name'"
+    judge:
+      type: regex
+      expr: "Session .* created"
+
+  - name: "提取 session ID"
+    command: "export SID=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "等待 session 完成并验证工具调用"
     command: "sleep 10 && sumeru session turns $SID 2>&1"
-    expect: "→"
+    judge:
+      type: regex
+      expr: "→"
 
   - name: "验证 JSON 格式包含 callId"
     command: "sumeru session turns $SID --format json 2>&1 | jq -r '.turns[] | select(.role == \"tool\") | .callId' | head -1"
-    expect: "call_"
+    judge:
+      type: regex
+      expr: "call_"

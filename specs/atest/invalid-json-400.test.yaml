@@ -9,4 +9,6 @@ teardown: []
 steps:
   - name: Send invalid JSON to session messages endpoint
     command: "curl -s -X POST http://localhost:7900/sessions/nonexistent/messages -H 'Content-Type: application/json' -d '{invalid json}' 2>&1"
-    expect: "invalid_json"
+    judge:
+      type: regex
+      expr: "invalid_json"

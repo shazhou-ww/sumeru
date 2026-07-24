@@ -8,16 +8,18 @@ teardown:
 steps:
   - name: "7.1: Create prototype"
     command: sumeru prototype add test-proto-1 --adapter hermes --model qwen3.7-max
-    expect:
-      - type: contains
+    judge:
+      type: regex
+      expr: - type: contains
         value: "Created prototype"
       - type: contains
         value: "test-proto-1"
 
   - name: "7.1: Verify prototype exists"
     command: sumeru prototype get test-proto-1 --format json
-    expect:
-      - type: json_path
+    judge:
+      type: regex
+      expr: - type: json_path
         path: $.name
         value: test-proto-1
       - type: json_path
@@ -26,21 +28,24 @@ steps:
 
   - name: "7.2: List all prototypes"
     command: sumeru prototype list --format json
-    expect:
-      - type: json_path
+    judge:
+      type: regex
+      expr: - type: json_path
         path: $[?(@.name=="test-proto-1")]
         exists: true
 
   - name: "7.1: Create another prototype"
     command: sumeru prototype add test-proto-2 --adapter sarsapa --model qwen3.7-max
-    expect:
-      - type: contains
+    judge:
+      type: regex
+      expr: - type: contains
         value: "Created prototype"
 
   - name: "7.2: List should show both prototypes"
     command: sumeru prototype list --format json
-    expect:
-      - type: json_path
+    judge:
+      type: regex
+      expr: - type: json_path
         path: $[?(@.name=="test-proto-1")]
         exists: true
       - type: json_path
@@ -49,8 +54,9 @@ steps:
 
   - name: "7.3: Get prototype by name"
     command: sumeru prototype get test-proto-2 --format json
-    expect:
-      - type: json_path
+    judge:
+      type: regex
+      expr: - type: json_path
         path: $.name
         value: test-proto-2
       - type: json_path
@@ -59,26 +65,30 @@ steps:
 
   - name: "7.3: Get non-existent prototype"
     command: sumeru prototype get non-existent || true
-    expect:
-      - type: contains
+    judge:
+      type: regex
+      expr: - type: contains
         value: "not found"
 
   - name: "7.5: Delete prototype"
     command: sumeru prototype remove test-proto-1
-    expect:
-      - type: contains
+    judge:
+      type: regex
+      expr: - type: contains
         value: "Removed prototype"
 
   - name: "7.5: Verify deletion"
     command: sumeru prototype get test-proto-1 || true
-    expect:
-      - type: contains
+    judge:
+      type: regex
+      expr: - type: contains
         value: "not found"
 
   - name: "7.5: List should only show remaining prototype"
     command: sumeru prototype list --format json
-    expect:
-      - type: json_path
+    judge:
+      type: regex
+      expr: - type: json_path
         path: $[?(@.name=="test-proto-1")]
         exists: false
       - type: json_path

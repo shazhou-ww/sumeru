@@ -8,16 +8,24 @@ teardown:
 steps:
   - name: "创建测试 prototype"
     command: "sumeru prototype add test-watch-proto --model qwen3.7-max --adapter sarsapa"
-    expect: "Created prototype test-watch-proto"
+    judge:
+      type: regex
+      expr: "Created prototype test-watch-proto"
 
   - name: "创建 session 并提取 ID"
     command: "export SID=$(sumeru session add test-watch-proto 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "启动 watch 监听（3秒超时）"
     command: "timeout 3 sumeru session turns $SID --watch 2>&1 || true"
-    expect: "Watching"
+    judge:
+      type: regex
+      expr: "Watching"
 
   - name: "验证普通 turns 输出"
     command: "sumeru session turns $SID 2>&1"
-    expect: "No turns yet"
+    judge:
+      type: regex
+      expr: "No turns yet"

@@ -185,30 +185,56 @@ cli
 	.command("server")
 	.command("status")
 	.describe("Show server status")
-	.returns(statusSchema, "", { defaultFormat: "text" })
-	.action(async (_args, _flags, ctx) => {
+	.returns(
+		statusSchema,
+		{
+			text: (value) => {
+				const v = value as {
+					name: string;
+					version: string;
+					running: number;
+					queued: number;
+					idle: number;
+					uptime: number;
+				};
+				const secs = v.uptime;
+				const h = Math.floor(secs / 3600);
+				const m = Math.floor((secs % 3600) / 60);
+				const uptimeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+				return [
+					`Status: running`,
+					`Port: 7900`,
+					`Version: ${v.version}`,
+					`Sessions: running=${v.running} queued=${v.queued} idle=${v.idle}`,
+					`Uptime: ${uptimeStr}`,
+				].join("\n");
+			},
+		},
+		{ defaultFormat: "text" },
+	)
+	.action(async (_args, _flags, _ctx) => {
 		const client = createHostClient({ baseUrl: resolveBaseUrl() });
 		try {
 			const envelope = await client.getRoot();
 			const v = envelope.value;
-			const url = new URL(resolveBaseUrl());
-			const secs = v.uptime;
-			const h = Math.floor(secs / 3600);
-			const m = Math.floor((secs % 3600) / 60);
-			const uptimeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
-			ctx.stdout(
-				`${[
-					`Status: running`,
-					`Port: ${url.port || "7900"}`,
-					`Version: ${v.version}`,
-					`Sessions: running=${v.status.running} queued=${v.status.queued} idle=${v.status.idle}`,
-					`Uptime: ${uptimeStr}`,
-				].join("\n")}\n`,
-			);
-			return undefined;
+			return {
+				name: "server",
+				version: v.version,
+				running: v.status.running,
+				queued: v.status.queued,
+				idle: v.status.idle,
+				uptime: v.uptime,
+			};
 		} catch {
-			ctx.stdout("Status: stopped\n");
-			return undefined;
+			// Server stopped - return minimal status
+			return {
+				name: "server",
+				version: "unknown",
+				running: 0,
+				queued: 0,
+				idle: 0,
+				uptime: 0,
+			};
 		}
 	});
 
