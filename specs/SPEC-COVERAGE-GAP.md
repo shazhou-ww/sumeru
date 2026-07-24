@@ -320,7 +320,7 @@
   - atest: `specs/atest/error-paths.test.yaml` ✅ (line 35, same as 2.8)
   - 难度: 低
 
-- [ ] **13.7** - 409 Provider in use
+- [x] **13.7** - 409 Provider in use
   - API: `DELETE /providers/:name`
   - CLI: `sumeru provider remove <name>` → error
   - Spec: 待补
@@ -419,10 +419,10 @@
 ## 统计
 
 - **总计**: 47 个场景
-- **待补充**: 6 个
+- **待补充**: 5 个
 - **被阻塞**: 2 个
-- **已完成**: 41 个
-- **覆盖率**: 87%
+- **已完成**: 42 个
+- **覆盖率**: 89%
 
 ### 已完成清单
 - ✅ 1.1 - 查询 Host 状态 (server-status.test.yaml)
