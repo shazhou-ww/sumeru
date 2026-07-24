@@ -1,0 +1,26 @@
+name: persona-prototype-reference-409
+description: |
+  Verify that deleting a persona referenced by a prototype returns 409 Conflict.
+  This test covers the persona deletion conflict scenario where a prototype
+  still references the persona.
+
+setup:
+  - "sumeru persona add test-409-persona --instructions 'You are a test persona' 2>/dev/null || true"
+  - "sumeru prototype add test-409-proto --adapter hermes --model qwen3.7-max --persona test-409-persona 2>/dev/null || true"
+
+teardown:
+  - "sumeru prototype remove test-409-proto 2>/dev/null || true"
+  - "sumeru persona remove test-409-persona 2>/dev/null || true"
+
+steps:
+  - name: "Verify prototype exists and references persona"
+    command: "sumeru prototype get test-409-proto 2>&1"
+    expect: "test-409-persona"
+    
+  - name: "Try to delete referenced persona - should fail with persona_in_use error"
+    command: "sumeru persona remove test-409-persona 2>&1; true"
+    expect: "persona_in_use"
+    
+  - name: "Verify persona still exists after failed deletion"
+    command: "sumeru persona get test-409-persona 2>&1"
+    expect: "test-409-persona"

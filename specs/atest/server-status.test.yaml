@@ -1,0 +1,17 @@
+name: "server-status"
+description: |
+  验证查询 Host 状态功能。
+  覆盖 SCENARIOS: 1.1
+
+setup: []
+
+teardown: []
+
+steps:
+  - name: "Get server status"
+    command: "sumeru server status 2>&1"
+    expect: "running"
+    
+  - name: "Get server status in JSON format"
+    command: "sumeru server status --format json 2>&1"
+    expect: '"status": "running"'

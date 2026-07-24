@@ -1,0 +1,21 @@
+name: adapter-models-list
+description: |
+  Verify listing adapter built-in models functionality.
+  This test covers the adapter models listing feature for different adapters.
+
+setup: []
+
+teardown: []
+
+steps:
+  - name: "List models for hermes adapter (no built-in models)"
+    command: "sumeru adapter models hermes 2>&1"
+    expect: "no built-in models"
+    
+  - name: "List models for cursor-agent adapter (has built-in models)"
+    command: "sumeru adapter models cursor-agent 2>&1"
+    expect: "claude-opus-4-8"
+    
+  - name: "List models for non-existent adapter - should fail"
+    command: "sumeru adapter models nonexistent 2>&1; true"
+    expect: "adapter_not_found"
