@@ -11,9 +11,17 @@ function tomlString(value: string): string {
 }
 
 export function formatCodexModelConfig(value: ModelControlValue): string {
-	const providerId = value.provider ?? DEFAULT_PROVIDER_ID;
+	const rawProviderId = value.provider ?? DEFAULT_PROVIDER_ID;
+	// Codex CLI doesn't allow overriding built-in providers (openai, anthropic)
+	// Add "-custom" suffix if provider ID conflicts with built-ins
+	const RESERVED_PROVIDER_IDS = new Set(["openai", "anthropic"]);
+	const providerId = RESERVED_PROVIDER_IDS.has(rawProviderId)
+		? `${rawProviderId}-custom`
+		: rawProviderId;
 	const providerName =
-		providerId === DEFAULT_PROVIDER_ID ? DEFAULT_PROVIDER_NAME : providerId;
+		rawProviderId === DEFAULT_PROVIDER_ID
+			? DEFAULT_PROVIDER_NAME
+			: rawProviderId;
 	const lines = [
 		`model = ${tomlString(value.model)}`,
 		`model_provider = ${tomlString(providerId)}`,
@@ -39,9 +47,10 @@ async function writeCodexModelConfig(
 }
 
 const codexDir = join(homedir(), ".codex");
+const adapterStateDir = join(homedir(), ".codex-adapter");
 
 export const codexHarness: HarnessConfig = {
-	resetPaths: [join(codexDir, "sessions")],
+	resetPaths: [join(codexDir, "sessions"), adapterStateDir],
 	modelConfigPath: join(codexDir, "config.toml"),
 	personaPath: join(codexDir, "instructions.md"),
 	skillsDir: join(codexDir, "skills"),

@@ -3,7 +3,7 @@
  * by shelling out to `codex exec <prompt> --json`.
  */
 
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
@@ -79,7 +79,7 @@ export function createCodexAdapter(
 	async function persistState(state: PersistedAdapterState): Promise<void> {
 		const path = statePath();
 		mkdirSync(dirname(path), { recursive: true });
-		await writeFile(path, JSON.stringify(state), "utf-8");
+		writeFileSync(path, JSON.stringify(state), "utf-8");
 	}
 
 	function resolveModel(): string | null {
@@ -99,6 +99,16 @@ export function createCodexAdapter(
 			await mkdir(skillDir, { recursive: true });
 			await writeFile(join(skillDir, "SKILL.md"), skill.content, "utf8");
 		}
+	}
+
+	async function init(config: AdapterInitConfig): Promise<void> {
+		initConfig = config;
+		await writeInitArtifacts(config, resolveHomeDir());
+		const existing = loadPersistedState();
+		await persistState({
+			sessionId: existing?.sessionId ?? null,
+			initConfig: config,
+		});
 	}
 
 	function resolveCwd(message: AdapterInboxMessage): string {
@@ -134,22 +144,11 @@ export function createCodexAdapter(
 		return args;
 	}
 
-	async function init(config: AdapterInitConfig): Promise<void> {
-		initConfig = config;
-		await writeInitArtifacts(config, resolveHomeDir());
-		const existing = loadPersistedState();
-		await persistState({
-			sessionId: existing?.sessionId ?? null,
-			initConfig: config,
-		});
-	}
-
 	async function resume(): Promise<boolean> {
 		const state = loadPersistedState();
 		if (state === null) return false;
 		initConfig = state.initConfig;
 		sessionId = state.sessionId;
-		await writeInitArtifacts(state.initConfig, resolveHomeDir());
 		return true;
 	}
 
@@ -180,11 +179,7 @@ export function createCodexAdapter(
 	async function* runHandle(
 		message: AdapterInboxMessage,
 	): AsyncGenerator<TurnValue, DoneValue> {
-		const config = initConfig as AdapterInitConfig;
 		const cwd = resolveCwd(message);
-		if (cwd !== resolveHomeDir()) {
-			await writeInitArtifacts(config, cwd);
-		}
 
 		const model = resolveModel();
 		const args = buildArgs(message.content, sessionId, model, cwd);
@@ -209,7 +204,10 @@ export function createCodexAdapter(
 				if (event.type === "meta") {
 					if (event.sessionId !== sessionId) {
 						sessionId = event.sessionId;
-						await persistState({ sessionId, initConfig: config });
+						await persistState({
+							sessionId,
+							initConfig: initConfig as AdapterInitConfig,
+						});
 					}
 				} else if (event.type === "turn") {
 					const turn = event.turn;
