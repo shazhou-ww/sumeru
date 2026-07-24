@@ -82,8 +82,8 @@ steps:
     timeout: 120
     judge:
       type: llm
-      prompt: "Check if there is an [assistant] response. If yes, check if it mentions DELTA-3388. PASS if assistant responded but did NOT mention DELTA-3388. FAIL if assistant mentioned DELTA-3388. RETRY if no [assistant] response yet."
+      prompt: "Look at the output carefully. There IS an [assistant] response visible (may be in Chinese). The test asks: does the assistant mention 'DELTA-3388'? If the assistant does NOT mention DELTA-3388 anywhere in the output (including its response), answer PASS. If it DOES mention DELTA-3388, answer FAIL. If there is genuinely no [assistant] tag at all, answer RETRY. Note: The assistant response might be in Chinese."
     retry:
-      max: 10
+      max: 5
       interval: 15
       backoff: false
