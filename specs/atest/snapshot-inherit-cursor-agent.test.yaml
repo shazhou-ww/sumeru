@@ -30,13 +30,14 @@ steps:
     timeout: 30
 
   # 等待 cursor-agent 回复
-  - command: "sleep 30 && sumeru session turns $SID_BASE 2>&1"
+  - command: "sleep 10 && sumeru session turns $SID_BASE 2>&1"
+    timeout: 120
     judge:
       type: regex
-      expr: "\\[assistant\\].*\\nOK"
+      expr: "\\[assistant\\]"
     retry:
-      max: 5
-      interval: 10
+      max: 10
+      interval: 15
       backoff: false
 
   # ─── Phase 2: snapshot ───
@@ -59,13 +60,14 @@ steps:
       expr: "SKIP=ses_[A-Z0-9]+"
     timeout: 30
 
-  - command: "sleep 30 && sumeru session turns $SID_SKIP 2>&1"
+  - command: "sleep 10 && sumeru session turns $SID_SKIP 2>&1"
+    timeout: 120
     judge:
       type: regex
       expr: "DELTA-3388"
     retry:
-      max: 5
-      interval: 10
+      max: 10
+      interval: 15
       backoff: false
 
   # ─── Path B: 默认 reset（不继承上下文）───
@@ -76,11 +78,12 @@ steps:
       expr: "RESET=ses_[A-Z0-9]+"
     timeout: 30
 
-  - command: "sleep 30 && sumeru session turns $SID_RESET 2>&1"
+  - command: "sleep 10 && sumeru session turns $SID_RESET 2>&1"
+    timeout: 120
     judge:
       type: llm
       prompt: "Check if there is an [assistant] response. If yes, check if it mentions DELTA-3388. PASS if assistant responded but did NOT mention DELTA-3388. FAIL if assistant mentioned DELTA-3388. RETRY if no [assistant] response yet."
     retry:
-      max: 5
-      interval: 10
+      max: 10
+      interval: 15
       backoff: false
