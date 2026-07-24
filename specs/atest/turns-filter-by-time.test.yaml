@@ -11,28 +11,42 @@ teardown:
 steps:
   - name: "5.4: 创建 session"
     command: "export SID=$(sumeru session add test-turns-time 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "5.4: 发送第一条消息"
     command: "sumeru session send $SID 'Say hello' 2>&1"
-    expect: "Message sent"
+    judge:
+      type: regex
+      expr: "Message sent"
 
   - name: "5.4: 等待回复"
     command: "sleep 10 && sumeru session turns $SID 2>&1 | head -10"
-    expect: "hello"
+    judge:
+      type: regex
+      expr: "hello"
 
   - name: "5.4: 记录当前时间"
     command: "export NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ) && echo $NOW"
-    expect: "2026"
+    judge:
+      type: regex
+      expr: "2026"
 
   - name: "5.4: 发送第二条消息"
     command: "sumeru session send $SID 'Say goodbye' 2>&1"
-    expect: "Message sent"
+    judge:
+      type: regex
+      expr: "Message sent"
 
   - name: "5.4: 等待第二条回复"
     command: "sleep 10 && sumeru session turns $SID 2>&1 | tail -10"
-    expect: "goodbye"
+    judge:
+      type: regex
+      expr: "goodbye"
 
   - name: "5.4: 使用 before 过滤（应只返回第一条）"
     command: "curl -s http://localhost:7900/sessions/$SID/turns?before=$NOW | jq -r '.turns | length'"
-    expect: "2"
+    judge:
+      type: regex
+      expr: "2"

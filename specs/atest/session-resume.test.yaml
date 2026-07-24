@@ -13,28 +13,42 @@ teardown:
 steps:
   - name: "创建 session"
     command: "sumeru session add atest-sarsapa --task 'Count from 1 to 10, one number per line'"
-    expect: "Session .* created"
+    judge:
+      type: regex
+      expr: "Session .* created"
 
   - name: "提取 session ID"
     command: "export SID=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "等待开始执行"
     command: "sleep 3 && sumeru session turns $SID 2>&1"
-    expect: "1"
+    judge:
+      type: regex
+      expr: "1"
 
   - name: "停止 session"
     command: "sumeru session stop $SID"
-    expect: "Session .* stopped"
+    judge:
+      type: regex
+      expr: "Session .* stopped"
 
   - name: "验证 session 已停止"
     command: "sleep 2 && sumeru session get $SID 2>&1"
-    expect: "Status: idle"
+    judge:
+      type: regex
+      expr: "Status: idle"
 
   - name: "恢复 session"
     command: "sumeru session send $SID 'Continue counting from where you left off'"
-    expect: "Message sent"
+    judge:
+      type: regex
+      expr: "Message sent"
 
   - name: "验证 session 继续执行"
     command: "sleep 10 && sumeru session turns $SID 2>&1"
-    expect: "10"
+    judge:
+      type: regex
+      expr: "10"

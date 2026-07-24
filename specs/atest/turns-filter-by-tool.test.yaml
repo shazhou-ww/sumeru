@@ -11,20 +11,30 @@ teardown:
 steps:
   - name: "5.2: 创建 session"
     command: "export SID=$(sumeru session add test-turns-tool 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "5.2: 发送触发工具调用的消息"
     command: "sumeru session send $SID 'What is 25 multiplied by 4? Use the calculator tool.' 2>&1"
-    expect: "Message sent"
+    judge:
+      type: regex
+      expr: "Message sent"
 
   - name: "5.2: 等待 assistant 回复"
     command: "sleep 15 && sumeru session turns $SID 2>&1 | head -30"
-    expect: "100"
+    judge:
+      type: regex
+      expr: "100"
 
   - name: "5.2: 验证 turns 包含 tool calls"
     command: "sumeru session turns $SID 2>&1"
-    expect: "→"
+    judge:
+      type: regex
+      expr: "→"
 
   - name: "5.2: 验证 tool call 格式"
     command: "sumeru session turns $SID 2>&1"
-    expect: "calculator"
+    judge:
+      type: regex
+      expr: "calculator"

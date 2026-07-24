@@ -13,16 +13,24 @@ teardown:
 steps:
   - name: "创建 Session"
     command: "export SID=$(sumeru session add atest-sarsapa --task 'Hello' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "通过 ID 获取 Session 详情"
     command: "sumeru session get $SID 2>&1"
-    expect: "$SID"
+    judge:
+      type: regex
+      expr: "$SID"
 
   - name: "验证 JSON 格式输出"
     command: "sumeru session get $SID --format json 2>&1 | jq -r '.id'"
-    expect: "$SID"
+    judge:
+      type: regex
+      expr: "$SID"
 
   - name: "验证包含 prototype 信息"
     command: "sumeru session get $SID --format json 2>&1 | jq -r '.prototype'"
-    expect: "atest-sarsapa"
+    judge:
+      type: regex
+      expr: "atest-sarsapa"

@@ -11,20 +11,30 @@ teardown:
 steps:
   - name: "5.1: 创建 session"
     command: "export SID=$(sumeru session add test-turns-list 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "5.1: 发送消息触发多轮对话"
     command: "sumeru session send $SID 'Say hello and then list 3 colors' 2>&1"
-    expect: "Message sent"
+    judge:
+      type: regex
+      expr: "Message sent"
 
   - name: "5.1: 等待 assistant 回复"
     command: "sleep 10 && sumeru session turns $SID 2>&1 | head -20"
-    expect: "hello"
+    judge:
+      type: regex
+      expr: "hello"
 
   - name: "5.1: 验证 turns 列表包含 user 消息"
     command: "sumeru session turns $SID 2>&1"
-    expect: "Say hello"
+    judge:
+      type: regex
+      expr: "Say hello"
 
   - name: "5.1: 验证 turns 列表包含 assistant 回复"
     command: "sumeru session turns $SID 2>&1"
-    expect: "colors"
+    judge:
+      type: regex
+      expr: "colors"

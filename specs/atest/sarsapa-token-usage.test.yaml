@@ -13,16 +13,24 @@ teardown:
 steps:
   - name: "9.2: 创建 session"
     command: "sumeru session add atest-sarsapa --task 'What is 15 + 27?'"
-    expect: "Session .* created"
+    judge:
+      type: regex
+      expr: "Session .* created"
 
   - name: "提取 session ID"
     command: "export SID=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "等待回复"
     command: "sleep 8 && sumeru session turns $SID 2>&1"
-    expect: "42"
+    judge:
+      type: regex
+      expr: "42"
 
   - name: "获取 turns 详情并检查 token usage"
     command: "sumeru session turns $SID --format json 2>&1"
-    expect: "inputTokens"
+    judge:
+      type: regex
+      expr: "inputTokens"

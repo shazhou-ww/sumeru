@@ -12,4 +12,6 @@ teardown:
 steps:
   - name: "Try to create session with path outside workspaceRoot"
     command: "sumeru session add atest-proto --project /etc/passwd --task 'test' 2>&1; true"
-    expect: "project_path_out_of_bounds"
+    judge:
+      type: regex
+      expr: "project_path_out_of_bounds"

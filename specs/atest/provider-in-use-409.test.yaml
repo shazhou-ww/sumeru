@@ -14,12 +14,18 @@ teardown:
 steps:
   - name: "Verify provider exists"
     command: "sumeru provider get test-409-provider 2>&1"
-    expect: "test-409-provider"
+    judge:
+      type: regex
+      expr: "test-409-provider"
     
   - name: "Try to delete provider in use - should fail"
     command: "sumeru provider remove test-409-provider 2>&1; true"
-    expect: "provider_in_use"
+    judge:
+      type: regex
+      expr: "provider_in_use"
     
   - name: "Verify provider still exists"
     command: "sumeru provider get test-409-provider 2>&1"
-    expect: "test-409-provider"
+    judge:
+      type: regex
+      expr: "test-409-provider"

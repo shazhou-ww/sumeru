@@ -10,20 +10,30 @@ teardown:
 steps:
   - name: "2.7: 创建 session"
     command: "export SID=$(sumeru session add test-delete-proto 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "2.7: 发送消息"
     command: "sumeru session send $SID 'Hello' 2>&1 && sleep 5"
-    expect: "Message sent"
+    judge:
+      type: regex
+      expr: "Message sent"
 
   - name: "2.7: 验证 session 存在"
     command: "sumeru session get $SID 2>&1 | grep 'ID:'"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "2.7: 删除 session"
     command: "sumeru session rm $SID 2>&1"
-    expect: "Removed"
+    judge:
+      type: regex
+      expr: "Removed"
 
   - name: "2.7: 验证 session 已删除"
     command: "sumeru session get $SID 2>&1 || echo 'Delete verified'"
-    expect: "Delete verified"
+    judge:
+      type: regex
+      expr: "Delete verified"

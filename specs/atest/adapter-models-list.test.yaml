@@ -10,12 +10,18 @@ teardown: []
 steps:
   - name: "List models for hermes adapter (no built-in models)"
     command: "sumeru adapter models hermes 2>&1"
-    expect: "no built-in models"
+    judge:
+      type: regex
+      expr: "no built-in models"
     
   - name: "List models for cursor-agent adapter (has built-in models)"
     command: "sumeru adapter models cursor-agent 2>&1"
-    expect: "claude-opus-4-8"
+    judge:
+      type: regex
+      expr: "claude-opus-4-8"
     
   - name: "List models for non-existent adapter - should fail"
     command: "sumeru adapter models nonexistent 2>&1; true"
-    expect: "adapter_not_found"
+    judge:
+      type: regex
+      expr: "adapter_not_found"

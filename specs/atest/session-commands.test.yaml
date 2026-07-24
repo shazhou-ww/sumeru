@@ -24,12 +24,16 @@ steps:
 
   - name: "创建 session"
     command: "sumeru session add atest-sarsapa --task \"Remember: the secret code is ALPHA-7742. Reply OK.\""
-    expect: "Session .* created"
+    judge:
+      type: regex
+      expr: "Session .* created"
     timeout: 15
 
   - name: "提取 session ID"
     command: "export SID=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   # ─── 11.2 exec — 容器内执行 shell ───
 

@@ -13,27 +13,39 @@ teardown:
 steps:
   - name: "14.2: 创建 session 并注入 secret code"
     command: "sumeru session add atest-sarsapa --task 'Remember the secret code is ALPHA-7742. Reply OK.'"
-    expect: "Session .* created"
+    judge:
+      type: regex
+      expr: "Session .* created"
 
   - name: "提取 session ID"
     command: "export SID=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "等待第一次回复"
     command: "sleep 10 && sumeru session turns $SID 2>&1"
-    expect: "OK"
+    judge:
+      type: regex
+      expr: "OK"
 
   - name: "重启 server"
     command: "sumeru server restart"
-    expect: "Server restarted"
+    judge:
+      type: regex
+      expr: "Server restarted"
 
   - name: "等待 server 启动"
     command: "sleep 5"
 
   - name: "发送新消息询问 secret code"
     command: "sumeru session send $SID 'What is the secret code?'"
-    expect: "Message sent"
+    judge:
+      type: regex
+      expr: "Message sent"
 
   - name: "验证 session 恢复并回复"
     command: "sleep 10 && sumeru session turns $SID 2>&1"
-    expect: "ALPHA-7742"
+    judge:
+      type: regex
+      expr: "ALPHA-7742"

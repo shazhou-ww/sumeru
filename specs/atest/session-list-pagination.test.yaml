@@ -18,7 +18,9 @@ steps:
       sumeru session add atest-sarsapa --task 'Test 1' 2>&1 | \
         grep -o 'ses_[A-Z0-9]*' | \
         head -1
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "提取 session 1 ID"
     command: "export SID1=$(sumeru session list 2>&1 | grep 'Test 1' | grep -o 'ses_[A-Z0-9]*')"
@@ -28,7 +30,9 @@ steps:
       sumeru session add atest-sarsapa --task 'Test 2' 2>&1 | \
         grep -o 'ses_[A-Z0-9]*' | \
         head -1
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "提取 session 2 ID"
     command: "export SID2=$(sumeru session list 2>&1 | grep 'Test 2' | grep -o 'ses_[A-Z0-9]*')"
@@ -38,15 +42,21 @@ steps:
       sumeru session add atest-sarsapa --task 'Test 3' 2>&1 | \
         grep -o 'ses_[A-Z0-9]*' | \
         head -1
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
 
   - name: "提取 session 3 ID"
     command: "export SID3=$(sumeru session list 2>&1 | grep 'Test 3' | grep -o 'ses_[A-Z0-9]*')"
 
   - name: "验证默认列表包含所有 sessions"
     command: "sumeru session list 2>&1"
-    expect: "atest-sarsapa"
+    judge:
+      type: regex
+      expr: "atest-sarsapa"
 
   - name: "验证 limit 参数限制结果数量"
     command: "sumeru session list --limit 2 2>&1 | grep -c 'ses_' || echo 0"
-    expect: "2"
+    judge:
+      type: regex
+      expr: "2"

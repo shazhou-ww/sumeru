@@ -15,12 +15,18 @@ teardown:
 steps:
   - name: "Create session that triggers tool call"
     command: "sumeru session add atest-sarsapa --project atest-proj --task \"List files in current directory\""
-    expect: "Session .* created"
+    judge:
+      type: regex
+      expr: "Session .* created"
     
   - name: "Extract session ID"
     command: "export SID=$(sumeru session list | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
-    expect: "ses_"
+    judge:
+      type: regex
+      expr: "ses_"
     
   - name: "Get turns in text format and verify tool call display"
     command: "sleep 10 && sumeru session turns $SID 2>&1"
-    expect: "→"
+    judge:
+      type: regex
+      expr: "→"

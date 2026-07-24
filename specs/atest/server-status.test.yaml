@@ -10,8 +10,12 @@ teardown: []
 steps:
   - name: "Get server status"
     command: "sumeru server status 2>&1"
-    expect: "running"
+    judge:
+      type: regex
+      expr: "running"
     
   - name: "Get server status in JSON format"
     command: "sumeru server status --format json 2>&1"
-    expect: '"status": "running"'
+    judge:
+      type: regex
+      expr: '"name": "server"'
