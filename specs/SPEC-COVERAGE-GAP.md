@@ -133,9 +133,10 @@
 
 ### Section 5 - Turns 查询
 
-- [ ] **5.3** - Turn discriminated union
+- [x] **5.3** - Turn discriminated union
   - API: turn 结构区分 assistant / tool
   - Spec: [turns/turn-discriminated-union/spec.md](./turns/turn-discriminated-union/spec.md)
+  - atest: `specs/atest/turn-discriminated-union.test.yaml` ✅
   - 难度: 低（数据结构验证）
 
 - [ ] **5.4** - 时间过滤（before=ISO）
@@ -154,17 +155,19 @@
   - Spec: [session/turns-watch/tc-format-consistency.md](./session/turns-watch/tc-format-consistency.md)
   - 难度: 中
 
-- [ ] **5.7** - Turns 显示 tool calls
+- [x] **5.7** - Turns 显示 tool calls
   - CLI: assistant turn 带 tool call 时显示 `→ name(args)`
   - Spec: [session/turns-watch/tc-format-consistency.md](./session/turns-watch/tc-format-consistency.md)
+  - atest: `specs/atest/turns-show-tool-calls.test.yaml` ✅
   - 难度: 中
 
 ### Section 13 - 错误契约
 
-- [ ] **13.1** - 400 Invalid JSON
+- [x] **13.1** - 400 Invalid JSON
   - API: 所有 POST/PUT 端点
   - CLI: 所有写命令 → error
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
+  - atest: `specs/atest/invalid-json-400.test.yaml` ✅
   - 难度: 低
 
 - [x] **13.2** - 400 Missing fields
@@ -297,22 +300,24 @@
 ## 统计
 
 - **总计**: 47 个场景
-- **待补充**: 37 个
+- **待补充**: 34 个
 - **被阻塞**: 2 个
-- **已完成**: 10 个
+- **已完成**: 13 个
 
 ### 已完成清单
 - ✅ 1.1 - 查询 Host 状态 (server-status.test.yaml)
 - ✅ 2.3 - 创建 session（prototype 不存在）(error-paths.test.yaml)
 - ✅ 2.4 - 创建 session（project 路径越界）(invalid-project-path-400.test.yaml)
+- ✅ 5.3 - Turn discriminated union (turn-discriminated-union.test.yaml)
+- ✅ 5.7 - Turns 显示 tool calls (turns-show-tool-calls.test.yaml)
 - ✅ 8.5 - 删除被 Prototype 引用的 persona（409）(persona-prototype-reference-409.test.yaml)
 - ✅ 10.3 - 列出 adapter 内置模型 (adapter-models-list.test.yaml)
+- ✅ 13.1 - 400 Invalid JSON (invalid-json-400.test.yaml)
 - ✅ 13.2 - 400 Missing fields (error-paths.test.yaml)
 - ✅ 13.3 - 400 Invalid project (invalid-project-path-400.test.yaml)
 - ✅ 13.4 - 404 Session not found (error-paths.test.yaml)
 - ✅ 13.5 - 404 Prototype not found (error-paths.test.yaml)
-- ✅ 13.7 - 409 Provider in use (provider-in-use-409.test.yaml)
-
+- ✅ 13.6 - 409 Session already idle (error-paths.test.yaml)
 ### 按优先级分布
 - 🔴 被阻塞: 2 个
 - 🟡 高优先级: 3 个 (1.2, 1.3, 1.4)
