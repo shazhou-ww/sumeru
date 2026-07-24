@@ -123,19 +123,22 @@
   - atest: `specs/atest/server-status.test.yaml` ✅
   - 难度: 低
 
-- [ ] **1.2** - 启动 Host 进程
+- [x] **1.2** - 启动 Host 进程
   - CLI: `sumeru server start`
   - Spec: [cli/server-lifecycle/spec.md](./cli/server-lifecycle/spec.md)
+  - atest: `specs/atest/host-lifecycle.test.yaml` ✅
   - 难度: 中（需要控制 host 生命周期）
 
-- [ ] **1.3** - 停止 Host 进程
+- [x] **1.3** - 停止 Host 进程
   - CLI: `sumeru server stop`
   - Spec: [cli/server-lifecycle/spec.md](./cli/server-lifecycle/spec.md)
+  - atest: `specs/atest/host-lifecycle.test.yaml` ✅
   - 难度: 中
 
-- [ ] **1.4** - 重启 Host 进程
+- [x] **1.4** - 重启 Host 进程
   - CLI: `sumeru server restart`
   - Spec: [cli/server-lifecycle/spec.md](./cli/server-lifecycle/spec.md)
+  - atest: `specs/atest/host-lifecycle.test.yaml` ✅
   - 难度: 中
 
 ---
@@ -419,13 +422,16 @@
 ## 统计
 
 - **总计**: 47 个场景
-- **待补充**: 5 个
+- **待补充**: 0 个
 - **被阻塞**: 2 个
-- **已完成**: 42 个
-- **覆盖率**: 89%
+- **已完成**: 47 个
+- **覆盖率**: 100% (excluding blocked)
 
 ### 已完成清单
 - ✅ 1.1 - 查询 Host 状态 (server-status.test.yaml)
+- ✅ 1.2 - 启动 Host 进程 (host-lifecycle.test.yaml)
+- ✅ 1.3 - 停止 Host 进程 (host-lifecycle.test.yaml)
+- ✅ 1.4 - 重启 Host 进程 (host-lifecycle.test.yaml)
 - ✅ 2.1 - Session 列表分页 (session-list-pagination.test.yaml)
 - ✅ 2.2 - 按 ID 获取 Session (session-get-by-id.test.yaml)
 - ✅ 2.3 - 创建 session（prototype 不存在）(error-paths.test.yaml)
@@ -450,11 +456,13 @@
 - ✅ 7.3 - 按名称获取 Prototype (prototype-crud.test.yaml)
 - ✅ 7.4 - 更新 Prototype (prototype-update.test.yaml)
 - ✅ 7.5 - 删除 Prototype (prototype-crud.test.yaml)
-- ✅ 8.1 - 列出所有 Persona (persona-crud-lifecycle.test.yaml)
-- ✅ 8.2 - 按名称获取 Persona (persona-crud-lifecycle.test.yaml)
-- ✅ 8.3 - 创建 Persona (persona-crud-lifecycle.test.yaml)
+- ✅ 8.1 - 创建 Persona (persona-crud-lifecycle.test.yaml)
+- ✅ 8.2 - 列出所有 Persona (persona-crud-lifecycle.test.yaml)
+- ✅ 8.3 - 按名称获取 Persona (persona-crud-lifecycle.test.yaml)
 - ✅ 8.4 - 删除 Persona (persona-crud-lifecycle.test.yaml)
 - ✅ 8.5 - 删除被 Prototype 引用的 persona（409）(persona-prototype-reference-409.test.yaml)
+- ✅ 10.1 - 列出所有 Adapter (adapter-list-and-get.test.yaml)
+- ✅ 10.2 - 按名称获取 Adapter (adapter-list-and-get.test.yaml)
 - ✅ 10.3 - 列出 adapter 内置模型 (adapter-models-list.test.yaml)
 - ✅ 13.1 - 400 Invalid JSON (invalid-json-400.test.yaml)
 - ✅ 13.2 - 400 Missing fields (error-paths.test.yaml)

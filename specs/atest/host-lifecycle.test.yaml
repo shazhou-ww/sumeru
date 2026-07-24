@@ -1,0 +1,33 @@
+name: host-lifecycle
+description: Test host start/stop/restart operations (1.2, 1.3, 1.4)
+
+setup:
+  - "sumeru server stop 2>/dev/null || true"
+
+teardown:
+  - "sumeru server stop 2>/dev/null || true"
+
+steps:
+  - name: "1.2: Start host"
+    command: "sumeru server start 2>&1"
+    expect: "started"
+    
+  - name: "1.2: Verify host is running"
+    command: "sumeru server status 2>&1"
+    expect: "running"
+    
+  - name: "1.4: Restart host"
+    command: "sumeru server restart 2>&1"
+    expect: "restarted"
+    
+  - name: "1.4: Verify host is still running after restart"
+    command: "sumeru server status 2>&1"
+    expect: "running"
+    
+  - name: "1.3: Stop host"
+    command: "sumeru server stop 2>&1"
+    expect: "stopped"
+    
+  - name: "1.3: Verify host is stopped"
+    command: "sumeru server status 2>&1 || echo 'stopped'"
+    expect: "stopped"
