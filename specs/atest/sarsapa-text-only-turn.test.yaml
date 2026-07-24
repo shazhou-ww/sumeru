@@ -1,0 +1,28 @@
+name: "sarsapa-text-only-turn"
+description: |
+  验证 Sarsapa 适配器正确处理纯文本助手轮次（无工具调用）。
+  覆盖 SCENARIOS: A2.1
+
+setup:
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max 2>/dev/null || true"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null || true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null || true"
+
+steps:
+  - name: "创建简单问答 session（无需工具）"
+    command: "export SID=$(sumeru session add atest-sarsapa --task 'What is 2 + 2? Just give me the number.' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
+
+  - name: "等待并验证文本响应"
+    command: "sleep 5 && sumeru session turns $SID 2>&1"
+    expect: "4"
+
+  - name: "验证 JSON 格式包含 assistant 角色"
+    command: "sumeru session turns $SID --format json 2>&1 | jq -r '.turns[-1].role'"
+    expect: "assistant"
+
+  - name: "验证最终轮次无工具调用"
+    command: "sumeru session turns $SID --format json 2>&1 | jq '.turns[-1].toolCalls | length' 2>/dev/null || echo '0'"
+    expect: "0"

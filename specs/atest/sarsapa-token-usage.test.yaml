@@ -1,0 +1,24 @@
+name: "sarsapa-token-usage"
+description: |
+  验证 Sarsapa 适配器从结果行正确提取并报告 token 使用情况。
+  覆盖 SCENARIOS: A2.3
+
+setup:
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max 2>/dev/null || true"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null || true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null || true"
+
+steps:
+  - name: "创建需要多轮推理的 session"
+    command: "export SID=$(sumeru session add atest-sarsapa --task 'Explain what Docker is in 3 sentences' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
+
+  - name: "等待完成并检查 token 使用"
+    command: "sleep 8 && sumeru session turns $SID --format json 2>&1 | jq '.turns[] | select(.role == \"assistant\") | .tokenUsage' | head -20"
+    expect: "inputTokens"
+
+  - name: "验证 token 使用包含输入和输出"
+    command: "sumeru session turns $SID --format json 2>&1 | jq '.turns[] | select(.role == \"assistant\") | .tokenUsage | {input: .inputTokens, output: .outputTokens}' | head -10"
+    expect: "input"
