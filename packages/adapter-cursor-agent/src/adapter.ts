@@ -9,8 +9,7 @@
  * continuity and exposes the native session id via `getNativeId()`.
  */
 
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type {
 	AdapterImpl,
@@ -91,7 +90,7 @@ export function createCursorAgentAdapter(
 	async function persistState(state: PersistedAdapterState): Promise<void> {
 		const path = statePath();
 		mkdirSync(dirname(path), { recursive: true });
-		await writeFile(path, JSON.stringify(state), "utf-8");
+		writeFileSync(path, JSON.stringify(state), "utf-8");
 	}
 
 	function resolveModel(): string | null {
@@ -99,18 +98,6 @@ export function createCursorAgentAdapter(
 		const fromInit = initConfig.model.name;
 		if (fromInit.length > 0 && fromInit !== "auto") return fromInit;
 		return defaultModel;
-	}
-
-	async function writeInitArtifacts(
-		config: AdapterInitConfig,
-		baseDir: string,
-	): Promise<void> {
-		await writeFile(join(baseDir, ".cursorrules"), config.instructions, "utf8");
-		for (const skill of config.skills) {
-			const skillDir = join(baseDir, ".cursor", "skills", skill.name);
-			await mkdir(skillDir, { recursive: true });
-			await writeFile(join(skillDir, "SKILL.md"), skill.content, "utf8");
-		}
 	}
 
 	function resolveCwd(message: AdapterInboxMessage): string {
@@ -155,7 +142,8 @@ export function createCursorAgentAdapter(
 
 	async function init(config: AdapterInitConfig): Promise<void> {
 		initConfig = config;
-		await writeInitArtifacts(config, resolveHomeDir());
+		// Persona, skills, and model config are written by the harness layer.
+		// The adapter only persists its own session state (Cursor session ID for resume).
 		const existing = loadPersistedState();
 		await persistState({
 			sessionId: existing?.sessionId ?? null,
@@ -168,7 +156,6 @@ export function createCursorAgentAdapter(
 		if (state === null) return false;
 		initConfig = state.initConfig;
 		sessionId = state.sessionId;
-		await writeInitArtifacts(state.initConfig, resolveHomeDir());
 		return true;
 	}
 
@@ -199,11 +186,7 @@ export function createCursorAgentAdapter(
 	async function* runHandle(
 		message: AdapterInboxMessage,
 	): AsyncGenerator<TurnValue, DoneValue> {
-		const config = initConfig as AdapterInitConfig;
 		const cwd = resolveCwd(message);
-		if (cwd !== resolveHomeDir()) {
-			await writeInitArtifacts(config, cwd);
-		}
 
 		const model = resolveModel();
 		const args = buildArgs(message.content, sessionId, model, cwd);
@@ -232,7 +215,10 @@ export function createCursorAgentAdapter(
 				if (event.type === "meta") {
 					if (event.sessionId !== sessionId) {
 						sessionId = event.sessionId;
-						await persistState({ sessionId, initConfig: config });
+						await persistState({
+							sessionId,
+							initConfig: initConfig as AdapterInitConfig,
+						});
 					}
 				} else if (event.type === "turn") {
 					const turn = event.turn;
@@ -271,7 +257,10 @@ export function createCursorAgentAdapter(
 			const fromResult = resultLine.session_id;
 			if (typeof fromResult === "string" && fromResult.length > 0) {
 				sessionId = fromResult;
-				await persistState({ sessionId, initConfig: config });
+				await persistState({
+					sessionId,
+					initConfig: initConfig as AdapterInitConfig,
+				});
 			}
 		}
 

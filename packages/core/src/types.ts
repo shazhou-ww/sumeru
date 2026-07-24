@@ -30,7 +30,7 @@ export type Model = {
 };
 
 // === Model ===
-export type KnownProvider = "anthropic" | "openai" | "openrouter";
+export type KnownProvider = "anthropic" | "openai" | "openrouter" | "builtin";
 export type CustomProvider = {
 	name: string;
 	endpoint: string;

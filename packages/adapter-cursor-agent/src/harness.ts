@@ -42,9 +42,10 @@ async function installCursorAgentSkill(
 }
 
 const cursorDir = join(homedir(), ".cursor");
+const adapterStateDir = join(homedir(), ".cursor-agent-adapter");
 
 export const cursorAgentHarness: HarnessConfig = {
-	resetPaths: [join(cursorDir, "sessions")],
+	resetPaths: [join(cursorDir, "sessions"), adapterStateDir],
 	modelConfigPath: join(cursorDir, "config.json"),
 	personaPath: join(cursorDir, "rules", "sumeru.md"),
 	skillsDir: join(cursorDir, "rules", "skills"),
