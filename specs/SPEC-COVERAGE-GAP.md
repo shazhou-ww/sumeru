@@ -30,7 +30,72 @@
 
 ## 🟡 高优先级（快速补充）
 
+### Section 7 - Registry — Prototype
+
+- [x] **7.1** - 创建 Prototype
+  - API: `POST /prototypes`
+  - CLI: `sumeru prototype add <name> --model <model> --adapter <adapter>`
+  - Spec: 待补
+  - atest: `specs/atest/prototype-crud.test.yaml` ✅
+  - 难度: 低
+
+- [x] **7.2** - 列出所有 Prototype
+  - API: `GET /prototypes`
+  - CLI: `sumeru prototype list`
+  - Spec: 待补
+  - atest: `specs/atest/prototype-crud.test.yaml` ✅
+  - 难度: 低
+
+- [x] **7.3** - 按名称获取 Prototype
+  - API: `GET /prototypes/:name`
+  - CLI: `sumeru prototype get <name>`
+  - Spec: 待补
+  - atest: `specs/atest/prototype-crud.test.yaml` ✅
+  - 难度: 低
+
+- [ ] **7.4** - 更新 Prototype
+  - API: `PUT /prototypes/:name`
+  - CLI: `sumeru prototype update <name>`
+  - Spec: 待补
+  - 难度: 低
+  - 备注: CLI 目前仅支持 --model、--adapter、--persona 参数
+
+- [x] **7.5** - 删除 Prototype
+  - API: `DELETE /prototypes/:name`
+  - CLI: `sumeru prototype remove <name>`
+  - Spec: 待补
+  - atest: `specs/atest/prototype-crud.test.yaml` ✅
+  - 难度: 低
+
 ### Section 8 - Registry — Persona
+
+- [x] **8.1** - 列出所有 Persona
+  - API: `GET /personas`
+  - CLI: `sumeru persona list`
+  - Spec: 待补
+  - atest: `specs/atest/persona-crud-lifecycle.test.yaml` ✅
+  - 难度: 低
+
+- [x] **8.2** - 按名称获取 Persona
+  - API: `GET /personas/:name`
+  - CLI: `sumeru persona get <name>`
+  - Spec: 待补
+  - atest: `specs/atest/persona-crud-lifecycle.test.yaml` ✅
+  - 难度: 低
+
+- [x] **8.3** - 创建 Persona
+  - API: `PUT /personas/:name`
+  - CLI: `sumeru persona add <name> --instructions <text>`
+  - Spec: 待补
+  - atest: `specs/atest/persona-crud-lifecycle.test.yaml` ✅
+  - 难度: 低
+
+- [x] **8.4** - 删除 Persona
+  - API: `DELETE /personas/:name`
+  - CLI: `sumeru persona remove <name>`
+  - Spec: 待补
+  - atest: `specs/atest/persona-crud-lifecycle.test.yaml` ✅
+  - 难度: 低
 
 - [x] **8.5** - 删除被 Prototype 引用的 persona（409）
   - API: `DELETE /personas/:name` → 409
@@ -78,16 +143,18 @@
 
 ### Section 2 - Session 生命周期
 
-- [ ] **2.1** - Session 列表分页
+- [x] **2.1** - Session 列表分页
   - API: `GET /sessions?limit=<n>&offset=<n>`
   - CLI: `sumeru session list [--limit n] [--offset n]`
   - Spec: [session/session-list-pagination/spec.md](./session/session-list-pagination/spec.md)
+  - atest: `specs/atest/session-list-pagination.test.yaml` ✅
   - 难度: 中
 
-- [ ] **2.2** - 按 ID 获取 Session
+- [x] **2.2** - 按 ID 获取 Session
   - API: `GET /sessions/:id`
   - CLI: `sumeru session get <id>`
   - Spec: [session/session-get-by-id/spec.md](./session/session-get-by-id/spec.md)
+  - atest: `specs/atest/session-get-by-id.test.yaml` ✅
   - 难度: 低
 
 - [x] **2.3** - 创建 session（prototype 不存在）
@@ -315,16 +382,26 @@
 ## 统计
 
 - **总计**: 47 个场景
-- **待补充**: 31 个
+- **待补充**: 18 个
 - **被阻塞**: 2 个
-- **已完成**: 16 个
+- **已完成**: 27 个
 
 ### 已完成清单
 - ✅ 1.1 - 查询 Host 状态 (server-status.test.yaml)
+- ✅ 2.1 - Session 列表分页 (session-list-pagination.test.yaml)
+- ✅ 2.2 - 按 ID 获取 Session (session-get-by-id.test.yaml)
 - ✅ 2.3 - 创建 session（prototype 不存在）(error-paths.test.yaml)
 - ✅ 2.4 - 创建 session（project 路径越界）(invalid-project-path-400.test.yaml)
 - ✅ 5.3 - Turn discriminated union (turn-discriminated-union.test.yaml)
 - ✅ 5.7 - Turns 显示 tool calls (turns-show-tool-calls.test.yaml)
+- ✅ 7.1 - 创建 Prototype (prototype-crud.test.yaml)
+- ✅ 7.2 - 列出所有 Prototype (prototype-crud.test.yaml)
+- ✅ 7.3 - 按名称获取 Prototype (prototype-crud.test.yaml)
+- ✅ 7.5 - 删除 Prototype (prototype-crud.test.yaml)
+- ✅ 8.1 - 列出所有 Persona (persona-crud-lifecycle.test.yaml)
+- ✅ 8.2 - 按名称获取 Persona (persona-crud-lifecycle.test.yaml)
+- ✅ 8.3 - 创建 Persona (persona-crud-lifecycle.test.yaml)
+- ✅ 8.4 - 删除 Persona (persona-crud-lifecycle.test.yaml)
 - ✅ 8.5 - 删除被 Prototype 引用的 persona（409）(persona-prototype-reference-409.test.yaml)
 - ✅ 10.3 - 列出 adapter 内置模型 (adapter-models-list.test.yaml)
 - ✅ 13.1 - 400 Invalid JSON (invalid-json-400.test.yaml)
@@ -340,7 +417,7 @@
 
 ### 按优先级分布
 - 🔴 被阻塞: 2 个
-- 🟡 高优先级: 3 个 (1.2, 1.3, 1.4)
+- 🟡 高优先级: 7 个 (1.2, 1.3, 1.4, 7.4)
 - 🟠 中优先级: 23 个
 - 🔵 低优先级: 11 个
 

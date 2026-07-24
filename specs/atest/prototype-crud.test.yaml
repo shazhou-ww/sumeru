@@ -1,41 +1,86 @@
-name: "prototype CRUD lifecycle"
-description: |
-  Prototype CRUD 全流程：add → list 含 → rm → list 不含。
-  覆盖 SCENARIOS: 9.1, 9.2。
-
-setup:
-  - "docker build -t sumeru/sarsapa:dev -f packages/sarsapa/Dockerfile . >/dev/null 2>&1; true"
-  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
-
+name: prototype-crud
+description: Test Prototype CRUD operations (7.1-7.5)
+setup: []
 teardown:
-  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - sumeru prototype remove test-proto-1 || true
+  - sumeru prototype remove test-proto-2 || true
 
 steps:
-  # ─── 9.1 add + list ───
+  - name: "7.1: Create prototype"
+    command: sumeru prototype add test-proto-1 --adapter hermes --model qwen3.7-max
+    expect:
+      - type: contains
+        value: "Created prototype"
+      - type: contains
+        value: "test-proto-1"
 
-  - command: "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max 2>&1"
-    judge:
-      type: regex
-      expr: "Created prototype atest-sarsapa"
+  - name: "7.1: Verify prototype exists"
+    command: sumeru prototype get test-proto-1 --format json
+    expect:
+      - type: json_path
+        path: $.name
+        value: test-proto-1
+      - type: json_path
+        path: $.model
+        value: qwen3.7-max
 
-  - command: "sumeru prototype list 2>&1 | head -10"
-    judge:
-      type: regex
-      expr: "atest-sarsapa"
+  - name: "7.2: List all prototypes"
+    command: sumeru prototype list --format json
+    expect:
+      - type: json_path
+        path: $[?(@.name=="test-proto-1")]
+        exists: true
 
-  - command: "sumeru prototype get atest-sarsapa 2>&1 | head -10"
-    judge:
-      type: regex
-      expr: "Name: atest-sarsapa"
+  - name: "7.1: Create another prototype"
+    command: sumeru prototype add test-proto-2 --adapter sarsapa --model qwen3.7-max
+    expect:
+      - type: contains
+        value: "Created prototype"
 
-  # ─── 9.2 rm + list 不含 ───
+  - name: "7.2: List should show both prototypes"
+    command: sumeru prototype list --format json
+    expect:
+      - type: json_path
+        path: $[?(@.name=="test-proto-1")]
+        exists: true
+      - type: json_path
+        path: $[?(@.name=="test-proto-2")]
+        exists: true
 
-  - command: "sumeru prototype rm atest-sarsapa 2>&1"
-    judge:
-      type: regex
-      expr: "Removed prototype atest-sarsapa"
+  - name: "7.3: Get prototype by name"
+    command: sumeru prototype get test-proto-2 --format json
+    expect:
+      - type: json_path
+        path: $.name
+        value: test-proto-2
+      - type: json_path
+        path: $.model
+        value: qwen3.7-max
 
-  - command: "sumeru prototype list 2>&1 | grep -q 'atest-sarsapa' && echo FOUND || echo CLEAN"
-    judge:
-      type: regex
-      expr: "^CLEAN$"
+  - name: "7.3: Get non-existent prototype"
+    command: sumeru prototype get non-existent || true
+    expect:
+      - type: contains
+        value: "not found"
+
+  - name: "7.5: Delete prototype"
+    command: sumeru prototype remove test-proto-1
+    expect:
+      - type: contains
+        value: "Removed prototype"
+
+  - name: "7.5: Verify deletion"
+    command: sumeru prototype get test-proto-1 || true
+    expect:
+      - type: contains
+        value: "not found"
+
+  - name: "7.5: List should only show remaining prototype"
+    command: sumeru prototype list --format json
+    expect:
+      - type: json_path
+        path: $[?(@.name=="test-proto-1")]
+        exists: false
+      - type: json_path
+        path: $[?(@.name=="test-proto-2")]
+        exists: true
