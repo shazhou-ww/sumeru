@@ -1,0 +1,86 @@
+name: "cursor-agent snapshot context inherit"
+description: |
+  验证 cursor-agent adapter 在 snapshot 继承和隔离场景下的行为。
+  覆盖 SCENARIOS: 11.5, 2.1
+  使用 Cursor 官方 API（builtin-only adapter）。
+  需要 CURSOR_API_KEY 环境变量。
+  资源命名加 atest- 前缀避免冲突。
+
+setup:
+  - "docker build -t sumeru/cursor-agent:dev -f packages/adapter-cursor-agent/Dockerfile . >/dev/null 2>&1; true"
+  - "sumeru prototype remove atest-cursor-agent 2>/dev/null; true"
+  - "sumeru prototype remove atest-cursor-agent-snap 2>/dev/null; true"
+  - "sumeru prototype add atest-cursor-agent --adapter cursor-agent --model :claude-sonnet-4"
+
+teardown:
+  - "sumeru session remove $SID_BASE 2>/dev/null; true"
+  - "sumeru session remove $SID_SKIP 2>/dev/null; true"
+  - "sumeru session remove $SID_RESET 2>/dev/null; true"
+  - "sumeru prototype remove atest-cursor-agent-snap 2>/dev/null; true"
+  - "sumeru prototype remove atest-cursor-agent 2>/dev/null; true"
+  - "docker rmi sumeru/atest-cursor-agent-snap:dev 2>/dev/null; true"
+
+steps:
+  # ─── Phase 1: 创建 base session，注入 secret ───
+
+  - command: 'export SID_BASE=$(sumeru session add atest-cursor-agent --task "Remember this secret code: DELTA-3388. Just reply OK." 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "BASE=$SID_BASE"'
+    judge:
+      type: regex
+      expr: "BASE=ses_[A-Z0-9]+"
+    timeout: 30
+
+  # 等待 cursor-agent 回复
+  - command: "sleep 30 && sumeru session turns $SID_BASE 2>&1"
+    judge:
+      type: regex
+      expr: "\\[assistant\\].*\\nOK"
+    retry:
+      max: 5
+      interval: 10
+      backoff: false
+
+  # ─── Phase 2: snapshot ───
+
+  - command: "sumeru session snapshot $SID_BASE atest-cursor-agent-snap 2>&1 | tail -5"
+    judge:
+      type: regex
+      expr: "Snapshot created"
+
+  - command: "docker images sumeru/atest-cursor-agent-snap:dev --format '{{.Repository}}:{{.Tag}}'"
+    judge:
+      type: regex
+      expr: "atest-cursor-agent-snap:dev"
+
+  # ─── Path A: --skip-reset（继承上下文）───
+
+  - command: 'export SID_SKIP=$(sumeru session add atest-cursor-agent-snap --skip-reset --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SKIP=$SID_SKIP"'
+    judge:
+      type: regex
+      expr: "SKIP=ses_[A-Z0-9]+"
+    timeout: 30
+
+  - command: "sleep 30 && sumeru session turns $SID_SKIP 2>&1"
+    judge:
+      type: regex
+      expr: "DELTA-3388"
+    retry:
+      max: 5
+      interval: 10
+      backoff: false
+
+  # ─── Path B: 默认 reset（不继承上下文）───
+
+  - command: 'export SID_RESET=$(sumeru session add atest-cursor-agent-snap --task "What is the secret code?" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "RESET=$SID_RESET"'
+    judge:
+      type: regex
+      expr: "RESET=ses_[A-Z0-9]+"
+    timeout: 30
+
+  - command: "sleep 30 && sumeru session turns $SID_RESET 2>&1"
+    judge:
+      type: llm
+      prompt: "Check if there is an [assistant] response. If yes, check if it mentions DELTA-3388. PASS if assistant responded but did NOT mention DELTA-3388. FAIL if assistant mentioned DELTA-3388. RETRY if no [assistant] response yet."
+    retry:
+      max: 5
+      interval: 10
+      backoff: false

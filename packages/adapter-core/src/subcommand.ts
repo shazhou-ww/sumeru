@@ -171,7 +171,8 @@ function parseAdapterInitConfig(value: unknown): AdapterInitConfig | null {
 		if (
 			provider !== "anthropic" &&
 			provider !== "openai" &&
-			provider !== "openrouter"
+			provider !== "openrouter" &&
+			provider !== "builtin"
 		) {
 			return null;
 		}

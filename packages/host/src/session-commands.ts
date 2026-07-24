@@ -352,6 +352,8 @@ function modelBaseUrl(model: ManagedSession["model"]): string {
 				return "https://api.openai.com/v1";
 			case "openrouter":
 				return "https://openrouter.ai/api/v1";
+			case "builtin":
+				return "";
 		}
 	}
 	return model.provider.endpoint;
