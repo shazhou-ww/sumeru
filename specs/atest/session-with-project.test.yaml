@@ -1,0 +1,39 @@
+name: "session with project"
+description: |
+  测试带 --project 参数的 session 创建和文件访问。
+  覆盖 SCENARIOS: 2.1, 2.3。
+  验证项目目录正确挂载到 /workspace，agent 能读取项目文件。
+
+setup:
+  - "mkdir -p ~/.sumeru/workspace/atest-project"
+  - "echo 'Secret code: ALPHA-1234' > ~/.sumeru/workspace/atest-project/README.md"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max"
+
+teardown:
+  - "rm -rf ~/.sumeru/workspace/atest-project"
+  - "sumeru session rm $SID 2>/dev/null; true"
+  - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+
+steps:
+  # ─── 创建带 project 的 session ───
+  
+  - command: 'export SID=$(sumeru session add atest-sarsapa --project atest-project --task "Read README.md and tell me the secret code" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
+    judge:
+      type: regex
+      expr: "SID=ses_[A-Z0-9]+"
+    timeout: 15
+
+  # ─── 等待回复并验证文件访问 ───
+  
+  - command: "sleep 5 && sumeru session get $SID --format json | jq -r '.value.status'"
+    judge:
+      type: regex
+      expr: "^(idle|running)$"
+    timeout: 30
+
+  - command: "sumeru session turns $SID 2>&1"
+    judge:
+      type: regex
+      expr: "ALPHA-1234"
+    timeout: 60
