@@ -654,10 +654,10 @@ export function createSessionManager(input: {
 			);
 			adapters.set(id, runtime);
 		}
-		const versionStale = record.initVersion !== currentHash;
-		if (runtime.initialized && !versionStale) {
-			return;
-		}
+		// Always send config before each message — each message spawns a new
+		// docker exec process, so the adapter never retains in-memory state.
+		// The previous optimization (skip when runtime.initialized && !versionStale)
+		// caused the new process to miss init, leaving initConfig null.
 		if (record.containerId === null) {
 			throw new Error("session_not_running");
 		}

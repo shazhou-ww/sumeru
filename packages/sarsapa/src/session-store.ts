@@ -21,11 +21,15 @@ type InitLine = {
 	type: "init";
 	system: string;
 	model: ModelConfig;
+	instructions: string;
+	skills: Array<{ name: string; content: string }>;
 };
 
 export type StoredSession = {
 	system: string;
 	model: ModelConfig;
+	instructions: string;
+	skills: Array<{ name: string; content: string }>;
 	turns: Array<LlmMessage>;
 };
 
@@ -73,10 +77,21 @@ function parseInitLine(line: string): InitLine | null {
 	if (!isRecord(parsed.model) || typeof parsed.model.name !== "string") {
 		return null;
 	}
+	const instructions = typeof parsed.instructions === "string" ? parsed.instructions : "";
+	const skills: Array<{ name: string; content: string }> = [];
+	if (Array.isArray(parsed.skills)) {
+		for (const s of parsed.skills) {
+			if (isRecord(s) && typeof s.name === "string" && typeof s.content === "string") {
+				skills.push({ name: s.name, content: s.content });
+			}
+		}
+	}
 	return {
 		type: "init",
 		system: parsed.system,
 		model: parsed.model as ModelConfig,
+		instructions,
+		skills,
 	};
 }
 
@@ -87,7 +102,13 @@ export function createSessionStore(sessionPath: string = DEFAULT_SESSION_PATH) {
 
 	function writeInit(system: string, config: AdapterInitConfig): void {
 		mkdirSync(dirname(sessionPath), { recursive: true });
-		const line: InitLine = { type: "init", system, model: config.model };
+		const line: InitLine = {
+			type: "init",
+			system,
+			model: config.model,
+			instructions: config.instructions,
+			skills: config.skills,
+		};
 		writeFileSync(sessionPath, `${JSON.stringify(line)}\n`, "utf8");
 	}
 
@@ -103,6 +124,8 @@ export function createSessionStore(sessionPath: string = DEFAULT_SESSION_PATH) {
 
 		let system: string | null = null;
 		let model: ModelConfig | null = null;
+		let instructions: string = "";
+		let skills: Array<{ name: string; content: string }> = [];
 		const turns: Array<LlmMessage> = [];
 
 		for (const line of lines) {
@@ -110,6 +133,8 @@ export function createSessionStore(sessionPath: string = DEFAULT_SESSION_PATH) {
 			if (initLine !== null) {
 				system = initLine.system;
 				model = initLine.model;
+				instructions = initLine.instructions;
+				skills = initLine.skills;
 				continue;
 			}
 			const message = parseMessageLine(line);
@@ -119,7 +144,7 @@ export function createSessionStore(sessionPath: string = DEFAULT_SESSION_PATH) {
 		}
 
 		if (system === null || model === null) return null;
-		return { system, model, turns };
+		return { system, model, instructions, skills, turns };
 	}
 
 	return { exists, writeInit, appendMessage, load };

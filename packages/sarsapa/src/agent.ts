@@ -66,8 +66,8 @@ export function createSarsapaAdapter(
 		const stored = sessionStore.load();
 		if (stored === null) return false;
 		initConfig = {
-			instructions: "",
-			skills: [],
+			instructions: stored.instructions || "",
+			skills: stored.skills,
 			model: stored.model,
 		};
 		conversation = createConversation(stored.system);
