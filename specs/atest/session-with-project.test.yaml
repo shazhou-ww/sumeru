@@ -1,39 +1,59 @@
-name: "session with project"
+name: "session with project directory"
 description: |
-  测试带 --project 参数的 session 创建和文件访问。
+  验证 --project 参数：项目目录挂载到 /workspace，adapter 能读取项目文件。
   覆盖 SCENARIOS: 2.1, 2.3。
-  验证项目目录正确挂载到 /workspace，agent 能读取项目文件。
+  资源命名加 atest- 前缀避免冲突。
 
 setup:
   - "mkdir -p ~/.sumeru/workspace/atest-project"
-  - "echo 'Secret code: ALPHA-1234' > ~/.sumeru/workspace/atest-project/README.md"
+  - "printf 'The secret code is OMEGA-5599\\n' > ~/.sumeru/workspace/atest-project/README.md"
   - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
   - "sumeru prototype add atest-sarsapa --adapter sarsapa --model qwen3.7-max"
 
 teardown:
-  - "rm -rf ~/.sumeru/workspace/atest-project"
   - "sumeru session rm $SID 2>/dev/null; true"
   - "sumeru prototype rm atest-sarsapa 2>/dev/null; true"
+  - "rm -rf ~/.sumeru/workspace/atest-project"
 
 steps:
-  # ─── 创建带 project 的 session ───
-  
-  - command: 'export SID=$(sumeru session add atest-sarsapa --project atest-project --task "Read README.md and tell me the secret code" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
+  # ─── 创建带 --project 的 session ───
+
+  - command: 'export SID=$(sumeru session add atest-sarsapa --project atest-project --task "Read README.md and tell me the secret code inside" 2>&1 | grep -oP "ses_[A-Z0-9]+" | head -1) && echo "SID=$SID"'
     judge:
       type: regex
       expr: "SID=ses_[A-Z0-9]+"
     timeout: 15
 
-  # ─── 等待回复并验证文件访问 ───
-  
-  - command: "sleep 5 && sumeru session get $SID --format json | jq -r '.value.status'"
-    judge:
-      type: regex
-      expr: "^(idle|running)$"
-    timeout: 30
+  # ─── session get 确认 project 字段 ───
 
-  - command: "sumeru session turns $SID 2>&1"
+  - command: "sumeru session get $SID --format json 2>&1 | jq -r '.value.project'"
     judge:
       type: regex
-      expr: "ALPHA-1234"
-    timeout: 60
+      expr: "^atest-project$"
+
+  # ─── 等待 agent 读取项目文件并回复 ───
+
+  - command: "sleep 5 && sumeru session turns $SID 2>&1 | tail -20"
+    judge:
+      type: regex
+      expr: "OMEGA-5599"
+    retry:
+      max: 5
+      interval: 5
+      backoff: false
+
+  # ─── 验证 cwd 是 /workspace ───
+
+  - command: "sumeru session send $SID 'Run pwd and tell me the current directory path' 2>&1"
+    judge:
+      type: regex
+      expr: "accepted"
+
+  - command: "sleep 5 && sumeru session turns $SID 2>&1 | tail -20"
+    judge:
+      type: regex
+      expr: "/workspace"
+    retry:
+      max: 5
+      interval: 5
+      backoff: false
