@@ -171,6 +171,27 @@
   - atest: `specs/atest/invalid-project-path-400.test.yaml` ✅
   - 难度: 低
 
+- [x] **2.5** - 停止 Session
+  - API: `POST /sessions/:id/stop`
+  - CLI: `sumeru session stop <id>`
+  - Spec: [session/session-stop/spec.md](./session/session-stop/spec.md)
+  - atest: `specs/atest/session-stop.test.yaml` ✅
+  - 难度: 低
+
+- [x] **2.6** - 恢复 Session
+  - API: `POST /sessions/:id/send` (after stop)
+  - CLI: `sumeru session send <id> <msg>` (after stop)
+  - Spec: [session/session-resume/spec.md](./session/session-resume/spec.md)
+  - atest: `specs/atest/session-resume.test.yaml` ✅
+  - 难度: 中
+
+- [x] **2.7** - 删除 Session
+  - API: `DELETE /sessions/:id`
+  - CLI: `sumeru session rm <id>`
+  - Spec: [session/session-delete/spec.md](./session/session-delete/spec.md)
+  - atest: `specs/atest/session-delete.test.yaml` ✅
+  - 难度: 低
+
 ### Section 4 - SSE 事件流
 
 - [ ] **4.1** - 订阅 session 事件流
@@ -398,10 +419,10 @@
 ## 统计
 
 - **总计**: 47 个场景
-- **待补充**: 14 个
+- **待补充**: 6 个
 - **被阻塞**: 2 个
-- **已完成**: 33 个
-- **覆盖率**: 70%
+- **已完成**: 41 个
+- **覆盖率**: 87%
 
 ### 已完成清单
 - ✅ 1.1 - 查询 Host 状态 (server-status.test.yaml)
@@ -409,6 +430,9 @@
 - ✅ 2.2 - 按 ID 获取 Session (session-get-by-id.test.yaml)
 - ✅ 2.3 - 创建 session（prototype 不存在）(error-paths.test.yaml)
 - ✅ 2.4 - 创建 session（project 路径越界）(invalid-project-path-400.test.yaml)
+- ✅ 2.5 - 停止 Session (session-stop.test.yaml)
+- ✅ 2.6 - 恢复 Session (session-resume.test.yaml)
+- ✅ 2.7 - 删除 Session (session-delete.test.yaml)
 - ✅ 5.1 - 列出所有 turns (turns-list.test.yaml)
 - ✅ 5.2 - 按工具过滤 turns (turns-filter-by-tool.test.yaml)
 - ✅ 5.3 - Turn discriminated union (turn-discriminated-union.test.yaml)
@@ -416,6 +440,11 @@
 - ✅ 5.5 - Watch 实时监视 (turns-watch-realtime.test.yaml)
 - ✅ 5.6 - Watch 输出格式一致性 (turns-watch-realtime.test.yaml)
 - ✅ 5.7 - Turns 显示 tool calls (turns-show-tool-calls.test.yaml)
+- ✅ 6.1 - 列出所有 Provider (provider-crud.test.yaml)
+- ✅ 6.2 - 创建 Provider (provider-crud.test.yaml)
+- ✅ 6.3 - 按名称获取 Provider (provider-crud.test.yaml)
+- ✅ 6.4 - 更新 Provider (provider-crud.test.yaml)
+- ✅ 6.5 - 删除 Provider (provider-crud.test.yaml)
 - ✅ 7.1 - 创建 Prototype (prototype-crud.test.yaml)
 - ✅ 7.2 - 列出所有 Prototype (prototype-crud.test.yaml)
 - ✅ 7.3 - 按名称获取 Prototype (prototype-crud.test.yaml)

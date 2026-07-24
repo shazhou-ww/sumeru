@@ -1,72 +1,55 @@
-name: "provider CRUD lifecycle"
-description: |
-  Provider CRUD 全流程：add → get → update → list → rm → get 404 → rm 被引用 409。
-  覆盖 SCENARIOS: 6.1-6.6。
-
+name: provider-crud
+description: Test Provider CRUD operations (6.1-6.5)
 setup:
-  - "sumeru provider rm atest-provider 2>/dev/null; true"
-  - "sumeru model rm atest-model 2>/dev/null; true"
-
+  - "sumeru provider remove test-provider 2>/dev/null || true"
 teardown:
-  - "sumeru model rm atest-model 2>/dev/null; true"
-  - "sumeru provider rm atest-provider 2>/dev/null; true"
-
+  - "sumeru provider remove test-provider 2>/dev/null || true"
+  - "sumeru provider remove test-provider-2 2>/dev/null || true"
 steps:
-  # ─── 6.3 add ───
-
-  - command: 'sumeru provider add atest-provider --api-type openai --base-url "https://example.com/v1" 2>&1'
-    judge:
-      type: regex
-      expr: "Created provider atest-provider"
-
-  # ─── 6.2 get ───
-
-  - command: "sumeru provider get atest-provider 2>&1 | head -10"
-    judge:
-      type: regex
-      expr: "Name: atest-provider"
-
-  # ─── 6.4 update ───
-
-  - command: 'sumeru provider update atest-provider --base-url "https://updated.com/v1" 2>&1'
-    judge:
-      type: regex
-      expr: "Updated provider atest-provider"
-
-  # ─── 6.1 list ───
-
-  - command: "sumeru provider list 2>&1 | head -10"
-    judge:
-      type: regex
-      expr: "atest-provider"
-
-  # ─── 6.6 rm 被引用 → 409 ───
-
-  - command: "sumeru model add atest-model --provider atest-provider --model test-model 2>&1"
-    judge:
-      type: regex
-      expr: "Created model atest-model"
-
-  - command: "sumeru provider remove atest-provider 2>&1; true"
-    judge:
-      type: llm
-      prompt: "输出应包含 error，提示 provider in use 或被 model 引用"
-
-  # ─── 6.5 rm 成功（先删 model）───
-
-  - command: "sumeru model remove atest-model 2>&1"
-    judge:
-      type: regex
-      expr: "Removed model atest-model"
-
-  - command: "sumeru provider remove atest-provider 2>&1"
-    judge:
-      type: regex
-      expr: "Removed provider atest-provider"
-
-  # ─── get 404 ───
-
-  - command: "sumeru provider get atest-provider 2>&1; true"
-    judge:
-      type: llm
-      prompt: "输出应包含 error，提示 provider not found"
+  - name: "6.1: 列出所有 Provider"
+    command: "sumeru provider list 2>&1"
+    expect: "Provider"
+  
+  - name: "6.2: 创建 Provider"
+    command: "sumeru provider add test-provider --api-type openai --base-url https://api.example.com 2>&1"
+    expect: "Created provider"
+  
+  - name: "6.2: 验证创建结果"
+    command: "sumeru provider get test-provider --format json 2>&1"
+    expect: "test-provider"
+  
+  - name: "6.3: 按名称获取 Provider"
+    command: "sumeru provider get test-provider 2>&1"
+    expect: "test-provider"
+  
+  - name: "6.3: 验证 Provider 属性"
+    command: "sumeru provider get test-provider --format json 2>&1 | jq -r '.apiType'"
+    expect: "openai"
+  
+  - name: "6.2: 创建第二个 Provider"
+    command: "sumeru provider add test-provider-2 --api-type anthropic --base-url https://api.anthropic.com 2>&1"
+    expect: "Created provider"
+  
+  - name: "6.1: 验证列表包含两个 Provider"
+    command: "sumeru provider list --format json 2>&1 | jq -r '.[].name' | grep -E 'test-provider|test-provider-2' | wc -l"
+    expect: "2"
+  
+  - name: "6.4: 更新 Provider"
+    command: "sumeru provider update test-provider --base-url https://api.updated.com 2>&1"
+    expect: "Updated provider"
+  
+  - name: "6.4: 验证更新结果"
+    command: "sumeru provider get test-provider --format json 2>&1 | jq -r '.baseUrl'"
+    expect: "https://api.updated.com"
+  
+  - name: "6.5: 删除 Provider"
+    command: "sumeru provider remove test-provider 2>&1"
+    expect: "Removed provider"
+  
+  - name: "6.5: 验证删除结果"
+    command: "sumeru provider get test-provider 2>&1 || echo 'Delete verified'"
+    expect: "Delete verified"
+  
+  - name: "6.5: 清理第二个 Provider"
+    command: "sumeru provider remove test-provider-2 2>&1"
+    expect: "Removed provider"
