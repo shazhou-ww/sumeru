@@ -84,9 +84,10 @@
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
   - 难度: 低
 
-- [ ] **2.4** - 创建 session（project 路径越界）
+- [x] **2.4** - 创建 session（project 路径越界）
   - API: `POST /sessions` → 400
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
+  - atest: `specs/atest/invalid-project-path-400.test.yaml` ✅
   - 难度: 低
 
 ### Section 4 - SSE 事件流
@@ -171,9 +172,10 @@
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
   - 难度: 低
 
-- [ ] **13.3** - 400 Invalid project
+- [x] **13.3** - 400 Invalid project
   - API: `POST /sessions` 路径越界
   - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
+  - atest: `specs/atest/invalid-project-path-400.test.yaml` ✅
   - 难度: 低
 
 - [ ] **13.4** - 404 Session not found
@@ -197,7 +199,8 @@
 - [ ] **13.7** - 409 Provider in use
   - API: `DELETE /providers/:name`
   - CLI: `sumeru provider remove <name>` → error
-  - Spec: [errors/standard-http-errors/spec.md](./errors/standard-http-errors/spec.md)
+  - Spec: 待补
+  - atest: `specs/atest/provider-in-use-409.test.yaml` ✅
   - 难度: 低
 
 - [ ] **13.8** - Host 未启动时操作
