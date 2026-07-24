@@ -53,12 +53,13 @@
   - atest: `specs/atest/prototype-crud.test.yaml` ✅
   - 难度: 低
 
-- [ ] **7.4** - 更新 Prototype
+- [x] **7.4** - 更新 Prototype
   - API: `PUT /prototypes/:name`
   - CLI: `sumeru prototype update <name>`
   - Spec: 待补
+  - atest: `specs/atest/prototype-update.test.yaml` ✅
   - 难度: 低
-  - 备注: CLI 目前仅支持 --model、--adapter、--persona 参数
+  - 备注: CLI 支持 --model、--adapter、--persona 参数，支持多字段同时更新
 
 - [x] **7.5** - 删除 Prototype
   - API: `DELETE /prototypes/:name`
@@ -223,15 +224,17 @@
   - Spec: [session/turns-watch/spec.md](./session/turns-watch/spec.md)
   - 难度: 中
 
-- [ ] **5.5** - Watch 实时监视
+- [x] **5.5** - Watch 实时监视
   - API: `GET /sessions/:id/turns/watch` (SSE)
   - CLI: `sumeru session turns <id> -w`
   - Spec: [session/turns-watch/spec.md](./session/turns-watch/spec.md)
+  - atest: `specs/atest/turns-watch-realtime.test.yaml` ✅
   - 难度: 高（SSE 流式测试）
 
-- [ ] **5.6** - Watch 输出格式一致性
+- [x] **5.6** - Watch 输出格式一致性
   - CLI: `turns` 与 `turns -w` 格式一致
   - Spec: [session/turns-watch/tc-format-consistency.md](./session/turns-watch/tc-format-consistency.md)
+  - atest: `specs/atest/turns-watch-realtime.test.yaml` ✅
   - 难度: 中
 
 - [x] **5.7** - Turns 显示 tool calls
@@ -382,9 +385,9 @@
 ## 统计
 
 - **总计**: 47 个场景
-- **待补充**: 18 个
+- **待补充**: 15 个
 - **被阻塞**: 2 个
-- **已完成**: 27 个
+- **已完成**: 30 个
 
 ### 已完成清单
 - ✅ 1.1 - 查询 Host 状态 (server-status.test.yaml)
@@ -393,10 +396,13 @@
 - ✅ 2.3 - 创建 session（prototype 不存在）(error-paths.test.yaml)
 - ✅ 2.4 - 创建 session（project 路径越界）(invalid-project-path-400.test.yaml)
 - ✅ 5.3 - Turn discriminated union (turn-discriminated-union.test.yaml)
+- ✅ 5.5 - Watch 实时监视 (turns-watch-realtime.test.yaml)
+- ✅ 5.6 - Watch 输出格式一致性 (turns-watch-realtime.test.yaml)
 - ✅ 5.7 - Turns 显示 tool calls (turns-show-tool-calls.test.yaml)
 - ✅ 7.1 - 创建 Prototype (prototype-crud.test.yaml)
 - ✅ 7.2 - 列出所有 Prototype (prototype-crud.test.yaml)
 - ✅ 7.3 - 按名称获取 Prototype (prototype-crud.test.yaml)
+- ✅ 7.4 - 更新 Prototype (prototype-update.test.yaml)
 - ✅ 7.5 - 删除 Prototype (prototype-crud.test.yaml)
 - ✅ 8.1 - 列出所有 Persona (persona-crud-lifecycle.test.yaml)
 - ✅ 8.2 - 按名称获取 Persona (persona-crud-lifecycle.test.yaml)
