@@ -27,9 +27,10 @@ async function writeClaudeCodeModelConfig(
 }
 
 const claudeDir = join(homedir(), ".claude");
+const adapterStateDir = join(homedir(), ".claude-code-adapter");
 
 export const claudeCodeHarness: HarnessConfig = {
-	resetPaths: [join(claudeDir, "projects")],
+	resetPaths: [join(claudeDir, "projects"), adapterStateDir],
 	modelConfigPath: join(claudeDir, ".env"),
 	personaPath: join(claudeDir, "CLAUDE.md"),
 	skillsDir: join(claudeDir, "skills"),

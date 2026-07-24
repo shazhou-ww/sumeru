@@ -36,7 +36,7 @@ erDiagram
 - `name` TEXT PK, `api_type` TEXT, `base_url` TEXT, `api_key` TEXT, timestamps
 
 **models** table:
-- `id` TEXT PK (`provider:name`), `provider` TEXT FK→providers, `model` TEXT (LLM name), `context_window` INT, `tool_use` BOOL, `streaming` BOOL, `metadata` JSON, timestamps
+- `id` TEXT PK (globally unique name), `provider` TEXT FK→providers, `model` TEXT (LLM name), `context_window` INT, `tool_use` BOOL, `streaming` BOOL, `metadata` JSON, timestamps
 
 **personas** table:
 - `name` TEXT PK, `instructions` TEXT, `skills` JSON array, timestamps
@@ -53,7 +53,7 @@ Individual files at `data/prototypes/<name>.yaml`:
 ```yaml
 name: sarsapa
 persona: default
-model: siliconflow:deepseek-v3
+model: deepseek-v3
 adapter: sarsapa
 extensions:
   - rust
@@ -61,7 +61,7 @@ extensions:
 
 Each prototype references:
 - A persona name (resolved from SQLite)
-- A model id in `provider:name` format (resolved from SQLite)
+- A model id (globally unique name, resolved from SQLite)
 - An adapter name (Docker image tag derived from adapter; declared in `prototypes/<name>/compose.yaml`)
 - Optional `extensions[]` — ordered list of Extension names to layer on the base adapter image
 - Optional `defaults: { maxTurns, timeout, resources: { cpu, memory } }`
@@ -88,7 +88,7 @@ maxRunning: 3
 workspaceRoot: ~/.sumeru/workspace
 envFile: ~/.sumeru/.env
 defaults:
-  model: siliconflow:deepseek-v3   # provider:name fallback when prototype.model is null
+  model: deepseek-v3   # model ID fallback when prototype.model is null
   timeout: 120
   maxTurns: 20
   resources:
@@ -103,7 +103,7 @@ The legacy `models` section is deprecated — a warning is emitted if present, d
 `resolveSessionModel()` in config.ts handles model override:
 
 1. If session provides an inline model object → use directly.
-2. If session provides a `"provider:name"` string → look up in SQLite.
+2. If session provides a model ID string → look up in SQLite.
 3. Otherwise → use prototype's model id, then host.yaml `defaults.model` → look up in SQLite.
 
 Resolution joins Provider (for endpoint + apiType) with Model (for LLM model name) to produce a `ModelConfig` used by the adapter init frame.

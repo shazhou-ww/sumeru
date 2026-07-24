@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 (2026-07-06)
+## 0.3.0 (2026-07-24)
 
 ### ⚠️ Breaking Changes
 
@@ -9,6 +9,11 @@
   - Removed: `sumeru image build`
   - Removed: `sumeru model <session> <model-id>` shortcut
   - New: `sumeru session exec/model/reset/snapshot/turns`
+- **Model ID format**: Changed from `provider:name` to globally unique model ID
+  - Models are now referenced by their unique ID (e.g. `claude-sonnet-4.5`) instead of `provider:name` format
+  - `sumeru model add` now takes model ID as first argument, with `--provider` flag
+  - `sumeru prototype add --model` accepts model ID directly
+  - Session model override accepts model ID string
 - **API**: `POST /sessions/:id/commands` type `"chat"` is deprecated (use `POST /sessions/:id/messages`)
 - **Architecture**: Eliminated `@sumeru/sumeru-session` package (#250)
   - Session loop framework moved to `@sumeru/adapter-core`
@@ -23,7 +28,7 @@
 - **CLI**: `sumeru session send` — added `--model` and `--env` flags (#246)
 - **CLI**: `sumeru session turns <id> [--after N]` — query turn history (#245)
 - **CLI**: `sumeru session exec <id> -- <command>` — run shell in container
-- **CLI**: `sumeru session model <id> <provider:model>` — switch model
+- **CLI**: `sumeru session model <id> <model-id>` — switch model
 - **CLI**: `sumeru session reset <id> [--persona]` — clear context
 - **CLI**: `sumeru session snapshot <id> <name>` — docker commit
 

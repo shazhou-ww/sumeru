@@ -91,14 +91,14 @@ flowchart TB
 `POST /sessions` body:
 ```json
 { "prototype": "sarsapa", "project": "myapp", "task": "fix bug",
-  "model": "siliconflow:deepseek-v3",
+  "model": "deepseek-v3",
   "env": { "EXTRA_VAR": "value" }
 }
 ```
 
 The `model` field supports three forms:
 - omitted / `null` — resolve via prototype.model, then host.yaml `defaults.model`
-- `"provider:name"` — string reference to SQLite model (e.g. `"copilot:claude-opus-4.6"`)
+- `"model-id"` — string reference to SQLite model (e.g. `"deepseek-v3"`)
 - `{ provider: {...}, name: "..." }` — inline model config override
 
 Resolution priority: **session override > prototype.model > defaults.model**

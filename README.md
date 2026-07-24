@@ -66,7 +66,7 @@ sumeru session send <id> "message"              — 发送后续消息
 sumeru session logs <id> [--follow]             — 查看 turn 输出
 sumeru session turns <id> [--after N]           — 查询 turn 历史
 sumeru session exec <id> -- <command>           — 容器内执行命令
-sumeru session model <id> <provider:model>      — 切换 model
+sumeru session model <id> <model-id>             — 切换 model
 sumeru session reset <id> [--persona <name>]    — 清上下文
 sumeru session snapshot <id> <name>             — docker commit
 sumeru session stop <id>                        — 停止 session

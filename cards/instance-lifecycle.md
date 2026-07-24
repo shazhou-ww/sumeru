@@ -44,7 +44,7 @@ stateDiagram-v2
 
 1. Validates prototype existence and compose path.
 2. Resolves project path within `workspaceRoot` (path traversal guard).
-3. Resolves model: session override > prototype.model > host.yaml `defaults.model` (via SQLite lookup, format `provider:name`).
+3. Resolves model: session override > prototype.model > host.yaml `defaults.model` (via SQLite lookup by model ID).
 4. Waits for a running slot (`maxRunning` concurrency gate).
 5. Calls transport `up` (Docker Compose) and stores container handle.
 6. Initializes adapter session (init frame → ready).
@@ -64,7 +64,7 @@ Sessions support model override at two points:
 
 When model changes mid-session, the adapter session is invalidated and re-initialized with new model config. This enables hot-switching models between messages without creating a new session.
 
-Model references use `provider:name` format (e.g. `siliconflow:deepseek-v3`) or inline `{ provider, name }` objects.
+Model references use a model ID string (e.g. `deepseek-v3`) or inline `{ provider, name }` objects.
 
 ## Concurrency Control
 

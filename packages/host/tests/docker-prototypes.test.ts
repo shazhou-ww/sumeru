@@ -46,7 +46,7 @@ describe("prototypeFromDockerLabels", () => {
 			imageId: "sha256:abc",
 			labels: {
 				"sumeru.harness": "codex",
-				"sumeru.model": "my-provider:my-model",
+				"sumeru.model": "my-model",
 				"sumeru.persona": "worker",
 			},
 		});
@@ -54,7 +54,7 @@ describe("prototypeFromDockerLabels", () => {
 		expect(info.composePath).toBeNull();
 		expect(info.imageTag).toBe("sumeru/codex:dev");
 		expect(info.prototype.adapter).toBe("codex");
-		expect(info.prototype.model).toBe("my-provider:my-model");
+		expect(info.prototype.model).toBe("my-model");
 		expect(info.prototype.persona).toBe("worker");
 		expect(info.prototypeHash).toMatch(/^[a-f0-9]{64}$/);
 	});
@@ -162,7 +162,7 @@ describe("discoverDockerPrototypes", () => {
 				return {
 					stdout: JSON.stringify({
 						"sumeru.harness": "codex",
-						"sumeru.model": "provider:model",
+						"sumeru.model": "my-model",
 					}),
 					stderr: "",
 					exitCode: 0,
@@ -173,6 +173,6 @@ describe("discoverDockerPrototypes", () => {
 		expect(prototypes.has("codex")).toBe(true);
 		expect(prototypes.has("base")).toBe(false);
 		expect(prototypes.get("codex")?.imageTag).toBe("sumeru/codex:dev");
-		expect(prototypes.get("codex")?.prototype.model).toBe("provider:model");
+		expect(prototypes.get("codex")?.prototype.model).toBe("my-model");
 	});
 });

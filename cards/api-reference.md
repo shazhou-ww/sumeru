@@ -25,7 +25,7 @@ updated: 2026-07-02
 | HEAD | Matches GET routes |
 | Method mismatch | `405` + `Allow` header |
 | Unknown route | `404 route_not_found` |
-| Model ID format | `provider:name` (e.g. `copilot:claude-opus-4.6`) |
+| Model ID format | Globally unique name (e.g. `claude-sonnet-4.5`) |
 | Model resolution | **session override > prototype.model > host.yaml `defaults.model`** |
 
 ### Session `model` field (POST body)
@@ -143,7 +143,7 @@ Models are nested under providers. Flat list at `/models`.
 | `name` | **yes** | `string` | Must match `:name` path param |
 | `persona` | **yes** | `string` | Must exist in SQLite |
 | `adapter` | **yes** | `string` | Must be registered adapter |
-| `model` | no | `string` \| `null` | `provider:name`; required unless adapter is `builtin-only` |
+| `model` | no | `string` \| `null` | Model ID; required unless adapter is `builtin-only` |
 | `extensions` | no | `string[]` \| `null` | Each extension must exist |
 | `defaults` | no | object \| `null` | `{ maxTurns, timeout, resources: { cpu, memory } }` |
 

@@ -11,7 +11,7 @@ setup:
   - "sumeru prototype rm atest-claude-code-snap 2>/dev/null; true"
   - "sumeru provider add atest-anthropic --api-type anthropic --base-url http://127.0.0.1:4142 --api-key dummy 2>/dev/null; true"
   - "sumeru model add claude-sonnet-4.5 --provider atest-anthropic --model claude-sonnet-4.5 2>/dev/null; true"
-  - "sumeru prototype add atest-claude-code --adapter claude-code --model atest-anthropic:claude-sonnet-4.5"
+  - "sumeru prototype add atest-claude-code --adapter claude-code --model claude-sonnet-4.5"
 
 teardown:
   - "sumeru session rm $SID_BASE 2>/dev/null; true"

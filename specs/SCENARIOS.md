@@ -99,11 +99,11 @@
 
 | # | 场景 | API | CLI | Spec |
 |---|------|-----|-----|------|
-| 7.1 | 列出 models | `GET /models` 或 `GET /providers/:name/models` | `sumeru model list [--provider <name>]` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
-| 7.2 | 获取 model 详情 | `GET /providers/:name/models/:modelName` | `sumeru model get <provider:name>` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
-| 7.3 | 创建 model | `PUT /providers/:name/models/:modelName` | `sumeru model add <provider:name> --model <api-model>` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
-| 7.4 | 更新 model | `PUT /providers/:name/models/:modelName` | `sumeru model update <provider:name> --model/--context-window` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
-| 7.5 | 删除 model | `DELETE /providers/:name/models/:modelName` | `sumeru model remove <provider:name>` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
+| 7.1 | 列出 models | `GET /models` | `sumeru model list [--provider <name>]` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
+| 7.2 | 获取 model 详情 | `GET /models/:name` | `sumeru model get <name>` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
+| 7.3 | 创建 model | `PUT /models/:name` | `sumeru model add <name> --provider <name> --model <api-model>` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
+| 7.4 | 更新 model | `PUT /models/:name` | `sumeru model update <name> --provider/--model/--context-window` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
+| 7.5 | 删除 model | `DELETE /models/:name` | `sumeru model remove <name>` | ✅ atest: `specs/atest/model-crud-lifecycle.test.yaml` |
 
 ---
 

@@ -8,7 +8,7 @@
 |------|------|------|------|
 | name | string | ✓ | From URL path, unique identifier |
 | persona | string | ✓ | Must reference existing Persona in SQLite |
-| model | string\|null | conditional | Format "provider:name"; must exist in SQLite. Null only if adapter.providerMode === "builtin-only" |
+| model | string\|null | conditional | Model ID; must exist in SQLite. Null only if adapter.providerMode === "builtin-only" |
 | adapter | string | ✓ | Must reference existing adapter in adapter registry |
 | image | string\|null | ✗ | Docker image override |
 

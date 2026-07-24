@@ -3,8 +3,7 @@
  * by shelling out to `claude -p … --output-format stream-json --verbose`.
  */
 
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type {
 	AdapterImpl,
@@ -80,7 +79,7 @@ export function createClaudeCodeAdapter(
 	async function persistState(state: PersistedAdapterState): Promise<void> {
 		const path = statePath();
 		mkdirSync(dirname(path), { recursive: true });
-		await writeFile(path, JSON.stringify(state), "utf-8");
+		writeFileSync(path, JSON.stringify(state), "utf-8");
 	}
 
 	function resolveModel(): string | null {
@@ -88,18 +87,6 @@ export function createClaudeCodeAdapter(
 		const fromInit = initConfig.model.name;
 		if (fromInit.length > 0 && fromInit !== "auto") return fromInit;
 		return defaultModel;
-	}
-
-	async function writeInitArtifacts(
-		config: AdapterInitConfig,
-		baseDir: string,
-	): Promise<void> {
-		await writeFile(join(baseDir, "CLAUDE.md"), config.instructions, "utf8");
-		for (const skill of config.skills) {
-			const skillDir = join(baseDir, ".cursor", "skills", skill.name);
-			await mkdir(skillDir, { recursive: true });
-			await writeFile(join(skillDir, "SKILL.md"), skill.content, "utf8");
-		}
 	}
 
 	function resolveCwd(message: AdapterInboxMessage): string {
@@ -135,7 +122,9 @@ export function createClaudeCodeAdapter(
 
 	async function init(config: AdapterInitConfig): Promise<void> {
 		initConfig = config;
-		await writeInitArtifacts(config, resolveHomeDir());
+		// Persona (CLAUDE.md), skills, and model config are written by the
+		// harness layer (subcommand.ts). The adapter only persists its own
+		// session state (Claude Code session ID for --resume).
 		const existing = loadPersistedState();
 		await persistState({
 			sessionId: existing?.sessionId ?? null,
@@ -148,7 +137,6 @@ export function createClaudeCodeAdapter(
 		if (state === null) return false;
 		initConfig = state.initConfig;
 		sessionId = state.sessionId;
-		await writeInitArtifacts(state.initConfig, resolveHomeDir());
 		return true;
 	}
 
@@ -179,27 +167,14 @@ export function createClaudeCodeAdapter(
 	async function* runHandle(
 		message: AdapterInboxMessage,
 	): AsyncGenerator<TurnValue, DoneValue> {
-		const config = initConfig as AdapterInitConfig;
 		const cwd = resolveCwd(message);
-		if (cwd !== resolveHomeDir()) {
-			await writeInitArtifacts(config, cwd);
-		}
-
 		const model = resolveModel();
 		const args = buildArgs(message.content, sessionId, model);
 
 		// Build environment with model config
 		const spawnEnv: NodeJS.ProcessEnv = { ...process.env };
-		console.error(
-			"[DEBUG] initConfig.model:",
-			JSON.stringify(initConfig?.model, null, 2),
-		);
 		if (initConfig?.model.apiKey) {
 			spawnEnv.ANTHROPIC_API_KEY = initConfig.model.apiKey;
-			console.error(
-				"[DEBUG] Set ANTHROPIC_API_KEY:",
-				`${initConfig.model.apiKey.substring(0, 10)}...`,
-			);
 		}
 		if (
 			initConfig?.model.provider &&
@@ -207,15 +182,7 @@ export function createClaudeCodeAdapter(
 			initConfig.model.provider.endpoint
 		) {
 			spawnEnv.ANTHROPIC_BASE_URL = initConfig.model.provider.endpoint;
-			console.error(
-				"[DEBUG] Set ANTHROPIC_BASE_URL:",
-				initConfig.model.provider.endpoint,
-			);
 		}
-		console.error(
-			"[DEBUG] spawnEnv keys:",
-			Object.keys(spawnEnv).filter((k) => k.startsWith("ANTHROPIC")),
-		);
 
 		let streamResult: SpawnStreamResult;
 		try {
@@ -242,7 +209,10 @@ export function createClaudeCodeAdapter(
 				if (event.type === "meta") {
 					if (event.sessionId !== sessionId) {
 						sessionId = event.sessionId;
-						await persistState({ sessionId, initConfig: config });
+						await persistState({
+							sessionId,
+							initConfig: initConfig as AdapterInitConfig,
+						});
 					}
 				} else if (event.type === "turn") {
 					const turn = event.turn;
@@ -279,7 +249,10 @@ export function createClaudeCodeAdapter(
 			const fromResult = resultLine.session_id;
 			if (typeof fromResult === "string" && fromResult.length > 0) {
 				sessionId = fromResult;
-				await persistState({ sessionId, initConfig: config });
+				await persistState({
+					sessionId,
+					initConfig: initConfig as AdapterInitConfig,
+				});
 			}
 		}
 

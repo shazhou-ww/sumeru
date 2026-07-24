@@ -24,19 +24,19 @@ sumeru server { start | stop | status }
 sumeru session list
 sumeru session get <id>
 sumeru session add <prototype> --project <path> --task <description> [--env KEY=VAL]
-sumeru session send <id> "message" [--model <provider:name>] [--env KEY=VAL]
+sumeru session send <id> "message" [--model <model-id>] [--env KEY=VAL]
 sumeru session stop <id>
 sumeru session remove <id>
 sumeru session logs <id> [--follow]
 sumeru session turns <id> [--after N]
 sumeru session exec <id> -- <command...>
-sumeru session model <id> <provider:model>
+sumeru session model <id> <model-id>
 sumeru session reset <id> [--persona <name>]
 sumeru session snapshot <id> <name>
 
 sumeru adapter { list | get | models } <name>
 sumeru provider { list | get | add | update | remove } <name>
-sumeru model { list | get | add | update | remove } <provider:name>
+sumeru model { list | get | add | update | remove } <name>
 sumeru prototype { list | get | add | update | remove } <name>
 sumeru extension { list | get | put | remove } <name>
 sumeru persona { list | get | add | update | remove } <name>

@@ -37,7 +37,7 @@ flowchart TB
 ```mermaid
 flowchart LR
   subgraph SQLite
-    P[Provider] --> M[Model\nid = provider:name]
+    P[Provider] --> M[Model\nid = unique name]
     PS[Persona] --> SK[Skill]
   end
   subgraph YAML
@@ -51,11 +51,11 @@ flowchart LR
 ```
 
 - **Provider**: name, apiType (anthropic|openai), baseUrl, apiKey
-- **Model**: name (short), provider FK, LLM model string, contextWindow, toolUse, streaming. ID = `provider:name`
+- **Model**: name (globally unique ID), provider FK, LLM model string, contextWindow, toolUse, streaming.
 - **Persona**: name, instructions, skills[] references
 - **Skill**: name, content (text blob)
 - **Extension**: name, description, dockerfile instructions
-- **Prototype**: name, persona ref, model ref (`provider:name`), adapter, extensions[], optional defaults
+- **Prototype**: name, persona ref, model ref (model ID), adapter, extensions[], optional defaults
 
 ## Runtime Responsibilities
 

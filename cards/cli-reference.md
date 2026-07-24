@@ -30,7 +30,7 @@ updated: 2026-07-02
 
 | Topic | Rule |
 |-------|------|
-| Model ID | `provider:name` (e.g. `copilot:claude-opus-4.6`) |
+| Model ID | Globally unique name (e.g. `claude-sonnet-4.5`). Provider is a separate `--provider` flag on `model add`. |
 | Model resolution | **session > prototype > host.yaml `defaults.model`** (session create passes `model: null` → server resolves) |
 | HTTP errors | Printed as `<code>: <message>` via `HostClientError` |
 
@@ -101,11 +101,11 @@ search
 
 | Command | Args | Flags | Description |
 |---------|------|-------|-------------|
-| `sumeru model list` | — | `--provider`, `--host`, `--port` | GET `/models` or `/providers/:name/models` |
-| `sumeru model get` | `<provider:name>` | `--host`, `--port` | GET `/providers/:name/models/:modelName` |
-| `sumeru model add` | `<provider:name>` | `--model` **req**, `--context-window`, `--no-tool-use`, `--no-streaming`, `--host`, `--port` | PUT nested model (create) |
-| `sumeru model update` | `<provider:name>` | `--model`, `--context-window`, `--no-tool-use`, `--no-streaming`, `--host`, `--port` | PUT nested model (partial update) |
-| `sumeru model remove` | `<provider:name>` | `--host`, `--port` | DELETE `/providers/:name/models/:modelName` |
+| `sumeru model list` | — | `--provider`, `--host`, `--port` | GET `/models` (optionally filtered by provider) |
+| `sumeru model get` | `<name>` | `--host`, `--port` | GET `/models/:name` |
+| `sumeru model add` | `<name>` | `--provider` **req**, `--model` **req**, `--context-window`, `--host`, `--port` | PUT `/models/:name` (create) |
+| `sumeru model update` | `<name>` | `--provider`, `--model`, `--context-window`, `--host`, `--port` | PUT `/models/:name` (partial update) |
+| `sumeru model remove` | `<name>` | `--host`, `--port` | DELETE `/models/:name` |
 
 ---
 

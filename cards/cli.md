@@ -43,7 +43,7 @@ Performs one-shot initialization:
 1. Creates `~/.sumeru` directory tree (data/, prototypes/, workspace/).
 2. Writes `host.yaml` (create-only, never overwrites).
 3. Upserts `.env` with provider API key.
-4. Seeds SQLite: Provider → Model (`provider:name`) → Persona ("default").
+4. Seeds SQLite: Provider → Model (by ID) → Persona ("default").
 5. Creates `data/prototypes/sarsapa.yaml` and `prototypes/sarsapa/compose.yaml` (with `defaults.model` in host.yaml).
 6. Builds the sarsapa Docker image (best-effort, skipped if not in repo).
 
@@ -64,13 +64,13 @@ Setup is **idempotent** — re-running upserts provider/model/env without breaki
 ## Prototype Commands
 
 - `sumeru prototype list` — list prototypes via API.
-- `sumeru prototype add <name> --model <provider:name> --adapter <adapter-name> [--persona <name>]`
+- `sumeru prototype add <name> --model <model-id> --adapter <adapter-name> [--persona <name>]`
 - `sumeru prototype remove <name>`
 
 ## Provider / Model Commands
 
 - `sumeru provider list|add|remove` — upsert/delete for providers (HTTP PUT).
-- `sumeru model list|add|remove` — upsert/delete for models (`provider:name` format).
+- `sumeru model list|add|update|remove` — CRUD for models (by ID).
 
 ## Session Commands
 
