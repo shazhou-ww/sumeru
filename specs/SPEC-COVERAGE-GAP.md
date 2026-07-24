@@ -213,15 +213,28 @@
 
 ### Section 5 - Turns 查询
 
+- [x] **5.1** - 列出所有 turns
+  - API: `GET /sessions/:id/turns`
+  - Spec: [session/turns-list/spec.md](./session/turns-list/spec.md)
+  - atest: `specs/atest/turns-list.test.yaml` ✅
+  - 难度: 低
+
+- [x] **5.2** - 按工具过滤 turns
+  - API: `GET /sessions/:id/turns?tools=<tool>`
+  - Spec: [session/turns-filter-by-tool/spec.md](./session/turns-filter-by-tool/spec.md)
+  - atest: `specs/atest/turns-filter-by-tool.test.yaml` ✅
+  - 难度: 低
+
 - [x] **5.3** - Turn discriminated union
   - API: turn 结构区分 assistant / tool
   - Spec: [turns/turn-discriminated-union/spec.md](./turns/turn-discriminated-union/spec.md)
   - atest: `specs/atest/turn-discriminated-union.test.yaml` ✅
   - 难度: 低（数据结构验证）
 
-- [ ] **5.4** - 时间过滤（before=ISO）
+- [x] **5.4** - 时间过滤（before=ISO）
   - API: `GET /sessions/:id/turns?before=<ISO>`
   - Spec: [session/turns-watch/spec.md](./session/turns-watch/spec.md)
+  - atest: `specs/atest/turns-filter-by-time.test.yaml` ✅
   - 难度: 中
 
 - [x] **5.5** - Watch 实时监视
@@ -385,9 +398,10 @@
 ## 统计
 
 - **总计**: 47 个场景
-- **待补充**: 15 个
+- **待补充**: 14 个
 - **被阻塞**: 2 个
-- **已完成**: 30 个
+- **已完成**: 33 个
+- **覆盖率**: 70%
 
 ### 已完成清单
 - ✅ 1.1 - 查询 Host 状态 (server-status.test.yaml)
@@ -395,7 +409,10 @@
 - ✅ 2.2 - 按 ID 获取 Session (session-get-by-id.test.yaml)
 - ✅ 2.3 - 创建 session（prototype 不存在）(error-paths.test.yaml)
 - ✅ 2.4 - 创建 session（project 路径越界）(invalid-project-path-400.test.yaml)
+- ✅ 5.1 - 列出所有 turns (turns-list.test.yaml)
+- ✅ 5.2 - 按工具过滤 turns (turns-filter-by-tool.test.yaml)
 - ✅ 5.3 - Turn discriminated union (turn-discriminated-union.test.yaml)
+- ✅ 5.4 - 时间过滤（before=ISO）(turns-filter-by-time.test.yaml)
 - ✅ 5.5 - Watch 实时监视 (turns-watch-realtime.test.yaml)
 - ✅ 5.6 - Watch 输出格式一致性 (turns-watch-realtime.test.yaml)
 - ✅ 5.7 - Turns 显示 tool calls (turns-show-tool-calls.test.yaml)

@@ -1,0 +1,38 @@
+name: turns-filter-by-time
+description: Test turns filtering by time (before=ISO) (5.4)
+
+setup:
+  - "sumeru prototype add test-turns-time --model qwen3.7-max --adapter sarsapa 2>/dev/null || true"
+
+teardown:
+  - "sumeru session rm $SID 2>/dev/null || true"
+  - "sumeru prototype rm test-turns-time 2>/dev/null || true"
+
+steps:
+  - name: "5.4: 创建 session"
+    command: "export SID=$(sumeru session add test-turns-time 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID"
+    expect: "ses_"
+
+  - name: "5.4: 发送第一条消息"
+    command: "sumeru session send $SID 'Say hello' 2>&1"
+    expect: "Message sent"
+
+  - name: "5.4: 等待回复"
+    command: "sleep 10 && sumeru session turns $SID 2>&1 | head -10"
+    expect: "hello"
+
+  - name: "5.4: 记录当前时间"
+    command: "export NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ) && echo $NOW"
+    expect: "2026"
+
+  - name: "5.4: 发送第二条消息"
+    command: "sumeru session send $SID 'Say goodbye' 2>&1"
+    expect: "Message sent"
+
+  - name: "5.4: 等待第二条回复"
+    command: "sleep 10 && sumeru session turns $SID 2>&1 | tail -10"
+    expect: "goodbye"
+
+  - name: "5.4: 使用 before 过滤（应只返回第一条）"
+    command: "curl -s http://localhost:7900/sessions/$SID/turns?before=$NOW | jq -r '.turns | length'"
+    expect: "2"
