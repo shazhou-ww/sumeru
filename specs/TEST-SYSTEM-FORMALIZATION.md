@@ -9,14 +9,14 @@
 
 本文定义一个**树状测试系统**：
 
-- **节点** = 一个测试用例（执行一条命令 + 判定）
+- **节点** = 一个测试用例（执行步骤 + 判定）
 - **边** = 状态依赖（子节点依赖父节点执行后的状态）
 - **状态隔离** = `docker commit` 产出的 image tag
 
 目标：
 
 - 最大限度复用前置状态（一个 setup 被多个子节点共享）
-- 失败隔离（一个节点失败，只影响其子树）
+- 失败剪枝（一个节点失败，只影响其子树）
 - 资源可控（DFS 遍历，只保留当前路径上的 image）
 
 ---
@@ -80,14 +80,39 @@ S₃         = [T_provider-add, T_model-add, T_session-add]
 
 一个测试用例 (TestCase) 是树上的一个**有向边**：
 
-```
-TestCase = (id, parent, command, mutator_judge, probes)
+```typescript
+type TestCase = {
+  parent: string;      // 父节点 name（根节点为空）
+  name: string;        // 用例标识
+  description: string; // 用例描述
+  steps: Step[];       // 主步骤（在 pre-condition 容器内执行）
+  probes: Probe[];     // 0~N 个状态探针（在 post-condition 容器内执行）
+}
 
-id              : 用例标识
-parent          : 父节点 id（根节点的 parent 为空）
-command         : 被测命令（mutator）
-mutator_judge   : 对命令输出的判定（exit_code / stdout 匹配）
-probes          : 0~N 个状态探针（每个探针包含 command + state_judge）
+type Probe = {
+  name: string;
+  steps: Step[];
+}
+
+type Step = HttpStep | ExecStep
+
+type HttpStep = {
+  type: 'http';
+  request: HttpRequest;
+  assert?: Assertion;
+}
+
+type ExecStep = {
+  type: 'exec';
+  command: string;
+  assert?: Assertion;
+}
+
+type Assertion = LlmAssertion | JsonataAssertion | RegexAssertion
+
+type LlmAssertion = { type: 'llm'; prompt: string }
+type JsonataAssertion = { type: 'jsonata'; expression: string }
+type RegexAssertion = { type: 'regex'; conditions: { path: string; regex: string }[] }
 ```
 
 TestCase 执行后，如果通过，产出一个新的 image tag：
@@ -96,36 +121,21 @@ TestCase 执行后，如果通过，产出一个新的 image tag：
 S_post = docker commit(S_pre_container)
 ```
 
-### 3.2 两阶段判定
+### 3.2 步骤与探针
 
-每个 TestCase 有**两个判定阶段**：
+TestCase 的 `steps` 和 Probe 的 `steps` **结构完全对称**——
+都是 Step 数组，每个 step 有 command/request + optional assert。
 
-| 阶段 | 时机 | 判什么 | 怎么判 |
-|:-----|:-----|:-------|:-------|
-| **Mutator Judge** | 命令执行后 | 命令本身是否正确执行 | 匹配 exit_code、stdout 内容 |
-| **State Judge** | commit 后 | 系统状态是否符合预期 | 从新 tag 启动探针容器，执行探测命令 |
+区别仅在于**执行环境**：
 
-**Mutator Judge**：轻量，直接检查命令的 stdout/stderr/exit_code。
+| 属性 | steps（主步骤） | probes（探针） |
+|:-----|:---------------|:--------------|
+| 执行容器 | pre-condition tag 启动的容器 | post-condition tag 启动的独立容器 |
+| 执行时机 | 状态变换前 | 状态变换后（commit 后） |
+| 生命周期 | 容器在步骤执行完后继续用于 commit | 容器用完即销毁 |
+| 能力 | 可执行任意命令 | 可执行任意命令（包括 mutable） |
 
-```yaml
-mutator_judge:
-  exit_code: 0
-  stdout_contains: "provider 'openrouter' added"
-```
-
-**State Judge**：从 post-condition tag 启动独立容器（一次性），执行任意探测命令。
-探针容器是**用完即弃的副本**，可以做任何操作（包括 mutable），不影响原始状态。
-
-```yaml
-probes:
-  - command: "sumeru provider list"
-    judge:
-      stdout_contains: "openrouter"
-  - command: "cat /data/providers.json"
-    judge:
-      stdout_json:
-        "$.providers[0].name": "openrouter"
-```
+每个 step 的 `assert` 是可选的——中间步骤可以只关心执行成功，不做断言。
 
 ### 3.3 探针容器
 
@@ -164,17 +174,20 @@ S₀ (base image tag)
 └── help-command          (无子节点，不产生 commit)
 ```
 
-### 4.2 失败传播
+### 4.2 失败剪枝
 
-如果一个 TestCase 的 **Mutator Judge 失败**，则其**整个子树不可达**。
+TestCase 的**任何判定失败**（step assert 或 probe assert），都会导致**子树剪枝**：
 
-如果一个 TestCase 的 **State Judge 失败**（探针判定不通过），
-当前节点标记为 FAIL，但不影响子树执行（因为 mutator 本身是成功的，
-状态已正确变换，只是验证不符合预期——这种情况应该报告但不阻断）。
+| 失败类型 | 原因 | 结果 |
+|:---------|:-----|:-----|
+| **Step assert 失败** | 命令执行结果不符合预期 | 剪枝 |
+| **Probe assert 失败** | 状态验证不符合预期，子节点的 pre-condition 不保证成立 | 剪枝 |
 
-> **设计决策**：State Judge 失败是否阻断子树？
-> - **不阻断**（当前方案）：状态已变换，子节点可以继续
-> - **阻断**（备选）：状态验证失败意味着后续测试基于不可信的状态
+剪枝语义：失败节点的**整个子树不可达**。
+
+这符合测试的实际语义：如果 provider-add 的状态验证失败，
+依赖它的 model-add、prototype-add、session-add 都不应该执行——
+因为它们依赖的 pre-condition 已不可信。
 
 ### 4.3 森林
 
@@ -198,30 +211,35 @@ execute(node, parent_tag):
   # 步骤 1: 从 pre-condition tag 启动容器
   container = docker run parent_tag
 
-  # 步骤 2: 在容器内执行被测命令
-  output = exec(container, node.command)
+  # 步骤 2: 在容器内按顺序执行 steps
+  for step in node.steps:
+    output = exec_or_http(container, step)
+    if step.assert && !evaluate(step.assert, output):
+      report FAIL
+      docker rm container
+      return    # 剪枝：跳过 probes 和子节点
 
-  # 步骤 3: Mutator Judge — 验证命令输出
-  if !mutator_judge(output):
-    report FAIL
-    return
-
-  # 步骤 4: 是否需要 commit？
+  # 步骤 3: 是否需要 commit？
   need_commit = node.has_children OR node.has_probes
 
   if need_commit:
     new_tag = docker commit container   # 产生 post-condition tag
 
-  # 步骤 5-6: State Judge — 从新 tag 启动探针容器
+  # 步骤 4: 从新 tag 启动探针容器，执行 probes
   if node.has_probes:
     probe_container = docker run new_tag
     for probe in node.probes:
-      probe_output = exec(probe_container, probe.command)
-      if !state_judge(probe_output):
-        report FAIL
+      for step in probe.steps:
+        output = exec_or_http(probe_container, step)
+        if step.assert && !evaluate(step.assert, output):
+          report FAIL (probe: probe.name)
+          docker rm probe_container
+          docker rmi new_tag
+          docker rm container
+          return    # 剪枝：probe 失败也剪枝
     docker rm probe_container
 
-  # 步骤 7: 继续执行子节点
+  # 步骤 5: 继续执行子节点
   if node.has_children:
     for child in node.children:
       execute(child, new_tag)
@@ -279,63 +297,94 @@ execute(node, parent_tag):
 测试过程中产生的 tag 使用统一前缀，方便清理：
 
 ```
-btest/ephemeral:<node-id>
+btest/ephemeral:<node-name>
 ```
 
 测试结束后（正常或异常），清理所有 `btest/ephemeral:*` tag。
 
 ---
 
-## 7 声明格式（草案）
+## 7 声明格式
 
-### 7.1 TestCase
+### 7.1 TestCase 示例
 
 ```yaml
-- id: provider-add
-  parent: null                    # 根节点
-  command: "sumeru provider add openrouter --api-base https://openrouter.ai/api/v1"
-  mutator_judge:
-    exit_code: 0
-    stdout_contains: "added"
+- name: provider-add
+  parent: null
+  description: "添加 openrouter provider"
+  steps:
+    - type: exec
+      command: "sumeru provider add openrouter --api-key $OPENROUTER_API_KEY"
+      assert:
+        type: regex
+        conditions:
+          - { path: "stdout", regex: "provider 'openrouter' added" }
+    - type: exec
+      command: "sumeru provider list"
+      assert:
+        type: jsonata
+        expression: "$count(providers[name='openrouter']) = 1"
   probes:
-    - command: "sumeru provider list"
-      judge:
-        stdout_contains: "openrouter"
+    - name: verify-provider-persisted
+      steps:
+        - type: exec
+          command: "cat /data/providers.json"
+          assert:
+            type: jsonata
+            expression: "providers[0].name = 'openrouter'"
 
-- id: model-add
+- name: model-add
   parent: provider-add
-  command: "sumeru model add claude-4-sonnet --provider openrouter"
-  mutator_judge:
-    exit_code: 0
+  description: "添加 claude-4-sonnet model"
+  steps:
+    - type: exec
+      command: "sumeru model add claude-4-sonnet --provider openrouter"
+      assert:
+        type: regex
+        conditions:
+          - { path: "exit_code", regex: "^0$" }
   probes:
-    - command: "sumeru model list"
-      judge:
-        stdout_contains: "claude-4-sonnet"
+    - name: verify-model-listed
+      steps:
+        - type: exec
+          command: "sumeru model list"
+          assert:
+            type: regex
+            conditions:
+              - { path: "stdout", regex: "claude-4-sonnet" }
 ```
 
 ### 7.2 环境变量
 
-TestCase 的 command 和 probe command 中可以引用环境变量，
+Step 的 command 和 HTTP request 中可以引用环境变量，
 用于隔绝 token、密钥等敏感信息：
 
 ```yaml
-- id: provider-add
+- type: exec
   command: "sumeru provider add openrouter --api-key $OPENROUTER_API_KEY"
+- type: http
+  request:
+    method: POST
+    url: "https://api.example.com/auth"
+    headers:
+      Authorization: "Bearer $API_TOKEN"
 ```
 
 环境变量在运行时从 `.env` 文件或 shell 环境注入，不是参数化。
 
-### 7.3 Judge 表达
+### 7.3 Assertion 类型
 
-Mutator Judge 和 State Judge 支持以下判定方式：
-
-| 方式 | 示例 | 说明 |
+| 类型 | 结构 | 说明 |
 |:-----|:-----|:-----|
-| `exit_code` | `exit_code: 0` | 精确匹配退出码 |
-| `stdout_contains` | `stdout_contains: "added"` | stdout 包含子串 |
-| `stdout_regex` | `stdout_regex: "provider \\w+ added"` | stdout 匹配正则 |
-| `stdout_json` | `stdout_json: {"$.name": "foo"}` | JSON 路径断言 |
-| `stderr_contains` | `stderr_contains: "warning"` | stderr 包含子串 |
+| `regex` | `{ type: 'regex', conditions: [{ path, regex }] }` | 对指定路径的值做正则匹配 |
+| `jsonata` | `{ type: 'jsonata', expression: '...' }` | 用 JSONata 表达式断言 JSON 输出 |
+| `llm` | `{ type: 'llm', prompt: '...' }` | 用 LLM 判定输出是否符合预期 |
+
+**regex** 的 `path` 支持：
+- `stdout` / `stderr` — 命令输出
+- `exit_code` — 退出码
+- `status` — HTTP 响应状态码
+- `body` — HTTP 响应体
 
 ---
 
@@ -353,7 +402,7 @@ btest 不是 atest 的替代品，而是面向不同场景的兄弟工具：
 ### 8.2 分层
 
 ```
-声明层（YAML Tree）       → 定义 TestCase、父子关系、Judge
+声明层（YAML Tree）       → 定义 TestCase、父子关系、assertions
 执行层（btest runner）     → DFS 遍历，docker commit/rmi，判定
 ```
 
@@ -363,8 +412,9 @@ btest 不是 atest 的替代品，而是面向不同场景的兄弟工具：
 
 ## 9 开放问题
 
-1. **State Judge 失败是否阻断子树？** 当前方案是不阻断（只报告），
-   但某些场景可能需要阻断（状态不可信时不应继续）。
+1. **树的组织方式** — name/parent 如何表达和引用？
+   单文件 vs 多文件？树的定义在哪个文件？
+   跨文件引用如何处理？
 
 2. **错误恢复** — 如果 `docker commit` 失败（磁盘满、Docker daemon 崩溃），
    如何恢复？是从头重跑还是从最近的 tag 恢复？
