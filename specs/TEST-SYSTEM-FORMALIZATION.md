@@ -1,19 +1,23 @@
-# CLI / API 行为测试系统的形式化（草案）
+# 树状行为测试系统（btest）
 
 > 状态：理论讨论，尚未进入工程实施
 
 ## 1 动机
 
-Sumeru 是一个状态化系统：它管理 provider、model、prototype、session、Docker 容器等资源，
-每个子命令都是一次状态变换。当前的 atest 是**扁平的执行路径**——每个 YAML 文件包含
-一条完整的 setup → action → verify 链，路径之间无法复用，状态无法共享。
+当前 atest 是**扁平的执行路径**——每个 YAML 文件包含一条完整的 setup → action → verify 链，
+路径之间无法复用，状态无法共享。
 
-本文尝试形式化描述一个**树状测试体系**：用声明式的状态和变换描述，自动生成
-可执行的 atest 路径。目标：
+本文定义一个**树状测试系统**：
 
-- 最大限度复用测试用例（一个变换被多个计划共享）
-- 状态透明（每个节点的上下文是什么）
-- 失败隔离（一个变换失败，只影响其子树）
+- **节点** = 一个测试用例（执行一条命令 + 判定）
+- **边** = 状态依赖（子节点依赖父节点执行后的状态）
+- **状态隔离** = `docker commit` 产出的 image tag
+
+目标：
+
+- 最大限度复用前置状态（一个 setup 被多个子节点共享）
+- 失败隔离（一个节点失败，只影响其子树）
+- 资源可控（DFS 遍历，只保留当前路径上的 image）
 
 ---
 
@@ -21,12 +25,12 @@ Sumeru 是一个状态化系统：它管理 provider、model、prototype、sessi
 
 ### 2.1 系统
 
-一个系统是 **状态空间 S** 和 **变换集合 T** 的组合：
+一个系统是**状态空间 S** 和**变换集合 T** 的组合：
 
 ```
 System = (S₀, {Tᵢ})
 
-S₀  : 初始状态（空状态）
+S₀  : 初始状态（base image tag）
 Tᵢ  : 变换（transition），接收输入，改变状态，产生输出
 ```
 
@@ -35,30 +39,30 @@ Tᵢ  : 变换（transition），接收输入，改变状态，产生输出
 ```
 Tᵢ: (S, Iᵢ) → (S', Oᵢ)
 
-S   : 变换前的系统状态
+S   : 变换前的系统状态（docker image tag）
 Iᵢ  : 输入（CLI 命令 / HTTP request）
-S'  : 变换后的系统状态
+S'  : 变换后的系统状态（新的 docker image tag）
 Oᵢ  : 输出（stdout, stderr, exit_code / HTTP response）
 ```
 
 ### 2.2 状态的隐晦性
 
-系统状态 S 是**全局的、隐晦的**。我们无法直接观测 S 的完整内容，只能通过
-**探针**（probe）——immutable 指令——来刺探 S 的部分信息。
+系统状态 S 是**全局的、隐晦的**。我们无法直接观测 S 的完整内容，
+只能通过探针（probe）来刺探 S 的部分信息。
 
 这意味着：我们无法验证两个状态是否等价，因为我们无法全量比较 S。
 
 ### 2.3 树视角
 
-由于无法验证状态等价性，我们放弃 DAG 视角（状态合并），采用**树视角**：
+由于无法验证状态等价性，采用**树视角**：
 
 - 状态 S 由其**到达路径**唯一标识
 - S = T[]，即从 S₀ 到达当前状态所经过的变换序列
 - 空序列 [] 代表初始状态 S₀
 
 ```
-S₀         = []
-S₁         = [T_provider-add]
+S₀         = []                        (base image tag)
+S₁         = [T_provider-add]          (commit 后的 tag)
 S₂         = [T_provider-add, T_model-add]
 S₃         = [T_provider-add, T_model-add, T_session-add]
 ```
@@ -77,60 +81,64 @@ S₃         = [T_provider-add, T_model-add, T_session-add]
 一个测试用例 (TestCase) 是树上的一个**有向边**：
 
 ```
-TestCase = (id, S_pre, I, Judge)
+TestCase = (id, parent, command, mutator_judge, probes)
 
-id    : 用例标识
-S_pre : 前置状态（路径，即 T[]）
-I     : 输入（mutator 指令）
-Judge : 判定函数，验证 I 执行后的 S 是否符合预期
+id              : 用例标识
+parent          : 父节点 id（根节点的 parent 为空）
+command         : 被测命令（mutator）
+mutator_judge   : 对命令输出的判定（exit_code / stdout 匹配）
+probes          : 0~N 个状态探针（每个探针包含 command + state_judge）
 ```
 
-TestCase 执行后，产生新状态：
+TestCase 执行后，如果通过，产出一个新的 image tag：
 
 ```
-S_post = S_pre ++ [TestCase]   // 路径追加
+S_post = docker commit(S_pre_container)
 ```
 
-### 3.2 Judge
+### 3.2 两阶段判定
 
-Judge 的形式：**执行一条或多条指令，观察输出，判定是否符合预期**。
+每个 TestCase 有**两个判定阶段**：
 
-```
-Judge: (S_pre, I, O, Instructions[]) → {PASS, FAIL}
+| 阶段 | 时机 | 判什么 | 怎么判 |
+|:-----|:-----|:-------|:-------|
+| **Mutator Judge** | 命令执行后 | 命令本身是否正确执行 | 匹配 exit_code、stdout 内容 |
+| **State Judge** | commit 后 | 系统状态是否符合预期 | 从新 tag 启动探针容器，执行探测命令 |
 
-Instructions[] : 判定过程中执行的指令序列
-```
+**Mutator Judge**：轻量，直接检查命令的 stdout/stderr/exit_code。
 
-Judge 不需要预先分类指令的 mutable/immutable。Judge 执行前后通过
-**Docker 快照机制**保存和恢复现场，因此 Judge 可以执行任何指令，
-不会破坏状态链。
-
-```
-执行流程：
-  1. 保存现场（docker commit / checkpoint）
-  2. Judge 执行判定指令（可能 mutable）
-  3. 观察输出，判定 PASS / FAIL
-  4. 恢复现场（docker restore / revert）
-  5. 状态链继续
+```yaml
+mutator_judge:
+  exit_code: 0
+  stdout_contains: "provider 'openrouter' added"
 ```
 
-这使得 Judge 的能力大幅增强：可以调用 `session send`、`session add` 等
-任何指令来探测系统行为，只要现场能恢复。
+**State Judge**：从 post-condition tag 启动独立容器（一次性），执行任意探测命令。
+探针容器是**用完即弃的副本**，可以做任何操作（包括 mutable），不影响原始状态。
 
-### 3.3 状态保护：Docker 快照机制
+```yaml
+probes:
+  - command: "sumeru provider list"
+    judge:
+      stdout_contains: "openrouter"
+  - command: "cat /data/providers.json"
+    judge:
+      stdout_json:
+        "$.providers[0].name": "openrouter"
+```
 
-Judge 可以执行任何指令（包括 mutable），但不会破坏状态链，因为：
+### 3.3 探针容器
 
-| 时机 | 操作 | 机制 |
-|------|------|------|
-| Judge 执行前 | **保存现场** | `docker commit` → 临时 image |
-| Judge 执行中 | 自由执行指令 | 任何指令，包括 mutable |
-| Judge 执行后 | **恢复现场** | `docker run` 从临时 image 启动新容器 |
+探针跑在从 committed tag 启动的**独立容器**里：
 
-这带来两个重要性质：
+| 属性 | 说明 |
+|:-----|:-----|
+| 生命周期 | 用完即销毁 |
+| 隔离性 | 完全隔离，探针的任何操作不影响原始状态 |
+| 能力 | 可执行任意命令（包括 mutable） |
+| 数量 | 0~N 个，串行执行（省内存） |
 
-1. **Judge 无约束**：不需要区分 probe / mutator，Judge 可以用任何指令来验证
-2. **状态链不被污染**：Judge 的副作用被隔离，下一个 TestCase 看到的是干净的 S_post
+探针容器串行执行，峰值内存 = 1 个 mutator 容器 + 1 个探针容器。
 
 ---
 
@@ -138,193 +146,236 @@ Judge 可以执行任何指令（包括 mutable），但不会破坏状态链，
 
 ### 4.1 结构
 
-所有 TestCase 构成一棵**以 S₀ = [] 为根的树**。每个节点是一个 TestCase，
-其父节点是 S_pre 的最后一个 TestCase。
+所有 TestCase 构成一棵**以 S₀（base image tag）为根的树**。
 
 ```
-S₀ = []
-├── T_provider-add (S_pre=[])
-│   ├── T_model-add (S_pre=[provider-add])
-│   │   ├── T_prototype-add (S_pre=[provider-add, model-add])
-│   │   │   ├── T_session-add (S_pre=[..., prototype-add])
-│   │   │   │   ├── T_session-stop (S_pre=[..., session-add])
-│   │   │   │   └── T_session-remove (S_pre=[..., session-add])
-│   │   │   └── T_prototype-update (S_pre=[..., prototype-add])
-│   │   └── T_model-update (S_pre=[provider-add, model-add])
-│   └── T_provider-update (S_pre=[provider-add])
-├── T_persona-add (S_pre=[])
-│   └── T_persona-remove (S_pre=[persona-add])
-└── T_server-start (S_pre=[])
-    └── T_server-stop (S_pre=[server-start])
+S₀ (base image tag)
+├── provider-add
+│   ├── model-add
+│   │   ├── prototype-add
+│   │   │   ├── session-add
+│   │   │   │   ├── session-stop
+│   │   │   │   └── session-remove
+│   │   │   └── prototype-update
+│   │   └── model-update
+│   └── provider-update
+├── persona-add
+│   └── persona-remove
+└── help-command          (无子节点，不产生 commit)
 ```
 
 ### 4.2 失败传播
 
-如果一个 TestCase 失败（Judge 返回 FAIL），则其**整个子树不可达**。
+如果一个 TestCase 的 **Mutator Judge 失败**，则其**整个子树不可达**。
 
-这符合测试的实际语义：如果 provider-add 失败，依赖它的 model-add、
-prototype-add、session-add 都不应该执行。
+如果一个 TestCase 的 **State Judge 失败**（探针判定不通过），
+当前节点标记为 FAIL，但不影响子树执行（因为 mutator 本身是成功的，
+状态已正确变换，只是验证不符合预期——这种情况应该报告但不阻断）。
 
----
+> **设计决策**：State Judge 失败是否阻断子树？
+> - **不阻断**（当前方案）：状态已变换，子节点可以继续
+> - **阻断**（备选）：状态验证失败意味着后续测试基于不可信的状态
 
-## 5 路径生成
+### 4.3 森林
 
-### 5.1 测试计划 (TestPlan)
+如果有多棵独立的树（互不依赖的测试路径），它们构成一个**森林**。
+所有树的根共享同一个 base image tag（S₀）。
 
-一个测试计划是树上的一条**从根到某个节点的路径**：
-
-```
-TestPlan = [TestCase₁, TestCase₂, ..., TestCaseₙ]
-
-约束：
-- TestCase₁.S_pre = []  (从根开始)
-- TestCaseᵢ₊₁.S_pre = [TestCase₁, ..., TestCaseᵢ]  (连续路径)
-```
-
-### 5.2 从树生成 atest
-
-给定一个 TestPlan，可以自动生成 atest YAML：
-
-```
-TestPlan: [provider-add, model-add, prototype-add, session-add]
-
-生成的 atest:
-  setup:
-    - "sumeru provider add ..."        # provider-add.I
-    - "sumeru model add ..."           # model-add.I
-    - "sumeru prototype add ..."       # prototype-add.I
-  steps:
-    - command: "sumeru session add ..."  # session-add.I
-      judge: ...                         # session-add.Judge
-    - command: "sumeru session get ..."  # session-add.Judge 中的探针
-      judge: ...
-    - command: "sumeru provider list"    # provider-add.Judge 中的探针（可选）
-      judge: ...
-```
-
-生成规则：
-1. TestPlan 中除最后一个 TestCase 外的所有 I，组成 setup
-2. 最后一个 TestCase 的 I + Judge 组成 steps
-3. 可选：验证路径上所有 TestCase 的 Judge（全路径验证）
-
-### 5.3 用例复用
-
-一个 TestCase 被多个 TestPlan 共享：
-
-```
-provider-add 被以下 plan 共享：
-  - [provider-add, model-add, ...]
-  - [provider-add, provider-update, ...]
-  - [provider-add, provider-remove, ...]
-```
-
-不需要在每个 atest 里重复写 `sumeru provider add` 的 setup。
+实际上可以视为一个虚拟根节点，所有实际根都是它的子节点。
 
 ---
 
-## 6 与 Docker Image Chain 的关联
+## 5 执行模型
 
-### 6.1 类比
+### 5.1 DFS 遍历
 
-Sumeru 有 Docker Image Chain：
+采用**深度优先遍历**执行测试树。核心原则：**只保留当前 DFS 路径上的 image tag**。
 
-```
-sumeru/base:dev
-  ├── sumeru/sarsapa:dev
-  ├── sumeru/hermes:dev
-  └── sumeru/claude-code:dev
-```
-
-测试体系有状态链：
+### 5.2 执行流程
 
 ```
-S₀ = []
-  ├── [provider-add]
-  ├── [provider-add, model-add]
-  └── [provider-add, model-add, prototype-add]
+execute(node, parent_tag):
+  # 步骤 1: 从 pre-condition tag 启动容器
+  container = docker run parent_tag
+
+  # 步骤 2: 在容器内执行被测命令
+  output = exec(container, node.command)
+
+  # 步骤 3: Mutator Judge — 验证命令输出
+  if !mutator_judge(output):
+    report FAIL
+    return
+
+  # 步骤 4: 是否需要 commit？
+  need_commit = node.has_children OR node.has_probes
+
+  if need_commit:
+    new_tag = docker commit container   # 产生 post-condition tag
+
+  # 步骤 5-6: State Judge — 从新 tag 启动探针容器
+  if node.has_probes:
+    probe_container = docker run new_tag
+    for probe in node.probes:
+      probe_output = exec(probe_container, probe.command)
+      if !state_judge(probe_output):
+        report FAIL
+    docker rm probe_container
+
+  # 步骤 7: 继续执行子节点
+  if node.has_children:
+    for child in node.children:
+      execute(child, new_tag)
+    docker rmi new_tag   # 所有子节点跑完，删掉这个 tag
+
+  docker rm container
 ```
 
-### 6.2 状态快照
+### 5.3 Commit 策略
 
-如果每个命名状态 S 都能被**快照**（snapshot），那么测试可以跳过 setup 链：
+**不是每个 test case 都需要 commit。** 只在以下情况 commit：
 
-```
-Plan: [provider-add, model-add, prototype-add, session-add]
+| 条件 | 是否 commit | 原因 |
+|:-----|:------------|:-----|
+| 有子节点 | ✅ | 子节点需要从 post-condition tag 启动 |
+| 有探针 | ✅ | 探针需要从 post-condition tag 启动独立容器 |
+| 叶子节点 + 无探针 | ❌ | 不需要保留状态，直接执行+判定即可 |
 
-当前做法（每次都从 S₀ 开始）：
-  1. provider add  → S₁
-  2. model add     → S₂
-  3. prototype add → S₃
-  4. session add   → 测这个
+### 5.4 资源消耗
 
-优化后（从 S₃ 的快照开始）：
-  1. 加载 S₃ 快照  → 直接到达 S₃
-  2. session add   → 测这个
-```
+| 资源 | 消耗 | 原因 |
+|:-----|:-----|:-----|
+| **磁盘** | O(路径深度) | 只保留当前 DFS 路径上的 tag，已完成的 tag 立即删除 |
+| **内存** | 1 mutator + 1 probe | 探针串行执行，峰值两个容器 |
+| **Docker 层数** | base 层数 + 路径深度 | `docker commit` 每次只增加 **1 层**（overlay2 增量层），不会增加多层 |
+| **时间** | ~5-10 秒/case | 容器启动 + 命令执行 + commit，43 个 case ≈ 5-7 分钟 |
 
-### 6.3 快照的实现
-
-Sumeru Host 的状态包含两部分：
-
-| 状态 | 存储位置 | 快照方式 |
-|------|---------|---------|
-| Docker 容器 | Docker daemon | `docker commit` → image |
-| Host 注册表 | SQLite 文件 | 复制 .sqlite 文件 |
-
-完整快照 = Docker image + SQLite dump。
-
-或者更简单的方案：**让 Host 运行在 Docker 内**，这样 `docker commit`
-就能捕获完整状态（包括 SQLite）。
-
-### 6.4 Snapshot 命名约定
-
-```
-sumeru/test-state:provider-added
-sumeru/test-state:model-added
-sumeru/test-state:prototype-added
-sumeru/test-state:session-created
-```
+**Docker 层深度**：base image 通常 5-10 层，路径深度通常 < 20，总计 < 30 层，
+远低于 Docker overlay2 的 127 层上限。不存在层深度问题。
 
 ---
 
-## 7 与 atest 的关系
+## 6 与 Docker 的关系
 
-### 7.1 atest 是路径的执行
+### 6.1 黑盒视角
 
-atest YAML 是测试树上一条路径的**具体执行**。当前 atest 是手写的，
-未来可以从树声明自动生成。
+测试系统是**黑盒**的——它只关心 CLI 命令和输出，不关心被测系统的内部实现。
+`docker commit` 是测试框架的基础设施能力，不是被测系统特有的。
 
-### 7.2 分层
+### 6.2 Docker Image Chain
+
+测试框架不依赖被测系统的 Docker image chain。它只需要一个 base image tag
+作为入口（S₀），然后通过 `docker commit` 构建自己的状态链。
 
 ```
-声明层（YAML/Tree）           → 定义 TestCase、状态、路径
-生成层（tool）               → 从声明生成 atest YAML
-执行层（agentic-test-runner） → 执行 atest，产出 JSONL trace
+被测系统的 image chain:
+  sumeru/base:dev → sumeru/hermes:dev → ...
+
+测试框架的 tag chain（运行时动态产生）:
+  base_tag → tag_provider-added → tag_model-added → ...
 ```
 
-### 7.3 扩展方向
+### 6.3 Tag 命名
 
-1. **声明式 TestCase** — 在 YAML 中定义 (id, S_pre, I, Judge)
-2. **路径组合** — 定义 TestPlan 时只列出 TestCase id 序列
-3. **自动生成 atest** — 工具将 TestPlan 展开为 atest YAML
-4. **状态快照** — 可选优化，跳过已知状态的 setup
+测试过程中产生的 tag 使用统一前缀，方便清理：
+
+```
+btest/ephemeral:<node-id>
+```
+
+测试结束后（正常或异常），清理所有 `btest/ephemeral:*` tag。
 
 ---
 
-## 8 开放问题
+## 7 声明格式（草案）
 
-1. **Judge 的表达** — 如何声明式地描述 Judge？当前 atest 用 regex/jsonata/llm，
-   但状态树模型里 Judge 需要验证 S_post 的属性，可能需要更丰富的断言语言。
+### 7.1 TestCase
 
-2. **参数化** — TestCase 如何参数化？比如 `provider-add` 可以有不同的 name，
-   参数化后 S_pre 的表达会更复杂。
+```yaml
+- id: provider-add
+  parent: null                    # 根节点
+  command: "sumeru provider add openrouter --api-base https://openrouter.ai/api/v1"
+  mutator_judge:
+    exit_code: 0
+    stdout_contains: "added"
+  probes:
+    - command: "sumeru provider list"
+      judge:
+        stdout_contains: "openrouter"
 
-3. **并行执行** — 树的不同分支能否并行执行？比如 persona-add 和 provider-add
-   互不依赖，可以并行。但当前 atest 是串行的。
+- id: model-add
+  parent: provider-add
+  command: "sumeru model add claude-4-sonnet --provider openrouter"
+  mutator_judge:
+    exit_code: 0
+  probes:
+    - command: "sumeru model list"
+      judge:
+        stdout_contains: "claude-4-sonnet"
+```
 
-4. **状态回退** — 某些 TestCase 需要"回到"之前的状态（比如测试 delete 后
-   再测试 add），如何在树模型中表达？
+### 7.2 环境变量
 
-5. **快照的维护成本** — 每次代码变更后，快照可能需要重建。如何自动化？
+TestCase 的 command 和 probe command 中可以引用环境变量，
+用于隔绝 token、密钥等敏感信息：
 
-6. **与现有 atest 的迁移** — 现有 43 个 atest 如何映射到树模型？
+```yaml
+- id: provider-add
+  command: "sumeru provider add openrouter --api-key $OPENROUTER_API_KEY"
+```
+
+环境变量在运行时从 `.env` 文件或 shell 环境注入，不是参数化。
+
+### 7.3 Judge 表达
+
+Mutator Judge 和 State Judge 支持以下判定方式：
+
+| 方式 | 示例 | 说明 |
+|:-----|:-----|:-----|
+| `exit_code` | `exit_code: 0` | 精确匹配退出码 |
+| `stdout_contains` | `stdout_contains: "added"` | stdout 包含子串 |
+| `stdout_regex` | `stdout_regex: "provider \\w+ added"` | stdout 匹配正则 |
+| `stdout_json` | `stdout_json: {"$.name": "foo"}` | JSON 路径断言 |
+| `stderr_contains` | `stderr_contains: "warning"` | stderr 包含子串 |
+
+---
+
+## 8 与 atest 的关系
+
+### 8.1 定位
+
+btest 不是 atest 的替代品，而是面向不同场景的兄弟工具：
+
+| 工具 | 场景 | 模型 |
+|:-----|:-----|:-----|
+| **atest** | 扁平的、无状态的 API/CLI 测试 | YAML 文件 = 独立路径 |
+| **btest** | 树状的、状态化的行为测试 | 节点 = 有向边，状态 = tag chain |
+
+### 8.2 分层
+
+```
+声明层（YAML Tree）       → 定义 TestCase、父子关系、Judge
+执行层（btest runner）     → DFS 遍历，docker commit/rmi，判定
+```
+
+不需要"从树生成 atest"这一层——btest 直接执行树声明。
+
+---
+
+## 9 开放问题
+
+1. **State Judge 失败是否阻断子树？** 当前方案是不阻断（只报告），
+   但某些场景可能需要阻断（状态不可信时不应继续）。
+
+2. **错误恢复** — 如果 `docker commit` 失败（磁盘满、Docker daemon 崩溃），
+   如何恢复？是从头重跑还是从最近的 tag 恢复？
+
+3. **并行分支** — 当前 DFS 是串行的。如果两个分支完全独立
+   （比如 persona-add 和 provider-add），理论上可以并行。
+   但并行意味着同时保留多个路径上的 tag，磁盘消耗增加。
+   是否值得？
+
+4. **Base image 准备** — S₀ 的 base image 如何准备？
+   是否需要一个 `before_all` hook 来构建/拉取 base image？
+
+5. **CI/CD 集成** — btest 的输出格式是什么？
+   如何与 CI 系统集成（JUnit XML、GitHub Checks）？
