@@ -1,4 +1,4 @@
-# 树状行为测试系统（btest）
+# 树状行为测试系统（atest）
 
 > 状态：理论讨论，尚未进入工程实施
 
@@ -7,7 +7,7 @@
 当前 atest 是**扁平的执行路径**——每个 YAML 文件包含一条完整的 setup → action → verify 链，
 路径之间无法复用，状态无法共享。
 
-本文定义一个**树状测试系统**：
+本文将 atest 升级为**树状测试系统**：
 
 - **节点** = 一个测试用例（执行步骤 + 判定）
 - **边** = 状态依赖（子节点依赖父节点执行后的状态）
@@ -82,11 +82,12 @@ S₃         = [T_provider-add, T_model-add, T_session-add]
 
 ```typescript
 type TestCase = {
-  parent: string;      // 父节点 name（根节点为空）
-  name: string;        // 用例标识
-  description: string; // 用例描述
-  steps: Step[];       // 主步骤（在 pre-condition 容器内执行）
-  probes: Probe[];     // 0~N 个状态探针（在 post-condition 容器内执行）
+  parent: string;              // 父节点文件路径（相对路径，根节点省略或为 null）
+  name: string;                // 用例标识
+  description: string;         // 用例描述
+  env: string[];               // 所需环境变量（缺失则跳过并报告）
+  steps: Step[];               // 主步骤（在 pre-condition 容器内执行）
+  probes: Probe[];             // 0~N 个状态探针（在 post-condition 容器内执行）
 }
 
 type Probe = {
@@ -99,12 +100,14 @@ type Step = HttpStep | ExecStep
 type HttpStep = {
   type: 'http';
   request: HttpRequest;
+  timeout?: string;            // 如 "30s", "2m"
   assert?: Assertion;
 }
 
 type ExecStep = {
   type: 'exec';
   command: string;
+  timeout?: string;            // 如 "30s", "2m"
   assert?: Assertion;
 }
 
@@ -196,6 +199,32 @@ TestCase 的**任何判定失败**（step assert 或 probe assert），都会导
 
 实际上可以视为一个虚拟根节点，所有实际根都是它的子节点。
 
+### 4.4 树的组织方式
+
+**扁平多文件，parent 用相对文件路径引用：**
+
+```
+tests/
+  atest.yaml                    # 项目配置
+  provider/
+    provider-add.yaml           # 根节点（parent: null 或省略）
+    model-add.yaml              # parent: ./provider-add.yaml
+    prototype-add.yaml          # parent: ./model-add.yaml
+  session/
+    session-add.yaml            # parent: ../provider/prototype-add.yaml
+  persona/
+    persona-add.yaml            # 根节点
+```
+
+**Parent 引用规则：**
+- 根节点：`parent: null` 或省略 parent 字段
+- 子节点：`parent` 是相对于当前文件的 YAML 文件路径
+- 同目录：`parent: ./provider-add.yaml`
+- 跨目录：`parent: ../provider/model-add.yaml`
+- 父文件必须在 include 范围内，否则报错
+
+**文件系统即树结构**——目录层级自然反映树的层级，不需要全局注册表。
+
 ---
 
 ## 5 执行模型
@@ -208,29 +237,35 @@ TestCase 的**任何判定失败**（step assert 或 probe assert），都会导
 
 ```
 execute(node, parent_tag):
-  # 步骤 1: 从 pre-condition tag 启动容器
+  # 步骤 1: 检查 env
+  for env_var in node.env:
+    if !is_set(env_var):
+      report SKIP (missing env: env_var)
+      return
+
+  # 步骤 2: 从 pre-condition tag 启动容器
   container = docker run parent_tag
 
-  # 步骤 2: 在容器内按顺序执行 steps
+  # 步骤 3: 在容器内按顺序执行 steps
   for step in node.steps:
-    output = exec_or_http(container, step)
+    output = exec_or_http(container, step, step.timeout)
     if step.assert && !evaluate(step.assert, output):
       report FAIL
       docker rm container
       return    # 剪枝：跳过 probes 和子节点
 
-  # 步骤 3: 是否需要 commit？
+  # 步骤 4: 是否需要 commit？
   need_commit = node.has_children OR node.has_probes
 
   if need_commit:
     new_tag = docker commit container   # 产生 post-condition tag
 
-  # 步骤 4: 从新 tag 启动探针容器，执行 probes
+  # 步骤 5: 从新 tag 启动探针容器，执行 probes
   if node.has_probes:
     probe_container = docker run new_tag
     for probe in node.probes:
       for step in probe.steps:
-        output = exec_or_http(probe_container, step)
+        output = exec_or_http(probe_container, step, step.timeout)
         if step.assert && !evaluate(step.assert, output):
           report FAIL (probe: probe.name)
           docker rm probe_container
@@ -239,7 +274,7 @@ execute(node, parent_tag):
           return    # 剪枝：probe 失败也剪枝
     docker rm probe_container
 
-  # 步骤 5: 继续执行子节点
+  # 步骤 6: 继续执行子节点
   if node.has_children:
     for child in node.children:
       execute(child, new_tag)
@@ -297,64 +332,129 @@ execute(node, parent_tag):
 测试过程中产生的 tag 使用统一前缀，方便清理：
 
 ```
-btest/ephemeral:<node-name>
+atest/ephemeral:<node-name>
 ```
 
-测试结束后（正常或异常），清理所有 `btest/ephemeral:*` tag。
+测试结束后（正常或异常），清理所有 `atest/ephemeral:*` tag。
 
 ---
 
-## 7 声明格式
+## 7 项目配置：atest.yaml
 
-### 7.1 TestCase 示例
+### 7.1 结构
 
 ```yaml
-- name: provider-add
-  parent: null
-  description: "添加 openrouter provider"
-  steps:
-    - type: exec
-      command: "sumeru provider add openrouter --api-key $OPENROUTER_API_KEY"
-      assert:
-        type: regex
-        conditions:
-          - { path: "stdout", regex: "provider 'openrouter' added" }
-    - type: exec
-      command: "sumeru provider list"
-      assert:
-        type: jsonata
-        expression: "$count(providers[name='openrouter']) = 1"
-  probes:
-    - name: verify-provider-persisted
-      steps:
-        - type: exec
-          command: "cat /data/providers.json"
-          assert:
-            type: jsonata
-            expression: "providers[0].name = 'openrouter'"
+image:
+  dockerfile: tests/Dockerfile
+  args:                          # 可选
+    NODE_VERSION: "22"
 
-- name: model-add
-  parent: provider-add
-  description: "添加 claude-4-sonnet model"
-  steps:
-    - type: exec
-      command: "sumeru model add claude-4-sonnet --provider openrouter"
-      assert:
-        type: regex
-        conditions:
-          - { path: "exit_code", regex: "^0$" }
-  probes:
-    - name: verify-model-listed
-      steps:
-        - type: exec
-          command: "sumeru model list"
-          assert:
-            type: regex
-            conditions:
-              - { path: "stdout", regex: "claude-4-sonnet" }
+include:
+  - tests/**/*.yaml
+
+env_file: tests/.env            # 可选，默认同目录 .env，CLI 可覆盖
+
+output: .atest-output           # 可选
 ```
 
-### 7.2 环境变量
+### 7.2 字段说明
+
+| 字段 | 必填 | 说明 |
+|:-----|:-----|:-----|
+| `image.dockerfile` | ✅ | Dockerfile 路径（相对于 atest.yaml） |
+| `image.args` | ❌ | Docker build args，key-value map |
+| `include` | ✅ | Test case 文件的 glob patterns |
+| `env_file` | ❌ | 环境变量文件路径（默认 = atest.yaml 同目录 `.env`） |
+| `output` | ❌ | 测试输出目录（默认 `.atest-output`） |
+
+**Docker build context** = atest.yaml 所在目录（不可配置）。
+
+### 7.3 CLI 覆盖
+
+```bash
+atest run                          # 用 atest.yaml 默认配置
+atest run --env-file x.env         # 覆盖 env_file
+atest run tests/provider/          # 只跑子集（但会检查 parent 依赖完整性）
+```
+
+### 7.4 Base Image 构建
+
+Base image 由项目的 Dockerfile 构建，包含：
+- 被测系统的二进制 / 构建产物
+- 运行时依赖（Node.js、Python 等）
+- 测试所需的路径配置（确保 CLI 可被调用）
+
+```dockerfile
+# tests/Dockerfile
+FROM node:20
+COPY dist/ /app/dist/
+COPY packages/cli/bin/ /app/bin/
+RUN cd /app && npm link
+WORKDIR /app
+```
+
+每个项目必须有自己的 Dockerfile。
+
+---
+
+## 8 声明格式
+
+### 8.1 TestCase 示例
+
+```yaml
+# tests/provider/provider-add.yaml
+name: provider-add
+description: "添加 openrouter provider"
+env:
+  - OPENROUTER_API_KEY
+steps:
+  - type: exec
+    command: "sumeru provider add openrouter --api-key $OPENROUTER_API_KEY"
+    assert:
+      type: regex
+      conditions:
+        - { path: "stdout", regex: "provider 'openrouter' added" }
+  - type: exec
+    command: "sumeru provider list"
+    assert:
+      type: jsonata
+      expression: "$count(providers[name='openrouter']) = 1"
+probes:
+  - name: verify-provider-persisted
+    steps:
+      - type: exec
+        command: "cat /data/providers.json"
+        assert:
+          type: jsonata
+          expression: "providers[0].name = 'openrouter'"
+```
+
+```yaml
+# tests/provider/model-add.yaml
+name: model-add
+parent: ./provider-add.yaml
+description: "添加 claude-4-sonnet model"
+env:
+  - OPENROUTER_API_KEY
+steps:
+  - type: exec
+    command: "sumeru model add claude-4-sonnet --provider openrouter"
+    assert:
+      type: regex
+      conditions:
+        - { path: "exit_code", regex: "^0$" }
+probes:
+  - name: verify-model-listed
+    steps:
+      - type: exec
+        command: "sumeru model list"
+        assert:
+          type: regex
+          conditions:
+            - { path: "stdout", regex: "claude-4-sonnet" }
+```
+
+### 8.2 环境变量
 
 Step 的 command 和 HTTP request 中可以引用环境变量，
 用于隔绝 token、密钥等敏感信息：
@@ -370,9 +470,12 @@ Step 的 command 和 HTTP request 中可以引用环境变量，
       Authorization: "Bearer $API_TOKEN"
 ```
 
-环境变量在运行时从 `.env` 文件或 shell 环境注入，不是参数化。
+环境变量来源优先级：
+1. Shell 环境变量
+2. env_file 文件
+3. TestCase 的 `env` 字段声明所需变量（缺失则 SKIP）
 
-### 7.3 Assertion 类型
+### 8.3 Assertion 类型
 
 | 类型 | 结构 | 说明 |
 |:-----|:-----|:-----|
@@ -388,44 +491,17 @@ Step 的 command 和 HTTP request 中可以引用环境变量，
 
 ---
 
-## 8 与 atest 的关系
-
-### 8.1 定位
-
-btest 不是 atest 的替代品，而是面向不同场景的兄弟工具：
-
-| 工具 | 场景 | 模型 |
-|:-----|:-----|:-----|
-| **atest** | 扁平的、无状态的 API/CLI 测试 | YAML 文件 = 独立路径 |
-| **btest** | 树状的、状态化的行为测试 | 节点 = 有向边，状态 = tag chain |
-
-### 8.2 分层
-
-```
-声明层（YAML Tree）       → 定义 TestCase、父子关系、assertions
-执行层（btest runner）     → DFS 遍历，docker commit/rmi，判定
-```
-
-不需要"从树生成 atest"这一层——btest 直接执行树声明。
-
----
-
 ## 9 开放问题
 
-1. **树的组织方式** — name/parent 如何表达和引用？
-   单文件 vs 多文件？树的定义在哪个文件？
-   跨文件引用如何处理？
-
-2. **错误恢复** — 如果 `docker commit` 失败（磁盘满、Docker daemon 崩溃），
+1. **错误恢复** — 如果 `docker commit` 失败（磁盘满、Docker daemon 崩溃），
    如何恢复？是从头重跑还是从最近的 tag 恢复？
 
-3. **并行分支** — 当前 DFS 是串行的。如果两个分支完全独立
+2. **并行分支** — 当前 DFS 是串行的。如果两个分支完全独立
    （比如 persona-add 和 provider-add），理论上可以并行。
    但并行意味着同时保留多个路径上的 tag，磁盘消耗增加。
    是否值得？
 
-4. **Base image 准备** — S₀ 的 base image 如何准备？
-   是否需要一个 `before_all` hook 来构建/拉取 base image？
-
-5. **CI/CD 集成** — btest 的输出格式是什么？
+3. **CI/CD 集成** — 输出格式是什么？
    如何与 CI 系统集成（JUnit XML、GitHub Checks）？
+
+4. **Step retry / timeout** — 更完善的重试机制设计（暂不纳入 MVP）。
