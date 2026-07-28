@@ -1,0 +1,19 @@
+description: 创建一个新的 provider
+steps:
+- type: exec
+  command: sumeru provider add test-provider --api-type openai --base-url https://api.example.com
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: Created provider
+postcon:
+- name: verify-provider-exists
+  steps:
+  - type: exec
+    command: sumeru provider get test-provider --format json
+    assert:
+      type: regex
+      conditions:
+      - path: stdout
+        regex: '"name": "test-provider"'

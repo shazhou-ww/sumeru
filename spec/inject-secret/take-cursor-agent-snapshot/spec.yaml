@@ -1,0 +1,18 @@
+description: "对 cursor-agent session 创建 snapshot"
+steps:
+  - command: |
+      sumeru provider add cursor-provider --api-type openai --base-url https://api.cursor.sh 2>/dev/null || true
+      sumeru model add cursor-model --provider cursor-provider --model cursor-small 2>/dev/null || true
+      sumeru prototype add cursor-proto --adapter cursor-agent --model cursor-model 2>/dev/null || true
+      SID=$(sumeru session add cursor-proto --task "Remember secret: CURSOR-9012. Reply OK." 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1)
+      echo $SID > /tmp/cursor_session_id
+      sumeru server start 2>&1 &
+      sleep 3
+      echo "Using SID: $SID"
+      sumeru session snapshot $SID cursor-snapshot 2>&1
+      echo "Exit code: $?"
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "Snapshot created|Exit code: 0"

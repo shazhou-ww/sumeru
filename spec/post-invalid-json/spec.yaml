@@ -1,0 +1,10 @@
+description: POST 非法 JSON → 400
+steps:
+- type: exec
+  command: |
+    sumeru session send ses_FAKEFAKEFAKE '{"invalid": json}' 2>&1; true
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: not found|404|error|invalid

@@ -1,0 +1,9 @@
+description: 检查 turn 结构 (user vs assistant vs tool)
+steps:
+- type: exec
+  command: SID=$(cat /tmp/send_session_id) && sumeru session turns $SID --format json
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: ses_|turn|role|empty

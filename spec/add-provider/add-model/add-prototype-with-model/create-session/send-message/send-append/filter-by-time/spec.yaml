@@ -1,0 +1,9 @@
+description: 限制查询结果数量
+steps:
+- type: exec
+  command: SID=$(cat /tmp/send_session_id) && sumeru session turns $SID --limit 10 --format json
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: ses_|turn|role|empty

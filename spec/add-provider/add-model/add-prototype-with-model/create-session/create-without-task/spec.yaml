@@ -1,0 +1,10 @@
+description: 创建无 task 的 session
+steps:
+- type: exec
+  command: export SID2=$(sumeru session add test-proto 2>&1 | grep -o 'ses_[A-Z0-9]*'
+    | head -1) && echo SID2=$SID2 && echo $SID2 > /tmp/session_id_2
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: SID2=ses_[A-Z0-9]+

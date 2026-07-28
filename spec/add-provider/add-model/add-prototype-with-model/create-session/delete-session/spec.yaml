@@ -1,0 +1,9 @@
+description: 删除 session
+steps:
+- type: exec
+  command: SID=$(cat /tmp/session_id) && sumeru session remove $SID
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: Removed|removed|deleted

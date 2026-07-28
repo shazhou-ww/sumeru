@@ -1,0 +1,9 @@
+description: 列出 adapter 的内置模型（无 API key）
+steps:
+- type: exec
+  command: sumeru adapter models cursor-agent 2>&1; true
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: credential_missing|CURSOR_API_KEY|error|not set

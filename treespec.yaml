@@ -1,0 +1,5 @@
+name: sumeru
+spec: spec
+image:
+  dockerfile: spec/Dockerfile
+  tag: sumeru-test:base

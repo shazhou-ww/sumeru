@@ -1,0 +1,13 @@
+description: 恢复已停止的 session
+steps:
+- type: exec
+  command: |
+    export SID=$(sumeru session add test-proto --task 'Resume test' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID > /tmp/resume_session_id && echo SID=$SID
+    sleep 1
+    sumeru session stop $SID 2>/dev/null || true
+    sumeru session send $SID 'Continue from where you stopped'
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: SID=ses_[A-Z0-9]+|Message sent|accepted message

@@ -1,0 +1,9 @@
+description: 获取指定 session 的详细信息
+steps:
+- type: exec
+  command: SID=$(cat /tmp/session_id) && sumeru session get $SID --format json
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: '"id": "ses_[A-Z0-9]+"'

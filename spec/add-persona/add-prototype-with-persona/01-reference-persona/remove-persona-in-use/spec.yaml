@@ -1,0 +1,9 @@
+description: 删除被 prototype 引用的 persona → 409
+steps:
+  - type: exec
+    command: sumeru persona remove test-persona 2>&1; true
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: persona_in_use|409|in use

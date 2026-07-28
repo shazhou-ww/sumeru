@@ -1,0 +1,9 @@
+description: 发送追加消息
+steps:
+- type: exec
+  command: SID=$(cat /tmp/send_session_id) && sumeru session send $SID 'What is 3+3?'
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: Message sent|accepted message

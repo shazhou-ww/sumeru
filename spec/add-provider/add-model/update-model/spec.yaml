@@ -1,0 +1,19 @@
+description: 更新 model 属性
+steps:
+- type: exec
+  command: sumeru model update test-model --context-window 128k
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: Updated model
+postcon:
+- name: verify-update
+  steps:
+  - type: exec
+    command: sumeru model get test-model --format json
+    assert:
+      type: regex
+      conditions:
+      - path: stdout
+        regex: 128000|128k

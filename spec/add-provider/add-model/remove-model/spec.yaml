@@ -1,0 +1,19 @@
+description: 删除 model
+steps:
+- type: exec
+  command: sumeru model remove test-model
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: Removed model
+postcon:
+- name: verify-removal
+  steps:
+  - type: exec
+    command: sumeru model get test-model 2>&1; true
+    assert:
+      type: regex
+      conditions:
+      - path: stdout
+        regex: not found

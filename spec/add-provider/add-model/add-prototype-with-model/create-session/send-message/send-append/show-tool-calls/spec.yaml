@@ -1,0 +1,9 @@
+description: 显示工具调用
+steps:
+- type: exec
+  command: SID=$(cat /tmp/send_session_id) && sumeru session turns $SID
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: 'user|assistant|Say hello'

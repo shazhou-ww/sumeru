@@ -1,0 +1,4 @@
+description: 创建项目目录
+steps:
+- type: exec
+  command: mkdir -p ~/.sumeru/projects/test-project && echo 'Hello from project' > ~/.sumeru/projects/test-project/README.md

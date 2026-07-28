@@ -1,0 +1,9 @@
+description: 列出所有 sessions
+steps:
+- type: exec
+  command: sumeru session list --format json
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: ses_[A-Z0-9]+

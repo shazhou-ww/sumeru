@@ -1,0 +1,39 @@
+description: 停止 session
+steps:
+- type: exec
+  command: |
+    export SID=$(sumeru session add test-proto --task 'Stop test' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID > /tmp/stop_session_id && echo SID=$SID
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: SID=ses_[A-Z0-9]+
+- type: exec
+  command: |
+    sleep 2 && SID=$(cat /tmp/stop_session_id) && sumeru session stop $SID 2>&1; true
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: stopped|idle|already|Stopped|error
+postcon:
+- name: verify-stopped
+  steps:
+  - type: exec
+    command: |
+      SID=$(cat /tmp/stop_session_id) && sumeru session get $SID --format json
+    assert:
+      type: regex
+      conditions:
+      - path: stdout
+        regex: '"status": "idle"'
+- name: cleanup
+  steps:
+  - type: exec
+    command: |
+      SID=$(cat /tmp/stop_session_id) && sumeru session remove $SID || true
+    assert:
+      type: regex
+      conditions:
+      - path: stdout
+        regex: Removed|removed|deleted

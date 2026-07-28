@@ -1,0 +1,9 @@
+description: 列出所有 turns
+steps:
+- type: exec
+  command: SID=$(cat /tmp/send_session_id) && sumeru session turns $SID --format json
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: ses_|turn|role

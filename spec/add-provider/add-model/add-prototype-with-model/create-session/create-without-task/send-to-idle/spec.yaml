@@ -1,0 +1,10 @@
+description: 向 idle session 发送消息
+steps:
+- type: exec
+  command: SID2=$(cat /tmp/session_id_2) && sumeru session send $SID2 'Hello idle
+    session'
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: Message sent|accepted message

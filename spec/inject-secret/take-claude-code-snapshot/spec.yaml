@@ -1,0 +1,19 @@
+description: "对 claude-code session 创建 snapshot"
+steps:
+  - command: |
+      sumeru provider add claude-provider --api-type anthropic --base-url https://api.anthropic.com 2>/dev/null || true
+      sumeru model add claude-model --provider claude-provider --model claude-3-sonnet-20240229 2>/dev/null || true
+      sumeru prototype add claude-proto --adapter claude-code --model claude-model 2>/dev/null || true
+      SID=$(sumeru session add claude-proto --task "Remember secret: CLAUDE-1234. Reply OK." 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1)
+      echo $SID > /tmp/claude_session_id
+      sumeru server start 2>&1 &
+      sleep 3
+      echo "Using SID: $SID"
+      sumeru session snapshot $SID claude-snapshot 2>&1
+      echo "Exit code: $?"
+    timeout: "120s"
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "Snapshot created|Exit code: 0"

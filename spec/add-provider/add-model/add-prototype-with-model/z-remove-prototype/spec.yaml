@@ -1,0 +1,19 @@
+description: 删除 prototype
+steps:
+- type: exec
+  command: sumeru prototype remove test-proto
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: Removed prototype
+postcon:
+- name: verify-removal
+  steps:
+  - type: exec
+    command: sumeru prototype get test-proto 2>&1; true
+    assert:
+      type: regex
+      conditions:
+      - path: stdout
+        regex: not found

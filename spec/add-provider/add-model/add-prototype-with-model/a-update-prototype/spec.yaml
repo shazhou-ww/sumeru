@@ -1,0 +1,22 @@
+description: 更新 prototype 的 model
+steps:
+- type: exec
+  command: |
+    sumeru provider add update-provider --api-type openai --base-url https://api.update.com 2>/dev/null || true
+    sumeru model add new-model --provider update-provider --model new-model-id 2>/dev/null || true
+    sumeru prototype update test-proto --model new-model
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: Updated prototype
+postcon:
+- name: verify-update
+  steps:
+  - type: exec
+    command: sumeru prototype get test-proto --format json
+    assert:
+      type: regex
+      conditions:
+      - path: stdout
+        regex: new-model

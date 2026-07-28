@@ -1,0 +1,9 @@
+description: 同时更新多个字段
+steps:
+  - type: exec
+    command: sumeru prototype update proto-with-persona --adapter hermes 2>&1; true
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: Updated|error

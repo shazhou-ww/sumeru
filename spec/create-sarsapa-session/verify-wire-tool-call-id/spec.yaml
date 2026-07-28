@@ -1,0 +1,10 @@
+description: 验证 tool call ID 传递
+steps:
+- type: exec
+  command: |
+    SID=$(cat /tmp/sarsapa_session_id) && sleep 5 && sumeru session turns $SID --format json
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: 'ses_|tool_call|id|turn'

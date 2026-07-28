@@ -1,0 +1,13 @@
+description: 列出所有已注册的 adapters
+steps:
+- type: exec
+  command: sumeru adapter list --format json
+  assert:
+    type: regex
+    conditions:
+      - path: stdout
+        regex: '"name":\s*"claude-code"'
+      - path: stdout
+        regex: '"name":\s*"sarsapa"'
+      - path: stdout
+        regex: '"name":\s*"hermes"'

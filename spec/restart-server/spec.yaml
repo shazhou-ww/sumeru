@@ -1,0 +1,9 @@
+description: 重启 sumeru server
+steps:
+- type: exec
+  command: sumeru server restart
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: restarted|running

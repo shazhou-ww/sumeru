@@ -1,0 +1,19 @@
+description: 更新 provider 的 base-url
+steps:
+- type: exec
+  command: sumeru provider update test-provider --base-url https://api.updated.com
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: Updated provider
+postcon:
+- name: verify-update
+  steps:
+  - type: exec
+    command: sumeru provider get test-provider --format json
+    assert:
+      type: regex
+      conditions:
+      - path: stdout
+        regex: '"baseUrl": "https://api.updated.com"'

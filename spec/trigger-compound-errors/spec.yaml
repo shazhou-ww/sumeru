@@ -1,0 +1,37 @@
+description: 触发复合错误路径
+steps:
+- type: exec
+  command: sumeru session get ses_FAKEFAKEFAKE 2>&1; true
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: not found|404
+- type: exec
+  command: sumeru session stop ses_FAKEFAKEFAKE 2>&1; true
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: not found|404
+- type: exec
+  command: sumeru session rm ses_FAKEFAKEFAKE 2>&1; true
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: not found|404
+- type: exec
+  command: sumeru session add 2>&1; true
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: usage|help|error|missing
+- type: exec
+  command: sumeru session turns ses_FAKEFAKEFAKE --after abc 2>&1; true
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: Error|invalid|NaN

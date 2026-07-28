@@ -1,0 +1,9 @@
+description: 保留 prototype 引用 persona
+steps:
+  - type: exec
+    command: sumeru prototype add proto-ref-persona --adapter sarsapa --model test-model --persona test-persona
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: Created prototype

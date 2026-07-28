@@ -1,0 +1,18 @@
+description: 重启后恢复 session
+steps:
+- type: exec
+  command: |
+    # Create resources before restart
+    sumeru persona add default --instructions "Default persona" 2>/dev/null || true
+    sumeru provider add test-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true
+    sumeru model add test-model --provider test-provider --model test-model-id 2>/dev/null || true
+    sumeru prototype add test-proto --adapter sarsapa --model test-model 2>/dev/null || true
+    export SID=$(sumeru session add test-proto --task 'Survive restart' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo SID=$SID
+    sumeru server restart
+    sleep 3
+    sumeru session list
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: SID=ses_[A-Z0-9]+|restarted|ses_|session

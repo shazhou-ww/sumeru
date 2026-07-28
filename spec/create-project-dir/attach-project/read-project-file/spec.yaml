@@ -1,0 +1,10 @@
+description: 读取项目目录中的文件
+steps:
+- type: exec
+  command: |
+    SID=$(cat /tmp/project_session_id) && sleep 5 && sumeru session turns $SID
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: 'user|Read the project file|turn'

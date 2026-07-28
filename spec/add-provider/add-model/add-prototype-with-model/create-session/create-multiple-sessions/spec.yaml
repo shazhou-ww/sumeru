@@ -1,0 +1,16 @@
+description: 创建多个 sessions
+steps:
+- type: exec
+  command: sumeru session add test-proto --task 'Test 2'
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: ses_[A-Z0-9]+
+- type: exec
+  command: sumeru session add test-proto --task 'Test 3'
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: ses_[A-Z0-9]+

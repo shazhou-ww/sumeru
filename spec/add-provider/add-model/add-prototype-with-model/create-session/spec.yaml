@@ -1,0 +1,20 @@
+description: 创建一个 session
+steps:
+- type: exec
+  command: export SID=$(sumeru session add test-proto --task 'Say hello' 2>&1 | grep
+    -o 'ses_[A-Z0-9]*' | head -1) && echo SID=$SID && echo $SID > /tmp/session_id
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: SID=ses_[A-Z0-9]+
+postcon:
+- name: verify-session-exists
+  steps:
+  - type: exec
+    command: SID=$(cat /tmp/session_id) && sumeru session get $SID --format json
+    assert:
+      type: regex
+      conditions:
+      - path: stdout
+        regex: '"id": "ses_[A-Z0-9]+"'

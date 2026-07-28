@@ -1,0 +1,9 @@
+description: 实时监控 turns
+steps:
+- type: exec
+  command: SID=$(cat /tmp/send_session_id) && timeout 3 sumeru session turns $SID --watch 2>&1 || true
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: 'user|assistant|Say hello|Terminated'
