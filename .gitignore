@@ -8,5 +8,5 @@ data/
 .pnpm-store
 .build/
 
-# atest trace output
+# treespec trace output
 *.jsonl
