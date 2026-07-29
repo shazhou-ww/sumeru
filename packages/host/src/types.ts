@@ -123,7 +123,7 @@ export type SessionCommand =
 			content: string | null;
 			files: Array<{ path: string; content: string }> | null;
 	  }
-	| { type: "reset"; persona: string | null }
+	| { type: "reset" }
 	| { type: "snapshot"; name: string };
 
 export type CommandAcceptedValue = {

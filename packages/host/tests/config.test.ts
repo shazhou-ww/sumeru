@@ -77,7 +77,7 @@ describe("loadHostConfig — v3 HostConfig", () => {
 			join(dataDir, "prototypes", "worker.yaml"),
 			[
 				"name: worker",
-				"persona: worker-persona",
+				"instructions: You are a worker persona",
 				"model: worker-model",
 				"adapter: sarsapa",
 			].join("\n"),
@@ -91,7 +91,7 @@ describe("loadHostConfig — v3 HostConfig", () => {
 		expect(loaded.prototypesDir).toBe(join(dataDir, "prototypes"));
 
 		const prototype = loaded.prototypes.get("worker");
-		expect(prototype?.prototype.persona).toBe("worker-persona");
+		expect(prototype?.prototype.instructions).toBe("You are a worker persona");
 		expect(prototype?.prototype.model).toBe("worker-model");
 		expect(prototype?.prototype.adapter).toBe("sarsapa");
 		expect(prototype?.prototypeHash).toMatch(/^[a-f0-9]{64}$/);

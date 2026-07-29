@@ -24,7 +24,7 @@ function writeV3HostFixture(rootDir: string): void {
 function writePrototypeFixture(
 	rootDir: string,
 	options: {
-		persona?: string;
+		instructions?: string;
 		model?: string;
 		adapter?: string;
 	} = {},
@@ -40,7 +40,7 @@ function writePrototypeFixture(
 		yamlPath,
 		[
 			"name: claude-code",
-			`persona: ${options.persona ?? "default-persona"}`,
+			`instructions: ${options.instructions ?? "You are a helpful assistant"}`,
 			`model: ${options.model ?? "default-model"}`,
 			`adapter: ${options.adapter ?? "claude-code"}`,
 		].join("\n"),
@@ -132,7 +132,7 @@ describe("computePrototypeHash", () => {
 		tempDirs.push(rootDir);
 		writeV3HostFixture(rootDir);
 		const { yamlPath, skillsDir } = writePrototypeFixture(rootDir, {
-			persona: "persona-v1",
+			instructions: "version one",
 		});
 		const hostConfig = await loadHostConfig(rootDir);
 		const prototype = hostConfig.prototypes.get("claude-code");
@@ -146,12 +146,12 @@ describe("computePrototypeHash", () => {
 			yamlPath,
 			[
 				"name: claude-code",
-				"persona: persona-v2",
+				"instructions: version two",
 				"model: default-model",
 				"adapter: claude-code",
 			].join("\n"),
 		);
-		prototype.prototype.persona = "persona-v2";
+		prototype.prototype.instructions = "version two";
 		const second = await computePrototypeHash(
 			yamlPath,
 			skillsDir,
@@ -180,7 +180,7 @@ describe("computePrototypeHash", () => {
 			yamlPath,
 			[
 				"name: claude-code",
-				"persona: default-persona",
+				"instructions: You are a helpful assistant",
 				"model: model-v2",
 				"adapter: claude-code",
 			].join("\n"),
@@ -218,7 +218,7 @@ describe("prototype lazy re-init", () => {
 		tempDirs.push(rootDir);
 		writeV3HostFixture(rootDir);
 		const { yamlPath, skillsDir } = writePrototypeFixture(rootDir, {
-			persona: "persona-v1",
+			instructions: "version one",
 		});
 		const hostConfig = await loadHostConfig(rootDir);
 		hostConfig.sqliteStore.createProvider({
@@ -232,10 +232,6 @@ describe("prototype lazy re-init", () => {
 			model: "claude-sonnet-4",
 			contextWindow: null,
 			metadata: null,
-		});
-		hostConfig.sqliteStore.createPersona({
-			name: "persona-v1",
-			instructions: "Version one.",
 		});
 		const { transport, initCount } = createInitTrackingTransport();
 		const manager = createSessionManager({ hostConfig, transport });
@@ -259,16 +255,12 @@ describe("prototype lazy re-init", () => {
 			yamlPath,
 			[
 				"name: claude-code",
-				"persona: persona-v2",
+				"instructions: version two",
 				"model: default-model",
 				"adapter: claude-code",
 			].join("\n"),
 		);
-		hostConfig.sqliteStore.createPersona({
-			name: "persona-v2",
-			instructions: "Version two.",
-		});
-		prototype.prototype.persona = "persona-v2";
+		prototype.prototype.instructions = "version two";
 		prototype.prototypeHash = await computePrototypeHash(
 			yamlPath,
 			skillsDir,

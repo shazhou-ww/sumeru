@@ -3,7 +3,6 @@ import type {
 	ExitSignal,
 	Model,
 	ModelConfig,
-	Persona,
 	Provider,
 	ProviderApiType,
 	SessionStatus,
@@ -35,13 +34,7 @@ CREATE TABLE IF NOT EXISTS models (
 `;
 
 const MIGRATION_V2 = `
-CREATE TABLE IF NOT EXISTS personas (
-  name TEXT PRIMARY KEY NOT NULL,
-  instructions TEXT NOT NULL,
-  skills TEXT NOT NULL DEFAULT '[]',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
+-- personas table removed in refactor
 `;
 
 const MIGRATION_V3 = `
@@ -117,20 +110,6 @@ export class ProviderInUseError extends Error {
 	}
 }
 
-export class PersonaInUseError extends Error {
-	readonly personaName: string;
-	readonly prototypeNames: Array<string>;
-
-	constructor(personaName: string, prototypeNames: Array<string>) {
-		super(
-			`Persona ${personaName} is referenced by prototypes: ${prototypeNames.join(", ")}`,
-		);
-		this.name = "PersonaInUseError";
-		this.personaName = personaName;
-		this.prototypeNames = prototypeNames;
-	}
-}
-
 export type CreateProviderInput = {
 	name: string;
 	apiType: ProviderApiType;
@@ -149,15 +128,6 @@ export type UpsertModelInput = {
 	model?: string;
 	contextWindow?: number | null;
 	metadata?: Record<string, unknown> | null;
-};
-
-export type CreatePersonaInput = {
-	name: string;
-	instructions: string;
-};
-
-export type UpdatePersonaInput = {
-	instructions: string | undefined;
 };
 
 export type CreateSkillInput = {
@@ -197,11 +167,6 @@ export type SqliteStore = {
 	listModels(provider?: string): Array<Model>;
 	upsertModel(name: string, input: UpsertModelInput): Model;
 	removeModel(name: string): boolean;
-	createPersona(input: CreatePersonaInput): Persona;
-	getPersona(name: string): Persona | null;
-	listPersonas(): Array<Persona>;
-	updatePersona(name: string, input: UpdatePersonaInput): Persona | null;
-	deletePersona(name: string): boolean;
 	createSkill(input: CreateSkillInput): Skill;
 	getSkill(name: string): Skill | null;
 	listSkills(): Array<Skill>;
@@ -228,13 +193,6 @@ type ModelRow = {
 	model: string;
 	context_window: number | null;
 	metadata: string;
-	created_at: string;
-	updated_at: string;
-};
-
-type PersonaRow = {
-	name: string;
-	instructions: string;
 	created_at: string;
 	updated_at: string;
 };
@@ -488,63 +446,6 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 			return result.changes > 0;
 		},
 
-		createPersona(input) {
-			const now = new Date().toISOString();
-			db.prepare(
-				`INSERT INTO personas (name, instructions, created_at, updated_at)
-         VALUES (?, ?, ?, ?)`,
-			).run(input.name, input.instructions, now, now);
-			return rowToPersona({
-				name: input.name,
-				instructions: input.instructions,
-				created_at: now,
-				updated_at: now,
-			});
-		},
-
-		getPersona(name) {
-			const row = db
-				.prepare("SELECT * FROM personas WHERE name = ?")
-				.get(name) as PersonaRow | undefined;
-			return row === undefined ? null : rowToPersona(row);
-		},
-
-		listPersonas() {
-			const rows = db
-				.prepare("SELECT * FROM personas ORDER BY name")
-				.all() as Array<PersonaRow>;
-			return rows.map(rowToPersona);
-		},
-
-		updatePersona(name, input) {
-			const existing = db
-				.prepare("SELECT * FROM personas WHERE name = ?")
-				.get(name) as PersonaRow | undefined;
-			if (existing === undefined) return null;
-			const now = new Date().toISOString();
-			const instructions =
-				input.instructions === undefined
-					? existing.instructions
-					: input.instructions;
-			db.prepare(
-				`UPDATE personas
-         SET instructions = ?, updated_at = ?
-         WHERE name = ?`,
-			).run(instructions, now, name);
-			return rowToPersona({
-				...existing,
-				instructions,
-				updated_at: now,
-			});
-		},
-
-		deletePersona(name) {
-			const result = db
-				.prepare("DELETE FROM personas WHERE name = ?")
-				.run(name);
-			return result.changes > 0;
-		},
-
 		createSkill(input) {
 			const now = new Date().toISOString();
 			db.prepare(
@@ -677,15 +578,6 @@ function parseMetadata(raw: string): Record<string, unknown> | null {
 	} catch {
 		return null;
 	}
-}
-
-function rowToPersona(row: PersonaRow): Persona {
-	return {
-		name: row.name,
-		instructions: row.instructions,
-		createdAt: row.created_at,
-		updatedAt: row.updated_at,
-	};
 }
 
 function rowToSkill(row: SkillRow): Skill {

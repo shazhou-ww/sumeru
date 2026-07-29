@@ -7,12 +7,8 @@ import {
 } from "../config.js";
 import {
 	deletePrototypeFile,
-	mergePrototype,
-	type PrototypeUpdateBody,
 	prototypeFileExists,
-	readPrototypeFile,
 	validatePrototype,
-	validatePrototypeUpdate,
 	writePrototypeFile,
 } from "../data-store.js";
 import {
@@ -105,31 +101,23 @@ async function upsertPrototype(
 	name: string,
 ): Promise<void> {
 	const existing = hostConfig.prototypes.get(name);
-	const mode = existing === undefined ? "add" : "update";
+	if (existing !== undefined) {
+		writeJson(
+			res,
+			409,
+			errorEnvelope(
+				"prototype_exists",
+				`Prototype ${name} already exists`,
+			),
+		);
+		return;
+	}
 	let prototype: Prototype;
 	try {
-		if (mode === "add") {
-			prototype = await readPrototypeBody(req, name, "add");
-		} else {
-			const existing = await readPrototypeFile(hostConfig.prototypesDir, name);
-			const update = await readPrototypeBody(req, name, "update");
-			prototype = mergePrototype(existing, update);
-		}
+		prototype = await readPrototypeBody(req, name);
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
 		writeJson(res, 400, errorEnvelope("invalid_body", message));
-		return;
-	}
-	const persona = hostConfig.sqliteStore.getPersona(prototype.persona);
-	if (persona === null) {
-		writeJson(
-			res,
-			400,
-			errorEnvelope(
-				"persona_not_found",
-				`Persona ${prototype.persona} not found`,
-			),
-		);
 		return;
 	}
 	const manifest = getAdapterManifest(prototype.adapter);
@@ -188,14 +176,12 @@ async function upsertPrototype(
 	try {
 		await writePrototypeFile(hostConfig.prototypesDir, prototype);
 		const info = await reloadPrototypeInConfig(hostConfig, name);
-		writeJson(res, mode === "add" ? 201 : 200, prototypeEnvelope(info));
+		writeJson(res, 201, prototypeEnvelope(info));
 	} catch (err) {
-		if (mode === "add") {
-			try {
-				await deletePrototypeFile(hostConfig.prototypesDir, name);
-			} catch {
-				// best-effort rollback when compose validation fails after yaml write
-			}
+		try {
+			await deletePrototypeFile(hostConfig.prototypesDir, name);
+		} catch {
+			// best-effort rollback when compose validation fails after yaml write
 		}
 		writePrototypeError(res, err);
 	}
@@ -204,33 +190,16 @@ async function upsertPrototype(
 async function readPrototypeBody(
 	req: IncomingMessage,
 	expectedName: string,
-	mode: "add",
-): Promise<Prototype>;
-async function readPrototypeBody(
-	req: IncomingMessage,
-	expectedName: string,
-	mode: "update",
-): Promise<PrototypeUpdateBody>;
-async function readPrototypeBody(
-	req: IncomingMessage,
-	expectedName: string,
-	mode: "add" | "update",
-): Promise<Prototype | PrototypeUpdateBody> {
+): Promise<Prototype> {
 	const contentType = req.headers["content-type"] ?? "";
 	if (contentType.includes("application/json")) {
 		const body = await readJsonBody(req);
-		if (mode === "add") {
-			return validatePrototype(body, "request body", expectedName);
-		}
-		return validatePrototypeUpdate(body, "request body", expectedName);
+		return validatePrototype(body, "request body", expectedName);
 	}
 	const raw = await readTextBody(req);
 	const { parse: parseYaml } = await import("yaml");
 	const doc = parseYaml(raw);
-	if (mode === "add") {
-		return validatePrototype(doc, "request body", expectedName);
-	}
-	return validatePrototypeUpdate(doc, "request body", expectedName);
+	return validatePrototype(doc, "request body", expectedName);
 }
 
 function writePrototypeError(res: ServerResponse, err: unknown): void {

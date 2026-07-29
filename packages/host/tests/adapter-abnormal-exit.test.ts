@@ -26,7 +26,7 @@ function writeHostFixture(rootDir: string, maxRunning = 4): void {
 		join(dataDir, "prototypes", "claude-code.yaml"),
 		[
 			"name: claude-code",
-			"persona: default-persona",
+			'instructions: "You are a helpful assistant"',
 			"model: default-model",
 			"adapter: claude-code",
 		].join("\n"),
@@ -135,7 +135,6 @@ describe("adapter abnormal exit resilience (#177)", () => {
 
 	function seedDb(hostConfig: {
 		sqliteStore: {
-			createPersona: (input: { name: string; instructions: string }) => unknown;
 			createProvider: (input: {
 				name: string;
 				apiType: string;
@@ -164,10 +163,6 @@ describe("adapter abnormal exit resilience (#177)", () => {
 			model: "claude-sonnet-4",
 			contextWindow: null,
 			metadata: null,
-		});
-		hostConfig.sqliteStore.createPersona({
-			name: "default-persona",
-			instructions: "You are a worker.",
 		});
 	}
 

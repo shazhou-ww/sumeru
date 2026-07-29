@@ -20,7 +20,7 @@ export type SessionCommand =
 	  }
 	| { type: "exec"; command: string }
 	| { type: "model"; model: string }
-	| { type: "reset"; persona: string | null }
+	| { type: "reset" }
 	| { type: "snapshot"; name: string };
 
 export type Envelope<T> = {

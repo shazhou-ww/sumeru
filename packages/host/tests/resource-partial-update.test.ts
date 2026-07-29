@@ -91,7 +91,7 @@ describe("resource partial update routes", () => {
 		return server;
 	}
 
-	it("supports partial PUT updates for provider, model, persona, and prototype", async () => {
+	it("supports partial PUT updates for provider and model; prototype is create-only (409 on duplicate)", async () => {
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-partial-"));
 		writeV3HostFixture(rootDir);
 		const server = await startTestServer(rootDir);
@@ -167,35 +167,10 @@ describe("resource partial update routes", () => {
 				await request(
 					server,
 					"PUT",
-					"/personas/worker-persona",
-					JSON.stringify({
-						instructions: "Original instructions",
-					}),
-				)
-			).status,
-		).toBe(201);
-
-		const partialPersona = await request(
-			server,
-			"PUT",
-			"/personas/worker-persona",
-			JSON.stringify({ instructions: "Updated instructions" }),
-		);
-		expect(partialPersona.status).toBe(200);
-		expect(envelopeValue(partialPersona.body)).toMatchObject({
-			name: "worker-persona",
-			instructions: "Updated instructions",
-		});
-
-		expect(
-			(
-				await request(
-					server,
-					"PUT",
 					"/prototypes/worker",
 					JSON.stringify({
 						name: "worker",
-						persona: "worker-persona",
+						instructions: "You are a helpful worker assistant",
 						model: "test-model",
 						adapter: "sarsapa",
 						defaults: null,
@@ -210,13 +185,6 @@ describe("resource partial update routes", () => {
 			"/prototypes/worker",
 			JSON.stringify({ adapter: "claude-code" }),
 		);
-		expect(partialPrototype.status).toBe(200);
-		expect(envelopeValue(partialPrototype.body)).toMatchObject({
-			name: "worker",
-			persona: "worker-persona",
-			model: "test-model",
-			adapter: "claude-code",
-			defaults: null,
-		});
+		expect(partialPrototype.status).toBe(409);
 	});
 });

@@ -37,21 +37,6 @@ export async function ensureDataDirs(
 	await mkdir(extensionsDir, { recursive: true });
 }
 
-export async function findPrototypeReferencesToPersona(
-	prototypesDir: string,
-	personaName: string,
-): Promise<Array<string>> {
-	const names = await listPrototypeFileNames(prototypesDir);
-	const references: Array<string> = [];
-	for (const name of names) {
-		const prototype = await readPrototypeFile(prototypesDir, name);
-		if (prototype.persona === personaName) {
-			references.push(name);
-		}
-	}
-	return references;
-}
-
 export async function listPrototypeFileNames(
 	prototypesDir: string,
 ): Promise<Array<string>> {
@@ -174,93 +159,6 @@ function prototypePath(prototypesDir: string, name: string): string {
 	return join(prototypesDir, `${name}.yaml`);
 }
 
-export type PrototypeUpdateBody = {
-	persona: string | undefined;
-	model: string | null | undefined;
-	adapter: string | undefined;
-	extensions: Array<string> | null | undefined;
-	defaults: Prototype["defaults"] | undefined;
-};
-
-export function mergePrototype(
-	existing: Prototype,
-	update: PrototypeUpdateBody,
-): Prototype {
-	return {
-		name: existing.name,
-		persona: update.persona ?? existing.persona,
-		model: update.model !== undefined ? update.model : existing.model,
-		adapter: update.adapter ?? existing.adapter,
-		image: existing.image,
-		extensions:
-			update.extensions !== undefined ? update.extensions : existing.extensions,
-		defaults:
-			update.defaults === undefined ? existing.defaults : update.defaults,
-	};
-}
-
-export function validatePrototypeUpdate(
-	doc: unknown,
-	path: string,
-	expectedName: string,
-): PrototypeUpdateBody {
-	if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
-		throw new Error(
-			`Prototype ${path} must be a YAML mapping at the top level`,
-		);
-	}
-	const obj = doc as Record<string, unknown>;
-	const name = obj.name;
-	if (name !== undefined) {
-		if (typeof name !== "string" || name.length === 0) {
-			throw new Error(
-				`Prototype ${path} field "name" must be a non-empty string`,
-			);
-		}
-		if (name !== expectedName) {
-			throw new Error(
-				`Prototype ${path} field "name" (${JSON.stringify(name)}) must match file name ${JSON.stringify(expectedName)}`,
-			);
-		}
-	}
-	let persona: string | undefined;
-	if (obj.persona !== undefined) {
-		if (typeof obj.persona !== "string" || obj.persona.length === 0) {
-			throw new Error(
-				`Prototype ${path} field "persona" must be a non-empty string`,
-			);
-		}
-		persona = obj.persona;
-	}
-	let model: string | null | undefined;
-	if (obj.model !== undefined) {
-		if (obj.model === null) {
-			model = null;
-		} else if (typeof obj.model !== "string" || obj.model.length === 0) {
-			throw new Error(
-				`Prototype ${path} field "model" must be a non-empty string or null`,
-			);
-		} else {
-			model = obj.model;
-		}
-	}
-	let adapter: string | undefined;
-	if (obj.adapter !== undefined) {
-		if (typeof obj.adapter !== "string" || obj.adapter.length === 0) {
-			throw new Error(
-				`Prototype ${path} field "adapter" must be a non-empty string`,
-			);
-		}
-		adapter = obj.adapter;
-	}
-	const defaults =
-		obj.defaults === undefined
-			? undefined
-			: parsePrototypeDefaults(obj.defaults, path);
-	const extensions = parsePrototypeExtensions(obj.extensions, path, true);
-	return { persona, model, adapter, extensions, defaults };
-}
-
 export function validatePrototype(
 	doc: unknown,
 	path: string,
@@ -283,10 +181,10 @@ export function validatePrototype(
 			`Prototype ${path} field "name" (${JSON.stringify(name)}) must match file name ${JSON.stringify(expectedName)}`,
 		);
 	}
-	const persona = obj.persona;
-	if (typeof persona !== "string" || persona.length === 0) {
+	const instructions = obj.instructions;
+	if (typeof instructions !== "string" || instructions.length === 0) {
 		throw new Error(
-			`Prototype ${path} field "persona" must be a non-empty string`,
+			`Prototype ${path} field "instructions" must be a non-empty string`,
 		);
 	}
 	const modelRaw = obj.model;
@@ -316,7 +214,7 @@ export function validatePrototype(
 	const defaults = parsePrototypeDefaults(obj.defaults, path);
 	const extensions =
 		parsePrototypeExtensions(obj.extensions, path, false) ?? null;
-	return { name, persona, model, adapter, image, extensions, defaults };
+	return { name, instructions, model, adapter, image, extensions, defaults };
 }
 
 function parsePrototypeDefaults(

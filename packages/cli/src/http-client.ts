@@ -1,6 +1,5 @@
 import type {
 	Model,
-	Persona,
 	Prototype,
 	Provider,
 	SessionInfo,
@@ -99,7 +98,6 @@ export type HostClient = {
 	addPrototype(
 		name: string,
 		body: {
-			persona: string;
 			model: string;
 			adapter: string;
 		},
@@ -107,7 +105,6 @@ export type HostClient = {
 	updatePrototype(
 		name: string,
 		body: {
-			persona?: string;
 			model?: string;
 			adapter?: string;
 		},
@@ -158,19 +155,6 @@ export type HostClient = {
 		},
 	): Promise<Envelope<Model>>;
 	removeModel(name: string): Promise<void>;
-
-	// Personas
-	listPersonas(): Promise<Envelope<Array<Persona>>>;
-	getPersona(name: string): Promise<Envelope<Persona>>;
-	addPersona(
-		name: string,
-		body: { instructions: string },
-	): Promise<Envelope<Persona>>;
-	updatePersona(
-		name: string,
-		body: { instructions?: string },
-	): Promise<Envelope<Persona>>;
-	removePersona(name: string): Promise<void>;
 
 	// Skills
 	getSkill(name: string): Promise<Envelope<{ name: string; content: string }>>;
@@ -457,43 +441,6 @@ export function createHostClient(options: HostClientOptions): HostClient {
 		},
 		async removeModel(name) {
 			await requestDelete(`/models/${encodeURIComponent(name)}`);
-		},
-
-		// Personas
-		async listPersonas() {
-			const { json } = await requestJson<Array<Persona>>(
-				"GET",
-				"/personas",
-				null,
-			);
-			return json;
-		},
-		async getPersona(name) {
-			const { json } = await requestJson<Persona>(
-				"GET",
-				`/personas/${encodeURIComponent(name)}`,
-				null,
-			);
-			return json;
-		},
-		async addPersona(name, body) {
-			const { json } = await requestJson<Persona>(
-				"PUT",
-				`/personas/${encodeURIComponent(name)}`,
-				body,
-			);
-			return json;
-		},
-		async updatePersona(name, body) {
-			const { json } = await requestJson<Persona>(
-				"PUT",
-				`/personas/${encodeURIComponent(name)}`,
-				body,
-			);
-			return json;
-		},
-		async removePersona(name) {
-			await requestDelete(`/personas/${encodeURIComponent(name)}`);
 		},
 
 		// Skills

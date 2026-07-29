@@ -42,7 +42,7 @@ function writeHostFixture(rootDir: string): void {
 		join(dataDir, "prototypes", "claude-code.yaml"),
 		[
 			"name: claude-code",
-			"persona: default-persona",
+			"instructions: You are a helpful assistant",
 			"model: default-model",
 			"adapter: claude-code",
 		].join("\n"),
@@ -71,10 +71,6 @@ function seedDb(hostConfig: Awaited<ReturnType<typeof loadHostConfig>>): void {
 		model: "claude-sonnet-4",
 		contextWindow: null,
 		metadata: null,
-	});
-	hostConfig.sqliteStore.createPersona({
-		name: "default-persona",
-		instructions: "You are a worker.",
 	});
 }
 
@@ -401,7 +397,7 @@ describe("POST /sessions/:id/commands", () => {
 			server,
 			"POST",
 			`/sessions/${created.id}/commands`,
-			JSON.stringify({ type: "reset", persona: "You are concise." }),
+			JSON.stringify({ type: "reset" }),
 		);
 		expect(response.status).toBe(200);
 		expect(response.body).toMatchObject({

@@ -50,18 +50,10 @@ export type Skill = {
 	updatedAt: string;
 };
 
-// === Persona (SQLite-backed, issue #189) ===
-export type Persona = {
-	name: string;
-	instructions: string;
-	createdAt: string;
-	updatedAt: string;
-};
-
 // === Prototype ===
 export type Prototype = {
 	name: string;
-	persona: string;
+	instructions: string;
 	model: string | null;
 	adapter: string;
 	image: string | null;

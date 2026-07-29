@@ -47,7 +47,7 @@ describe("prototypeFromDockerLabels", () => {
 			labels: {
 				"sumeru.harness": "codex",
 				"sumeru.model": "my-model",
-				"sumeru.persona": "worker",
+				"sumeru.instructions": "worker",
 			},
 		});
 		expect(info.name).toBe("codex");
@@ -55,7 +55,7 @@ describe("prototypeFromDockerLabels", () => {
 		expect(info.imageTag).toBe("sumeru/codex:dev");
 		expect(info.prototype.adapter).toBe("codex");
 		expect(info.prototype.model).toBe("my-model");
-		expect(info.prototype.persona).toBe("worker");
+		expect(info.prototype.instructions).toBe("worker");
 		expect(info.prototypeHash).toMatch(/^[a-f0-9]{64}$/);
 	});
 
@@ -67,7 +67,7 @@ describe("prototypeFromDockerLabels", () => {
 			labels: {},
 		});
 		expect(info.prototype.adapter).toBe("codex");
-		expect(info.prototype.persona).toBe("default");
+		expect(info.prototype.instructions).toBe("");
 	});
 });
 
@@ -84,7 +84,7 @@ describe("computeImagePrototypeHash", () => {
 });
 
 describe("mergeDockerWithYaml", () => {
-	it("uses docker image metadata and keeps yaml persona/model defaults", () => {
+	it("uses docker image metadata and keeps yaml instructions/model defaults", () => {
 		const docker: PrototypeInfo = prototypeFromDockerLabels({
 			name: "codex",
 			imageTag: "sumeru/codex:dev",
@@ -95,7 +95,7 @@ describe("mergeDockerWithYaml", () => {
 			name: "codex",
 			prototype: {
 				name: "codex",
-				persona: "default-persona",
+				instructions: "Default instructions",
 				model: "default-model",
 				adapter: "codex",
 				extensions: ["ext-a"],
@@ -110,18 +110,18 @@ describe("mergeDockerWithYaml", () => {
 		expect(merged.composePath).toBeNull();
 		expect(merged.imageTag).toBe("sumeru/codex:dev");
 		expect(merged.yamlPath).toBe(yaml.yamlPath);
-		expect(merged.prototype.persona).toBe("default-persona");
+		expect(merged.prototype.instructions).toBe("Default instructions");
 		expect(merged.prototype.model).toBe("default-model");
 		expect(merged.prototype.extensions).toEqual(["ext-a"]);
 	});
 });
 
 describe("snapshotImageLabels", () => {
-	it("includes harness, persona, and model labels", () => {
+	it("includes harness, instructions, and model labels", () => {
 		expect(
 			snapshotImageLabels({
 				name: "my-snapshot",
-				persona: "default-persona",
+				instructions: "Default instructions",
 				model: "default-model",
 				adapter: "claude-code",
 				extensions: null,
@@ -129,7 +129,7 @@ describe("snapshotImageLabels", () => {
 			}),
 		).toEqual({
 			"sumeru.harness": "claude-code",
-			"sumeru.persona": "default-persona",
+			"sumeru.instructions": "Default instructions",
 			"sumeru.model": "default-model",
 		});
 	});

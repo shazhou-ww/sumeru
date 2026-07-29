@@ -113,12 +113,7 @@ function parseSessionCommand(body: unknown): SessionCommand | null {
 			return { type: "install-skill", name, content, files };
 		}
 		case "reset": {
-			const personaRaw = body.persona;
-			if (personaRaw === undefined || personaRaw === null) {
-				return { type: "reset", persona: null };
-			}
-			if (typeof personaRaw !== "string") return null;
-			return { type: "reset", persona: personaRaw };
+			return { type: "reset" };
 		}
 		case "snapshot": {
 			const name = body.name;

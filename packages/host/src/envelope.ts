@@ -2,7 +2,6 @@ import type { BuiltinModel } from "@sumeru/adapter-core";
 import type {
 	Extension,
 	Model,
-	Persona,
 	Prototype,
 	Provider,
 	SessionInfo,
@@ -97,16 +96,6 @@ export function modelListEnvelope(
 
 export function modelEnvelope(model: Model): Envelope<Model> {
 	return envelope("@sumeru/model", model);
-}
-
-export function personaListEnvelope(
-	personas: Array<Persona>,
-): Envelope<Array<Persona>> {
-	return envelope("@sumeru/persona-list", personas);
-}
-
-export function personaEnvelope(persona: Persona): Envelope<Persona> {
-	return envelope("@sumeru/persona", persona);
 }
 
 export function skillEnvelope(value: SkillValue): Envelope<SkillValue> {

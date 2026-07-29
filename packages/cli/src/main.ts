@@ -552,9 +552,8 @@ cli
 			text: (value) =>
 				formatTableWithPagination(value, [
 					"name",
-					"provider",
+					"adapter",
 					"model",
-					"contextWindow",
 				]),
 		},
 		{ defaultFormat: "text" },
@@ -722,7 +721,6 @@ cli
 					"name",
 					"adapter",
 					"model",
-					"persona",
 				]),
 		},
 		{ defaultFormat: "text" },
@@ -753,7 +751,6 @@ cli
 	.returns(
 		z.object({
 			name: z.string(),
-			persona: z.string(),
 			model: z.string().nullable(),
 			adapter: z.string(),
 		}),
@@ -764,7 +761,6 @@ cli
 					`Name: ${v.name}`,
 					`Adapter: ${v.adapter}`,
 					v.model ? `Model: ${v.model}` : null,
-					`Persona: ${v.persona}`,
 				]
 					.filter(Boolean)
 					.join("\n")}\n`;
@@ -789,25 +785,18 @@ cli
 	.arg("name", "Prototype name")
 	.flag("model", { type: "string", description: "Model registry name" })
 	.flag("adapter", { type: "string", description: "Adapter name" })
-	.flag("persona", {
-		type: "string",
-		default: "default",
-		description: "Persona name",
-	})
 	.returns(nameSchema, "Created prototype {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const model = flags.model as string | undefined;
 		const adapter = flags.adapter as string | undefined;
-		const persona = (flags.persona as string) ?? "default";
 		if (!model || !adapter) {
 			ctx.error(
-				"Usage: sumeru prototype add <name> --model <model-name> --adapter <adapter-name> [--persona <name>]",
+				"Usage: sumeru prototype add <name> --model <model-name> --adapter <adapter-name>",
 			);
 		}
 		const client = await getClient();
 		try {
 			const envelope = await client.addPrototype(args.name, {
-				persona,
 				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
 				model: model!,
 				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
@@ -826,13 +815,11 @@ cli
 	.arg("name", "Prototype name")
 	.flag("model", { type: "string", description: "Model registry name" })
 	.flag("adapter", { type: "string", description: "Adapter name" })
-	.flag("persona", { type: "string", description: "Persona name" })
 	.returns(nameSchema, "Updated prototype {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
 		if (flags.model !== undefined) body.model = flags.model;
 		if (flags.adapter !== undefined) body.adapter = flags.adapter;
-		if (flags.persona !== undefined) body.persona = flags.persona;
 		const client = await getClient();
 		try {
 			const envelope = await client.updatePrototype(
@@ -856,120 +843,6 @@ cli
 		try {
 			await client.removePrototype(args.name);
 			return { message: `Removed prototype ${args.name}` };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-// ─── persona ─────────────────────────────────────────────────────────────
-
-cli.command("persona").describe("Manage personas (system prompts)");
-
-cli
-	.command("persona")
-	.command("list")
-	.describe("List personas")
-	.flag("limit", { type: "number", description: "Max results (default 50)" })
-	.flag("offset", { type: "number", description: "Skip first N results" })
-	.returns(
-		listSchema,
-		{
-			text: (value) => {
-				const rows = value as PaginatedArray<Record<string, unknown>>;
-				if (rows.length === 0) return "(empty)\n";
-				let output = rows
-					.map((p) => `[${p.name}]\n${p.instructions ?? ""}\n`)
-					.join("\n");
-				const total = rows._total;
-				const offset = rows._offset ?? 0;
-				if (total !== undefined && offset + rows.length < total) {
-					output += `(${String(rows.length)} of ${String(total)} shown. Use --offset ${String(offset + rows.length)} to see more.)\n`;
-				}
-				return output;
-			},
-		},
-		{ defaultFormat: "text" },
-	)
-	.action(async (_args, flags, ctx) => {
-		const limit = (flags.limit as number | undefined) ?? 50;
-		const offset = (flags.offset as number | undefined) ?? 0;
-		const client = await getClient();
-		try {
-			const envelope = await client.listPersonas();
-			const all = envelope.value;
-			const page = all.slice(offset, offset + limit) as PaginatedArray<
-				Record<string, unknown>
-			>;
-			page._total = all.length;
-			page._offset = offset;
-			return page;
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("persona")
-	.command("get")
-	.describe("Get persona details")
-	.arg("name", "Persona name")
-	.returns(
-		z.object({ name: z.string(), instructions: z.string() }),
-		{
-			text: (value) => {
-				const v = value as Record<string, unknown>;
-				return `${[`Name: ${v.name}`, `Instructions: ${v.instructions}`]
-					.filter(Boolean)
-					.join("\n")}\n`;
-			},
-		},
-		{ defaultFormat: "text" },
-	)
-	.action(async (args, _flags, ctx) => {
-		const client = await getClient();
-		try {
-			const envelope = await client.getPersona(args.name);
-			return envelope.value;
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("persona")
-	.command("add")
-	.describe("Create a persona")
-	.arg("name", "Persona name")
-	.flag("instructions", { type: "string", description: "System prompt text" })
-	.returns(nameSchema, "Created persona {{name}}", { defaultFormat: "text" })
-	.action(async (args, flags, ctx) => {
-		const instructions = flags.instructions as string | undefined;
-		if (!instructions) {
-			ctx.error("--instructions is required");
-		}
-		const client = await getClient();
-		try {
-			const envelope = await client.addPersona(args.name, {
-				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
-				instructions: instructions!,
-			});
-			return { name: envelope.value.name };
-		} catch (err) {
-			handleClientError(err, ctx);
-		}
-	});
-
-cli
-	.command("persona")
-	.command("remove")
-	.describe("Delete a persona")
-	.arg("name", "Persona name")
-	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
-	.action(async (args, _flags, ctx) => {
-		const client = await getClient();
-		try {
-			await client.removePersona(args.name);
-			return { message: `Removed persona ${args.name}` };
 		} catch (err) {
 			handleClientError(err, ctx);
 		}
@@ -1386,15 +1259,13 @@ cli
 cli
 	.command("session")
 	.command("reset")
-	.describe("Reset a session context, optionally with a new persona")
+	.describe("Reset a session context")
 	.arg("id", "Session ID")
-	.flag("persona", { type: "string", description: "New persona to apply" })
 	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
-	.action(async (args, flags, ctx) => {
-		const persona = (flags.persona as string | undefined) ?? null;
+	.action(async (args, _flags, ctx) => {
 		const api = createApiClient(resolveBaseUrl());
 		try {
-			await api.postCommand(args.id, { type: "reset", persona });
+			await api.postCommand(args.id, { type: "reset" });
 			return { message: `reset ${args.id}` };
 		} catch (err) {
 			if (err instanceof ApiClientError) {

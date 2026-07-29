@@ -129,23 +129,13 @@ describe("skills and prototypes CRUD routes", () => {
 		);
 		expect(createModel.status).toBe(201);
 
-		const createPersona = await request(
-			server,
-			"PUT",
-			"/personas/worker-persona",
-			JSON.stringify({
-				instructions: "Worker agent",
-			}),
-		);
-		expect(createPersona.status).toBe(201);
-
 		const createPrototype = await request(
 			server,
 			"PUT",
 			"/prototypes/worker",
 			JSON.stringify({
 				name: "worker",
-				persona: "worker-persona",
+				instructions: "You are a helpful worker assistant",
 				model: "test-model",
 				adapter: "sarsapa",
 				defaults: null,
@@ -159,7 +149,7 @@ describe("skills and prototypes CRUD routes", () => {
 			"/prototypes/bad-adapter",
 			JSON.stringify({
 				name: "bad-adapter",
-				persona: "worker-persona",
+				instructions: "You are a helpful worker assistant",
 				model: "test-model",
 				adapter: "missing-adapter",
 				defaults: null,
@@ -170,27 +160,9 @@ describe("skills and prototypes CRUD routes", () => {
 			(missingAdapter.body as { value: { error: string } }).value.error,
 		).toBe("adapter_not_found");
 
-		const missingPersona = await request(
-			server,
-			"PUT",
-			"/prototypes/bad",
-			JSON.stringify({
-				name: "bad",
-				persona: "missing",
-				model: "test-model",
-				adapter: "sarsapa",
-				defaults: null,
-			}),
-		);
-		expect(missingPersona.status).toBe(400);
-		expect(
-			(missingPersona.body as { value: { error: string } }).value.error,
-		).toBe("persona_not_found");
-
 		const deleteSkill = await request(server, "DELETE", "/skills/demo");
 		expect(deleteSkill.status).toBe(204);
 
 		await request(server, "DELETE", "/prototypes/worker");
-		await request(server, "DELETE", "/personas/worker-persona");
 	});
 });
