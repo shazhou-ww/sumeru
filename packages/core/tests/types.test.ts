@@ -43,7 +43,7 @@ describe("@sumeru/core — v3 type set conformance", () => {
 
 		const prototype: Prototype = {
 			name: "software-engineer",
-			persona: "default",
+			instructions: "You are a helpful assistant",
 			model: "anthropic:claude-sonnet-4",
 			adapter: "claude-code",
 			extensions: null,

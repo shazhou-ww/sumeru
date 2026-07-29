@@ -1,14 +1,7 @@
 description: 基于 model 创建 prototype
 steps:
 - type: exec
-  command: sumeru persona add default --instructions "Default persona"
-  assert:
-    type: regex
-    conditions:
-    - path: stdout
-      regex: Created persona
-- type: exec
-  command: sumeru prototype add test-proto --adapter sarsapa --model test-model
+  command: sumeru prototype add test-proto --adapter sarsapa --model test-model --instructions "You are a helpful assistant"
   assert:
     type: regex
     conditions:

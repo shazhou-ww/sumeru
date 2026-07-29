@@ -777,13 +777,15 @@ cli
 	.arg("name", "Prototype name")
 	.flag("model", { type: "string", description: "Model registry name" })
 	.flag("adapter", { type: "string", description: "Adapter name" })
+	.flag("instructions", { type: "string", description: "System instructions for the prototype" })
 	.returns(nameSchema, "Created prototype {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const model = flags.model as string | undefined;
 		const adapter = flags.adapter as string | undefined;
-		if (!model || !adapter) {
+		const instructions = flags.instructions as string | undefined;
+		if (!model || !adapter || !instructions) {
 			ctx.error(
-				"Usage: sumeru prototype add <name> --model <model-name> --adapter <adapter-name>",
+				"Usage: sumeru prototype add <name> --model <model-name> --adapter <adapter-name> --instructions <text>",
 			);
 		}
 		const client = await getClient();
@@ -793,6 +795,8 @@ cli
 				model: model!,
 				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
 				adapter: adapter!,
+				// biome-ignore lint/style/noNonNullAssertion: guarded by ctx.error above
+				instructions: instructions!,
 			});
 			return { name: envelope.value.name };
 		} catch (err) {
