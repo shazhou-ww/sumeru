@@ -29,7 +29,7 @@ function writeHostFixture(rootDir: string, maxRunning = 2): void {
 		join(dataDir, "prototypes", "claude-code.yaml"),
 		[
 			"name: claude-code",
-			"persona: default-persona",
+			"instructions: You are a helpful assistant",
 			"model: default-model",
 			"adapter: claude-code",
 		].join("\n"),
@@ -226,7 +226,6 @@ describe("session-manager", () => {
 
 	function seedDb(hostConfig: {
 		sqliteStore: {
-			createPersona: (input: { name: string; instructions: string }) => unknown;
 			createProvider: (input: {
 				name: string;
 				apiType: string;
@@ -255,10 +254,6 @@ describe("session-manager", () => {
 			model: "claude-sonnet-4",
 			contextWindow: null,
 			metadata: null,
-		});
-		hostConfig.sqliteStore.createPersona({
-			name: "default-persona",
-			instructions: "You are a worker.",
 		});
 	}
 

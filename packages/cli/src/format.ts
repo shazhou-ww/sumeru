@@ -1,4 +1,4 @@
-import type { Model, Persona, Provider, SessionInfo } from "@sumeru/core";
+import type { Model, Provider, SessionInfo } from "@sumeru/core";
 import type {
 	AdapterInfo,
 	BuiltinModel,
@@ -120,21 +120,6 @@ export function formatDockerImagesOutput(stdout: string): string {
 		return "(no sumeru/* images found)";
 	}
 	return lines.join("\n");
-}
-
-export function formatPersonaTable(personas: Array<Persona>): string {
-	return formatTable(personas, [
-		{ header: "NAME", width: 20, value: (row) => row.name },
-		{
-			header: "INSTRUCTIONS",
-			width: 40,
-			value: (row) =>
-				row.instructions.length > 40
-					? `${row.instructions.slice(0, 37)}...`
-					: row.instructions,
-		},
-		{ header: "UPDATED", width: 24, value: (row) => row.updatedAt },
-	]);
 }
 
 export function formatExtensionTable(extensions: Array<ExtensionInfo>): string {

@@ -10,7 +10,6 @@ import {
 	createHistoryHandler,
 	createMessagesHandler,
 	createModelsHandler,
-	createPersonasHandler,
 	createPrototypesHandler,
 	createProvidersHandler,
 	createRootHandler,
@@ -55,7 +54,6 @@ export function createHostHandler(input: {
 	const extensions = createExtensionsHandler(input.hostConfig);
 	const providers = createProvidersHandler(input.hostConfig);
 	const models = createModelsHandler(input.hostConfig);
-	const personas = createPersonasHandler(input.hostConfig);
 	const skills = createSkillsHandler(input.hostConfig);
 	const sessions = createSessionsHandler(input.manager);
 	const router = createRouter({
@@ -83,10 +81,6 @@ export function createHostHandler(input: {
 		.route("GET", "/models/:name", models.get)
 		.route("PUT", "/models/:name", models.upsert)
 		.route("DELETE", "/models/:name", models.remove)
-		.route("GET", "/personas", personas.list)
-		.route("GET", "/personas/:name", personas.get)
-		.route("PUT", "/personas/:name", personas.upsert)
-		.route("DELETE", "/personas/:name", personas.remove)
 		.route("GET", "/skills/:name", skills.get)
 		.route("PUT", "/skills/:name", skills.put)
 		.route("DELETE", "/skills/:name", skills.remove)

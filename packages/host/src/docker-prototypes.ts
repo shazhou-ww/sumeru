@@ -91,10 +91,10 @@ export function prototypeFromDockerLabels(input: {
 	const harness = input.labels["sumeru.harness"] ?? input.name;
 	const modelRaw = input.labels["sumeru.model"];
 	const model = modelRaw !== undefined && modelRaw.length > 0 ? modelRaw : null;
-	const persona = input.labels["sumeru.persona"] ?? "default";
+	const instructions = input.labels["sumeru.instructions"] ?? "";
 	const prototype: Prototype = {
 		name: input.name,
-		persona,
+		instructions,
 		model,
 		adapter: harness,
 		image: input.imageTag,
@@ -131,16 +131,16 @@ export function mergeDockerWithYaml(
 	if (yaml === null) {
 		return docker;
 	}
-	const persona =
-		docker.prototype.persona !== "default"
-			? docker.prototype.persona
-			: yaml.prototype.persona;
+	const instructions =
+		docker.prototype.instructions !== ""
+			? docker.prototype.instructions
+			: yaml.prototype.instructions;
 	return {
 		name: docker.name,
 		prototype: {
 			name: docker.name,
 			adapter: docker.prototype.adapter,
-			persona,
+			instructions,
 			model: docker.prototype.model ?? yaml.prototype.model,
 			image: docker.prototype.image,
 			extensions: yaml.prototype.extensions,
@@ -271,7 +271,7 @@ export function snapshotImageLabels(
 ): Record<string, string> {
 	const labels: Record<string, string> = {
 		"sumeru.harness": prototype.adapter,
-		"sumeru.persona": prototype.persona,
+		"sumeru.instructions": prototype.instructions,
 	};
 	if (prototype.model !== null) {
 		labels["sumeru.model"] = prototype.model;
