@@ -550,11 +550,7 @@ cli
 		listSchema,
 		{
 			text: (value) =>
-				formatTableWithPagination(value, [
-					"name",
-					"adapter",
-					"model",
-				]),
+				formatTableWithPagination(value, ["name", "adapter", "model"]),
 		},
 		{ defaultFormat: "text" },
 	)
@@ -717,11 +713,7 @@ cli
 		listSchema,
 		{
 			text: (value) =>
-				formatTableWithPagination(value, [
-					"name",
-					"adapter",
-					"model",
-				]),
+				formatTableWithPagination(value, ["name", "adapter", "model"]),
 		},
 		{ defaultFormat: "text" },
 	)

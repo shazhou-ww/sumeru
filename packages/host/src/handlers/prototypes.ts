@@ -105,10 +105,7 @@ async function upsertPrototype(
 		writeJson(
 			res,
 			409,
-			errorEnvelope(
-				"prototype_exists",
-				`Prototype ${name} already exists`,
-			),
+			errorEnvelope("prototype_exists", `Prototype ${name} already exists`),
 		);
 		return;
 	}
