@@ -6,8 +6,6 @@
 
 ```
 spec/
-├── add-persona/           # Persona CRUD 测试
-│   └── README.md          # Persona 行为规范
 ├── add-provider/          # Provider CRUD 测试
 │   ├── add-model/         # Model CRUD 测试
 │   │   ├── add-prototype-with-model/  # Prototype CRUD 测试

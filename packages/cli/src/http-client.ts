@@ -100,6 +100,7 @@ export type HostClient = {
 		body: {
 			model: string;
 			adapter: string;
+			instructions: string;
 		},
 	): Promise<Envelope<PrototypeDetail>>;
 	updatePrototype(
