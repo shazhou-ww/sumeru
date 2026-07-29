@@ -777,7 +777,10 @@ cli
 	.arg("name", "Prototype name")
 	.flag("model", { type: "string", description: "Model registry name" })
 	.flag("adapter", { type: "string", description: "Adapter name" })
-	.flag("instructions", { type: "string", description: "System instructions for the prototype" })
+	.flag("instructions", {
+		type: "string",
+		description: "System instructions for the prototype",
+	})
 	.returns(nameSchema, "Created prototype {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const model = flags.model as string | undefined;
