@@ -109,7 +109,6 @@ export type HostClient = {
 		body: {
 			persona?: string;
 			model?: string;
-			adapter?: string;
 		},
 	): Promise<Envelope<PrototypeDetail>>;
 	removePrototype(name: string): Promise<void>;

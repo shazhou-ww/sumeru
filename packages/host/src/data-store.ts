@@ -177,7 +177,6 @@ function prototypePath(prototypesDir: string, name: string): string {
 export type PrototypeUpdateBody = {
 	persona: string | undefined;
 	model: string | null | undefined;
-	adapter: string | undefined;
 	extensions: Array<string> | null | undefined;
 	defaults: Prototype["defaults"] | undefined;
 };
@@ -190,7 +189,7 @@ export function mergePrototype(
 		name: existing.name,
 		persona: update.persona ?? existing.persona,
 		model: update.model !== undefined ? update.model : existing.model,
-		adapter: update.adapter ?? existing.adapter,
+		adapter: existing.adapter,
 		image: existing.image,
 		extensions:
 			update.extensions !== undefined ? update.extensions : existing.extensions,
@@ -244,21 +243,17 @@ export function validatePrototypeUpdate(
 			model = obj.model;
 		}
 	}
-	let adapter: string | undefined;
 	if (obj.adapter !== undefined) {
-		if (typeof obj.adapter !== "string" || obj.adapter.length === 0) {
-			throw new Error(
-				`Prototype ${path} field "adapter" must be a non-empty string`,
-			);
-		}
-		adapter = obj.adapter;
+		throw new Error(
+			`Prototype ${path} field "adapter" cannot be changed after creation`,
+		);
 	}
 	const defaults =
 		obj.defaults === undefined
 			? undefined
 			: parsePrototypeDefaults(obj.defaults, path);
 	const extensions = parsePrototypeExtensions(obj.extensions, path, true);
-	return { persona, model, adapter, extensions, defaults };
+	return { persona, model, extensions, defaults };
 }
 
 export function validatePrototype(

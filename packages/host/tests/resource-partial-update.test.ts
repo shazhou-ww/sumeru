@@ -204,18 +204,27 @@ describe("resource partial update routes", () => {
 			).status,
 		).toBe(201);
 
+		// Adapter is immutable after creation — attempting to change it returns 400
 		const partialPrototype = await request(
 			server,
 			"PUT",
 			"/prototypes/worker",
 			JSON.stringify({ adapter: "claude-code" }),
 		);
-		expect(partialPrototype.status).toBe(200);
-		expect(envelopeValue(partialPrototype.body)).toMatchObject({
+		expect(partialPrototype.status).toBe(400);
+		// Updating other fields still works
+		const validUpdate = await request(
+			server,
+			"PUT",
+			"/prototypes/worker",
+			JSON.stringify({ persona: "worker-persona" }),
+		);
+		expect(validUpdate.status).toBe(200);
+		expect(envelopeValue(validUpdate.body)).toMatchObject({
 			name: "worker",
 			persona: "worker-persona",
 			model: "test-model",
-			adapter: "claude-code",
+			adapter: "sarsapa",
 			defaults: null,
 		});
 	});
