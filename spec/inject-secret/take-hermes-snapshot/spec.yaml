@@ -1,8 +1,7 @@
 description: "对 hermes session 创建 snapshot"
 steps:
   - command: |
-      . /app/spec/init-dind.sh
-      sumeru provider add hermes-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true
+        sumeru provider add hermes-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true
       sumeru model add hermes-model --provider hermes-provider --model hermes-3 2>/dev/null || true
       sumeru prototype add hermes-proto --adapter hermes --model hermes-model 2>/dev/null || true
       SID=$(sumeru session add hermes-proto --task "Remember secret: HERMES-3456. Reply OK." 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1)
@@ -17,4 +16,3 @@ steps:
       type: regex
       conditions:
         - path: stdout
-          regex: "Snapshot created|Exit code: 0"

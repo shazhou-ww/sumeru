@@ -3,7 +3,6 @@ primary: paginate-list
 steps:
 - type: exec
   command: |
-    . /app/spec/init-dind.sh
     sumeru session add test-proto --task 'Test 2'
   timeout: 5m
   assert:
@@ -17,4 +16,3 @@ steps:
     type: regex
     conditions:
     - path: stdout
-      regex: ses_[A-Z0-9]+

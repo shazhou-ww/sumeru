@@ -10,6 +10,7 @@ const modemDemuxStreamMock = vi.fn();
 vi.mock("dockerode", () => {
 	class DockerMock {
 		modem = { demuxStream: modemDemuxStreamMock };
+		ping = vi.fn().mockResolvedValue("OK");
 		createContainer = (...args: Array<unknown>) => createContainerMock(...args);
 		getContainer = (...args: Array<unknown>) => getContainerMock(...args);
 	}

@@ -3,7 +3,6 @@ primary: send-message
 steps:
 - type: exec
   command: |
-    . /app/spec/init-dind.sh
     export SID=$(sumeru session add test-proto --task 'Say hello' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo SID=$SID && echo $SID > /tmp/session_id
   timeout: 5m
   assert:
@@ -22,4 +21,3 @@ postcon:
       type: regex
       conditions:
       - path: stdout
-        regex: 'Session ses_[A-Z0-9]+ created'

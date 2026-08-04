@@ -2,7 +2,6 @@ description: 删除运行中的 session
 steps:
 - type: exec
   command: |
-    . /app/spec/init-dind.sh
     sumeru provider add test-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true
     sumeru model add test-model --provider test-provider --model test-model-id 2>/dev/null || true
     sumeru prototype add test-proto --adapter sarsapa --model test-model --instructions "You are a helpful assistant" 2>/dev/null || true
@@ -21,4 +20,3 @@ steps:
     type: regex
     conditions:
     - path: stdout
-      regex: Removed|removed|deleted

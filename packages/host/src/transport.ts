@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
@@ -19,6 +20,69 @@ function getDocker(): Docker {
 /** Exposed for tests that need a fresh client after mocking. */
 export function resetDockerClient(): void {
 	dockerClient = null;
+	dockerdEnsured = false;
+}
+
+let dockerdEnsured = false;
+
+/**
+ * Ensure dockerd is running. On the host, this is a no-op (dockerd already runs).
+ * Inside a DinD container, starts dockerd with fuse-overlayfs if not already running.
+ * Called lazily before the first Docker operation (up/commit/exec/etc.).
+ */
+export async function ensureDockerd(): Promise<void> {
+	if (dockerdEnsured) return;
+	const docker = getDocker();
+
+	// Check if dockerd is already running (host or previously started in-container)
+	try {
+		await docker.ping();
+		dockerdEnsured = true;
+		return;
+	} catch {
+		// Not running — check if dockerd binary exists (i.e., we're in a DinD container)
+	}
+
+	try {
+		execSync("which dockerd", { stdio: "ignore" });
+	} catch {
+		// No dockerd binary — this is the host. Docker should be running.
+		throw new Error("Docker is not available. Is the Docker daemon running?");
+	}
+
+	// Clean stale runtime state from parent's committed layer
+	try {
+		execSync(
+			"rm -rf /var/run/docker /var/run/docker.pid /var/run/docker.sock",
+			{
+				stdio: "ignore",
+			},
+		);
+	} catch {
+		/* ignore */
+	}
+
+	// Start dockerd with fuse-overlayfs (vfs loses permissions, overlay2 doesn't nest)
+	try {
+		execSync("dockerd --storage-driver=fuse-overlayfs > /dev/null 2>&1 &", {
+			stdio: "ignore",
+		});
+	} catch {
+		/* ignore — will check below */
+	}
+
+	// Wait for dockerd to be ready (up to 30s)
+	for (let i = 0; i < 60; i++) {
+		try {
+			await docker.ping();
+			dockerdEnsured = true;
+			return;
+		} catch {
+			await new Promise((r) => setTimeout(r, 500));
+		}
+	}
+
+	throw new Error("Docker daemon failed to start within 30 seconds");
 }
 
 function formatDockerError(err: unknown): Error {
@@ -162,6 +226,7 @@ export function createDockerTransport(
 ): Transport {
 	return {
 		async up({ projectName, composePath, projectPath, env }) {
+			await ensureDockerd();
 			const composeEnv: Record<string, string> = {
 				...(env ?? {}),
 			};
@@ -205,6 +270,7 @@ export function createDockerTransport(
 		},
 
 		async upFromImage({ containerName, imageTag, projectPath, cacheDir, env }) {
+			await ensureDockerd();
 			const runEnv: Record<string, string> = {
 				...(env ?? {}),
 			};
@@ -410,6 +476,7 @@ export function createDockerTransport(
 		},
 
 		async commit({ containerId, tag, labels }) {
+			await ensureDockerd();
 			try {
 				const { repo, tag: imageTag } = splitImageTag(tag);
 				const changes =

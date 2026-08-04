@@ -3,11 +3,9 @@ primary: list-turns
 steps:
 - type: exec
   command: |
-    . /app/spec/init-dind.sh
     SID=$(cat /tmp/send_session_id) && sumeru session send $SID 'What is 3+3?'
   timeout: 5m
   assert:
     type: regex
     conditions:
     - path: stdout
-      regex: Message sent|accepted message

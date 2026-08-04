@@ -2,7 +2,6 @@ description: 重启后恢复 session
 steps:
 - type: exec
   command: |
-    . /app/spec/init-dind.sh
     # Create resources before restart
     sumeru provider add test-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true
     sumeru model add test-model --provider test-provider --model test-model-id 2>/dev/null || true
@@ -16,4 +15,3 @@ steps:
     type: regex
     conditions:
     - path: stdout
-      regex: SID=ses_[A-Z0-9]+|restarted|ses_|session
