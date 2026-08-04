@@ -10,9 +10,9 @@ if docker info >/dev/null 2>&1; then
     return 0 2>/dev/null || true
   fi
   # dockerd running but images missing — load them
-  PREBUILT_GZ="/opt/sumeru/images.tar.gz"
-  if [ -f "$PREBUILT_GZ" ]; then
-    docker load -qi "$PREBUILT_GZ" 2>/dev/null && return 0 2>/dev/null || true
+  PREBUILT="/app/spec/images-prebuilt.tar.gz"
+  if [ -f "$PREBUILT" ]; then
+    docker load -qi "$PREBUILT" 2>/dev/null && return 0 2>/dev/null || true
   fi
 fi
 

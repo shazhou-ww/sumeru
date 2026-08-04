@@ -14,6 +14,3 @@ RUN npm install -g @ocas/cli-kit@0.5.0 \
 
 WORKDIR /app
 ENV PATH="/app/node_modules/.bin:$PATH"
-
-# Pre-built adapter images for DinD (avoid building inside test containers)
-COPY images-prebuilt.tar.gz /opt/sumeru/images.tar.gz
