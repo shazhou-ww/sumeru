@@ -1,67 +1,98 @@
-import type { ChildProcess } from "node:child_process";
-import { EventEmitter } from "node:events";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const spawnMock = vi.fn();
+const createContainerMock = vi.fn();
+const getContainerMock = vi.fn();
+const modemDemuxStreamMock = vi.fn();
 
-vi.mock("node:child_process", () => ({
-	spawn: (...args: Array<unknown>) => spawnMock(...args),
-}));
+vi.mock("dockerode", () => {
+	class DockerMock {
+		modem = { demuxStream: modemDemuxStreamMock };
+		createContainer = (...args: Array<unknown>) => createContainerMock(...args);
+		getContainer = (...args: Array<unknown>) => getContainerMock(...args);
+	}
+	return { default: DockerMock };
+});
 
 import {
 	createDockerTransport,
 	createMockTransport,
 	defaultAdapterCommand,
+	resetDockerClient,
 } from "../src/transport.js";
 
-function mockSpawnChild(stdout = "container-abc\n"): ChildProcess {
-	const stdoutStream = new EventEmitter();
-	const stderrStream = new EventEmitter();
-	const child = new EventEmitter() as ChildProcess;
-	child.stdout = stdoutStream as ChildProcess["stdout"];
-	child.stderr = stderrStream as ChildProcess["stderr"];
-	child.stdin = null;
-	queueMicrotask(() => {
-		stdoutStream.emit("data", Buffer.from(stdout));
-		child.emit("close", 0);
-	});
-	return child;
+function mockStartedContainer(id = "container-abc") {
+	return {
+		id,
+		start: vi.fn().mockResolvedValue(undefined),
+	};
 }
 
 describe("createDockerTransport", () => {
 	beforeEach(() => {
-		spawnMock.mockReset();
+		createContainerMock.mockReset();
+		getContainerMock.mockReset();
+		modemDemuxStreamMock.mockReset();
+		resetDockerClient();
 	});
 
 	afterEach(() => {
 		vi.clearAllMocks();
+		resetDockerClient();
 	});
 
 	it("passes SUMERU_PROJECT_PATH in compose up env", async () => {
-		let callIndex = 0;
-		spawnMock.mockImplementation(() => {
-			callIndex += 1;
-			return mockSpawnChild(callIndex === 1 ? "" : "container-abc\n");
-		});
+		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-transport-compose-"));
+		const composePath = join(rootDir, "compose.yaml");
+		writeFileSync(
+			composePath,
+			[
+				"services:",
+				"  agent:",
+				"    image: example",
+				"    volumes:",
+				'      - "${SUMERU_PROJECT_PATH}:${SUMERU_PROJECT_PATH}"',
+			].join("\n"),
+		);
+		createContainerMock.mockResolvedValue(
+			mockStartedContainer("container-abc"),
+		);
 
 		const transport = createDockerTransport();
 		await transport.up({
 			projectName: "ses_test",
-			composePath: "/tmp/compose.yaml",
-			workDir: "/tmp/work",
+			composePath,
+			workDir: rootDir,
 			projectPath: "/tmp/sumeru-e2e",
 			env: { FOO: "bar" },
 		});
 
-		const upOptions = spawnMock.mock.calls[0]?.[2] as
-			| { env?: Record<string, string> }
-			| undefined;
-		expect(upOptions?.env?.SUMERU_PROJECT_PATH).toBe("/tmp/sumeru-e2e");
-		expect(upOptions?.env?.FOO).toBe("bar");
+		expect(createContainerMock).toHaveBeenCalledTimes(1);
+		const createOpts = createContainerMock.mock.calls[0]?.[0] as {
+			name?: string;
+			Image?: string;
+			Env?: Array<string>;
+			HostConfig?: { Binds?: Array<string> };
+		};
+		expect(createOpts.name).toBe("ses_test");
+		expect(createOpts.Image).toBe("example");
+		expect(createOpts.Env).toEqual(
+			expect.arrayContaining([
+				"FOO=bar",
+				"SUMERU_PROJECT_PATH=/tmp/sumeru-e2e",
+			]),
+		);
+		expect(createOpts.HostConfig?.Binds).toContain(
+			"/tmp/sumeru-e2e:/tmp/sumeru-e2e",
+		);
 	});
 
 	it("runs docker run with /workspace mount for image-based prototypes", async () => {
-		spawnMock.mockImplementation(() => mockSpawnChild("container-run-abc\n"));
+		createContainerMock.mockResolvedValue(
+			mockStartedContainer("container-run-abc"),
+		);
 
 		const transport = createDockerTransport();
 		await transport.upFromImage({
@@ -73,19 +104,36 @@ describe("createDockerTransport", () => {
 			env: { FOO: "bar" },
 		});
 
-		const args = spawnMock.mock.calls[0]?.[1] as Array<string> | undefined;
-		expect(args?.[0]).toBe("run");
-		expect(args).toContain("--network");
-		expect(args).toContain("host");
-		expect(args).toContain("/tmp/sumeru-e2e:/workspace:rw");
-		expect(args).toContain("-w");
-		expect(args).toContain("/workspace");
-		expect(args).toContain("/tmp/work/cache/pnpm-store:/cache/pnpm-store");
-		expect(args?.at(-1)).toBe("sumeru/codex:dev");
+		expect(createContainerMock).toHaveBeenCalledTimes(1);
+		const createOpts = createContainerMock.mock.calls[0]?.[0] as {
+			name?: string;
+			Image?: string;
+			WorkingDir?: string;
+			Env?: Array<string>;
+			HostConfig?: { NetworkMode?: string; Binds?: Array<string> };
+		};
+		expect(createOpts.name).toBe("ses_test");
+		expect(createOpts.Image).toBe("sumeru/codex:dev");
+		expect(createOpts.WorkingDir).toBe("/workspace");
+		expect(createOpts.HostConfig?.NetworkMode).toBe("host");
+		expect(createOpts.HostConfig?.Binds).toContain(
+			"/tmp/sumeru-e2e:/workspace:rw",
+		);
+		expect(createOpts.HostConfig?.Binds).toContain(
+			"/tmp/work/cache/pnpm-store:/cache/pnpm-store",
+		);
+		expect(createOpts.Env).toEqual(
+			expect.arrayContaining([
+				"FOO=bar",
+				"SUMERU_PROJECT_PATH=/tmp/sumeru-e2e",
+			]),
+		);
 	});
 
 	it("omits /workspace mount when projectPath is null", async () => {
-		spawnMock.mockImplementation(() => mockSpawnChild("container-run-abc\n"));
+		createContainerMock.mockResolvedValue(
+			mockStartedContainer("container-run-abc"),
+		);
 
 		const transport = createDockerTransport();
 		await transport.upFromImage({
@@ -97,13 +145,19 @@ describe("createDockerTransport", () => {
 			env: null,
 		});
 
-		const args = spawnMock.mock.calls[0]?.[1] as Array<string> | undefined;
-		expect(args?.some((arg) => arg.includes("/workspace"))).toBe(false);
-		expect(args).toContain("/tmp/work/cache/pnpm-store:/cache/pnpm-store");
-		const upOptions = spawnMock.mock.calls[0]?.[2] as
-			| { env?: Record<string, string> }
-			| undefined;
-		expect(upOptions?.env?.SUMERU_PROJECT_PATH).toBeUndefined();
+		const createOpts = createContainerMock.mock.calls[0]?.[0] as {
+			WorkingDir?: string;
+			Env?: Array<string>;
+			HostConfig?: { Binds?: Array<string> };
+		};
+		expect(createOpts.WorkingDir).toBeUndefined();
+		expect(
+			createOpts.HostConfig?.Binds?.some((bind) => bind.includes("/workspace")),
+		).toBe(false);
+		expect(createOpts.HostConfig?.Binds).toContain(
+			"/tmp/work/cache/pnpm-store:/cache/pnpm-store",
+		);
+		expect(createOpts.Env).toBeUndefined();
 	});
 });
 
