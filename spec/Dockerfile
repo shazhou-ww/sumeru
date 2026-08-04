@@ -1,9 +1,27 @@
 FROM node:22-alpine
 
-# Install Docker Engine (dockerd + cli + fuse-overlayfs) for treespec DinD mode.
-# treespec 0.4+ runs containers with Privileged:true and starts dockerd inside
-# using fuse-overlayfs storage driver. The CLI alone is insufficient.
-RUN apk add --no-cache docker fuse-overlayfs fuse
+# System deps: Docker for DinD + build tools for native modules
+RUN apk add --no-cache docker fuse-overlayfs fuse python3 make g++ \
+    && corepack enable pnpm
 
-WORKDIR /app
-ENV PATH="/app/node_modules/.bin:$PATH"
+# Build project at /opt/sumeru (NOT /app — treespec mount-overlays /app at runtime)
+COPY . /opt/sumeru
+WORKDIR /opt/sumeru
+
+# Replace workspace link with npm version (link target doesn't exist in container)
+RUN sed -i 's|link:../ocas/packages/cli-kit|0.5.0|g' pnpm-workspace.yaml package.json 2>/dev/null; \
+    sed -i 's|link:../../../ocas/packages/cli-kit|0.5.0|g' packages/cli/package.json 2>/dev/null; \
+    true
+
+# Install deps — compiles native modules (better-sqlite3) for Alpine/musl
+RUN pnpm install --no-frozen-lockfile
+
+# Build TypeScript → dist/ (treespec skips dist/ in build context)
+RUN pnpm run build
+
+# Recreate bin symlinks (pnpm install ran before dist/ existed)
+RUN ln -sf /opt/sumeru/packages/cli/dist/main.js /opt/sumeru/node_modules/.bin/sumeru
+
+# /app is mount-overlaid by treespec (specs live there)
+# sumeru binary comes from /opt/sumeru/node_modules/.bin
+ENV PATH="/opt/sumeru/node_modules/.bin:$PATH"

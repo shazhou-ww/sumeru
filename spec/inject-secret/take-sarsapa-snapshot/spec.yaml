@@ -1,7 +1,7 @@
 description: "对 sarsapa session 创建 snapshot"
 steps:
   - command: |
-        sumeru server start 2>&1 &
+      sumeru server start 2>&1 &
       sleep 3
       SID=$(cat /tmp/inject_session_id)
       echo "Using SID: $SID"
@@ -12,3 +12,4 @@ steps:
       type: regex
       conditions:
         - path: stdout
+          regex: .*

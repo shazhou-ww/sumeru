@@ -11,3 +11,5 @@ data/
 # treespec trace output
 *.jsonl
 spec/images-prebuilt*.tar*
+spec/images-sarsapa.tar.gz
+prototypes/
