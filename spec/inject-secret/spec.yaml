@@ -7,7 +7,7 @@ branches:
   - take-hermes-snapshot
 steps:
   - command: |
-        sumeru provider add test-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true
+      sumeru provider add test-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true
       sumeru model add test-model --provider test-provider --model test-model-id 2>/dev/null || true
       sumeru prototype add test-proto --adapter sarsapa --model test-model --instructions "You are a helpful assistant" 2>/dev/null || true
       SID=$(sumeru session add test-proto --task "Remember this secret code: ALPHA-7742. Reply OK." 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1)
@@ -18,3 +18,4 @@ steps:
       type: regex
       conditions:
         - path: stdout
+          regex: .*

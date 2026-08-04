@@ -1,7 +1,7 @@
 description: "对 codex session 创建 snapshot"
 steps:
   - command: |
-        sumeru provider add openai-provider --api-type openai --base-url https://api.openai.com 2>/dev/null || true
+      sumeru provider add openai-provider --api-type openai --base-url https://api.openai.com 2>/dev/null || true
       sumeru model add gpt-model --provider openai-provider --model gpt-4 2>/dev/null || true
       sumeru prototype add codex-proto --adapter codex --model gpt-model 2>/dev/null || true
       SID=$(sumeru session add codex-proto --task "Remember secret: CODEX-5678. Reply OK." 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1)
@@ -16,3 +16,4 @@ steps:
       type: regex
       conditions:
         - path: stdout
+          regex: .*

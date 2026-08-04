@@ -1,29 +1,4 @@
-# Dependencies (dist/ is copied explicitly; source node_modules are not needed)
 node_modules
-**/node_modules
-
-# VCS and editor
+.treespec-output
 .git
-.gitignore
-.cursor
-
-# Legacy v1 tree — excluded from workspace build
-legacy
-
-# Dev / CI / docs (not required in the image build context)
-.changeset
-specs
-**/*.md
-!packages/**/README.md
-coverage
-*.log
-.env
-.env.*
-
-# Tests
-**/tests
-!tests/Dockerfile
-**/*.test.ts
-**/*.spec.ts
-vitest.config.ts
-biome.json
+prototypes

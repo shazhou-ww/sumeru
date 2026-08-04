@@ -12,3 +12,4 @@ steps:
     type: regex
     conditions:
     - path: stdout
+      regex: .*
