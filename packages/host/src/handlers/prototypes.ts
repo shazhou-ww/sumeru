@@ -132,13 +132,25 @@ async function upsertPrototype(
 		if (current.defaults !== null) {
 			merged.defaults = { ...current.defaults };
 		}
-		// Only merge explicitly provided fields
+		// Only merge explicitly provided fields (adapter is immutable after creation)
 		if ("model" in partial) merged.model = partial.model;
-		if ("adapter" in partial) merged.adapter = partial.adapter;
 		if ("instructions" in partial) merged.instructions = partial.instructions;
 		if ("image" in partial) merged.image = partial.image;
 		if ("extensions" in partial) merged.extensions = partial.extensions;
 		if ("defaults" in partial) merged.defaults = partial.defaults;
+
+		// Reject adapter field in updates (adapter is immutable)
+		if ("adapter" in partial) {
+			writeJson(
+				res,
+				400,
+				errorEnvelope(
+					"immutable_field",
+					"Cannot change adapter after prototype creation",
+				),
+			);
+			return;
+		}
 		try {
 			prototype = validatePrototype(merged, "request body", name);
 		} catch (err) {

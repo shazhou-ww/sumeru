@@ -813,12 +813,10 @@ cli
 	.describe("Update a prototype")
 	.arg("name", "Prototype name")
 	.flag("model", { type: "string", description: "Model registry name" })
-	.flag("adapter", { type: "string", description: "Adapter name" })
 	.returns(nameSchema, "Updated prototype {{name}}", { defaultFormat: "text" })
 	.action(async (args, flags, ctx) => {
 		const body: Record<string, unknown> = {};
 		if (flags.model !== undefined) body.model = flags.model;
-		if (flags.adapter !== undefined) body.adapter = flags.adapter;
 		const client = await getClient();
 		try {
 			const envelope = await client.updatePrototype(
