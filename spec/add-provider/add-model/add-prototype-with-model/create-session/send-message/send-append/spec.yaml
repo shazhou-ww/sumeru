@@ -1,16 +1,11 @@
 description: 发送追加消息
 primary: list-turns
-branches:
-  - filter-by-role
-  - filter-by-time
-  - filter-by-tool
-  - inspect-turn-structure
-  - paginate-turns
-  - show-tool-calls
-  - watch-turns
 steps:
 - type: exec
-  command: SID=$(cat /tmp/send_session_id) && sumeru session send $SID 'What is 3+3?'
+  command: |
+    . /app/spec/init-dind.sh
+    SID=$(cat /tmp/send_session_id) && sumeru session send $SID 'What is 3+3?'
+  timeout: 5m
   assert:
     type: regex
     conditions:

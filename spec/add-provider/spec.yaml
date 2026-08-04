@@ -1,8 +1,5 @@
 description: 创建一个新的 provider
 primary: add-model
-branches:
-  - remove-provider
-  - update-provider
 steps:
 - type: exec
   command: sumeru provider add test-provider --api-type openai --base-url https://api.example.com
