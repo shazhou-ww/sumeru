@@ -27,6 +27,6 @@
 	},
 	"packageManager": "pnpm@10.12.1",
 	"dependencies": {
-		"@ocas/cli-kit": "link:../ocas/packages/cli-kit"
+		"@ocas/cli-kit": "^0.5.0"
 	}
 }

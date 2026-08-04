@@ -8,11 +8,6 @@ RUN apk add --no-cache docker fuse-overlayfs fuse python3 make g++ \
 COPY . /opt/sumeru
 WORKDIR /opt/sumeru
 
-# Replace workspace link with npm version (link target doesn't exist in container)
-RUN sed -i 's|link:../ocas/packages/cli-kit|0.5.0|g' pnpm-workspace.yaml package.json 2>/dev/null; \
-    sed -i 's|link:../../../ocas/packages/cli-kit|0.5.0|g' packages/cli/package.json 2>/dev/null; \
-    true
-
 # Install deps — compiles native modules (better-sqlite3) for Alpine/musl
 RUN pnpm install --no-frozen-lockfile
 
