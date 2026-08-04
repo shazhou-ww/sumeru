@@ -2,7 +2,9 @@ description: 执行 session 命令
 steps:
 - type: exec
   command: |
+    . /app/spec/init-dind.sh
     export SID=$(sumeru session add test-proto --task 'Execute test' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID > /tmp/exec_session_id && echo SID=$SID
+  timeout: 5m
   assert:
     type: regex
     conditions:

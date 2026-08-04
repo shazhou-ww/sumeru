@@ -1,258 +1,383 @@
-import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { PassThrough } from "node:stream";
+import Docker from "dockerode";
+import { parse as parseYaml } from "yaml";
 import type { Transport, TransportExecSession } from "./types.js";
 
 const CONTAINER_WORKDIR = "/workspace";
 
-function runCommand(
-	args: Array<string>,
-	cwd: string | null = null,
-	env: Record<string, string> | null = null,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+let dockerClient: Docker | null = null;
+
+function getDocker(): Docker {
+	if (!dockerClient) {
+		dockerClient = new Docker();
+	}
+	return dockerClient;
+}
+
+/** Exposed for tests that need a fresh client after mocking. */
+export function resetDockerClient(): void {
+	dockerClient = null;
+}
+
+function formatDockerError(err: unknown): Error {
+	if (err instanceof Error) {
+		const msg = err.message;
+		if (
+			msg.includes("ENOENT") ||
+			msg.includes("ECONNREFUSED") ||
+			msg.includes("connect") ||
+			msg.includes("docker.sock")
+		) {
+			return new Error(
+				`Docker is not available (${msg}). Is the Docker daemon running?`,
+			);
+		}
+		return err;
+	}
+	return new Error(String(err));
+}
+
+function envToArray(
+	env: Record<string, string> | null | undefined,
+): Array<string> | undefined {
+	if (env === null || env === undefined) {
+		return undefined;
+	}
+	const entries = Object.entries(env);
+	if (entries.length === 0) {
+		return undefined;
+	}
+	return entries.map(([key, value]) => `${key}=${value}`);
+}
+
+function substituteEnv(template: string, env: Record<string, string>): string {
+	return template.replace(/\$\{([^}]+)\}/g, (_match, key: string) => {
+		return env[key] ?? process.env[key] ?? "";
+	});
+}
+
+function splitImageTag(imageTag: string): { repo: string; tag: string } {
+	const colon = imageTag.lastIndexOf(":");
+	if (colon === -1) {
+		return { repo: imageTag, tag: "latest" };
+	}
+	const slash = imageTag.lastIndexOf("/");
+	if (slash > colon) {
+		return { repo: imageTag, tag: "latest" };
+	}
+	return {
+		repo: imageTag.slice(0, colon),
+		tag: imageTag.slice(colon + 1),
+	};
+}
+
+type ComposeService = {
+	image: string | null;
+	volumes: Array<string>;
+	workingDir: string | null;
+	command: Array<string> | null;
+	networkMode: string | null;
+};
+
+function parseComposeService(composePath: string, raw: string): ComposeService {
+	const doc = parseYaml(raw);
+	if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+		throw new Error(`Invalid compose file: ${composePath}`);
+	}
+	const services = (doc as Record<string, unknown>).services;
+	if (
+		services === null ||
+		typeof services !== "object" ||
+		Array.isArray(services)
+	) {
+		throw new Error(`Compose ${composePath} has no services`);
+	}
+	for (const service of Object.values(services as Record<string, unknown>)) {
+		if (
+			service === null ||
+			typeof service !== "object" ||
+			Array.isArray(service)
+		) {
+			continue;
+		}
+		const record = service as Record<string, unknown>;
+		const image = typeof record.image === "string" ? record.image : null;
+		const volumes: Array<string> = [];
+		if (Array.isArray(record.volumes)) {
+			for (const entry of record.volumes) {
+				if (typeof entry === "string") {
+					volumes.push(entry);
+				}
+			}
+		}
+		const workingDir =
+			typeof record.working_dir === "string" ? record.working_dir : null;
+		let command: Array<string> | null = null;
+		if (typeof record.command === "string") {
+			command = ["sh", "-c", record.command];
+		} else if (Array.isArray(record.command)) {
+			command = record.command.filter(
+				(item): item is string => typeof item === "string",
+			);
+		}
+		const networkMode =
+			typeof record.network_mode === "string" ? record.network_mode : null;
+		return { image, volumes, workingDir, command, networkMode };
+	}
+	throw new Error(`Compose ${composePath} declares no usable services`);
+}
+
+async function collectExecOutput(
+	docker: Docker,
+	stream: NodeJS.ReadableStream,
+): Promise<{ stdout: string; stderr: string }> {
 	return new Promise((resolve, reject) => {
-		const child = spawn(args[0] as string, args.slice(1), {
-			stdio: ["ignore", "pipe", "pipe"],
-			cwd: cwd ?? undefined,
-			env:
-				env === null
-					? undefined
-					: {
-							...process.env,
-							...env,
-						},
+		const stdoutStream = new PassThrough();
+		const stderrStream = new PassThrough();
+		const stdoutChunks: Array<Buffer> = [];
+		const stderrChunks: Array<Buffer> = [];
+		stdoutStream.on("data", (chunk: Buffer) => {
+			stdoutChunks.push(Buffer.from(chunk));
 		});
-		const stdoutChunks: Buffer[] = [];
-		const stderrChunks: Buffer[] = [];
-		child.stdout?.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-		child.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
-		child.on("error", reject);
-		child.on("close", (code) => {
+		stderrStream.on("data", (chunk: Buffer) => {
+			stderrChunks.push(Buffer.from(chunk));
+		});
+		docker.modem.demuxStream(stream, stdoutStream, stderrStream);
+		stream.on("end", () => {
+			stdoutStream.end();
+			stderrStream.end();
 			resolve({
 				stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
 				stderr: Buffer.concat(stderrChunks).toString("utf-8"),
-				exitCode: code ?? 1,
 			});
 		});
+		stream.on("error", reject);
 	});
 }
 
 export function createDockerTransport(
-	options: { dockerBin?: string; composeBin?: string } = {},
+	_options: { dockerBin?: string; composeBin?: string } = {},
 ): Transport {
-	const dockerBin = options.dockerBin ?? "docker";
-	const composeBin = options.composeBin ?? "docker";
-
 	return {
-		async up({ projectName, composePath, workDir, projectPath, env }) {
+		async up({ projectName, composePath, projectPath, env }) {
 			const composeEnv: Record<string, string> = {
 				...(env ?? {}),
 			};
 			if (projectPath !== null) {
-				// Host path; compose.yaml defines the container mount target.
 				composeEnv.SUMERU_PROJECT_PATH = projectPath;
 			}
-			const result = await runCommand(
-				[
-					composeBin,
-					"compose",
-					"-f",
-					composePath,
-					"-p",
-					projectName,
-					"up",
-					"-d",
-				],
-				workDir,
-				composeEnv,
-			);
-			if (result.exitCode !== 0) {
-				throw new Error(
-					`docker compose up failed: ${result.stderr || result.stdout}`,
+			try {
+				const raw = await readFile(composePath, "utf-8");
+				const service = parseComposeService(composePath, raw);
+				if (service.image === null || service.image.length === 0) {
+					throw new Error(`Compose ${composePath} service has no image`);
+				}
+				const image = substituteEnv(service.image, composeEnv);
+				const binds = service.volumes.map((volume) =>
+					substituteEnv(volume, composeEnv),
 				);
+				const docker = getDocker();
+				const createOpts: Docker.ContainerCreateOptions = {
+					name: projectName,
+					Image: image,
+					Env: envToArray(composeEnv),
+					HostConfig: {
+						Binds: binds.length > 0 ? binds : undefined,
+						NetworkMode: service.networkMode ?? undefined,
+					},
+				};
+				if (service.workingDir !== null) {
+					createOpts.WorkingDir = substituteEnv(service.workingDir, composeEnv);
+				}
+				if (service.command !== null && service.command.length > 0) {
+					createOpts.Cmd = service.command.map((part) =>
+						substituteEnv(part, composeEnv),
+					);
+				}
+				const container = await docker.createContainer(createOpts);
+				await container.start();
+				return { containerId: container.id };
+			} catch (err) {
+				throw formatDockerError(err);
 			}
-			const ps = await runCommand(
-				[
-					composeBin,
-					"compose",
-					"-f",
-					composePath,
-					"-p",
-					projectName,
-					"ps",
-					"-q",
-				],
-				workDir,
-			);
-			if (ps.exitCode !== 0) {
-				throw new Error(`docker compose ps failed: ${ps.stderr || ps.stdout}`);
-			}
-			const firstContainer = ps.stdout.trim().split("\n")[0] ?? "";
-			if (firstContainer.length === 0) {
-				throw new Error(
-					"docker compose up succeeded but no container id found",
-				);
-			}
-			return { containerId: firstContainer };
 		},
 
-		async upFromImage({
-			containerName,
-			imageTag,
-			workDir,
-			projectPath,
-			cacheDir,
-			env,
-		}) {
+		async upFromImage({ containerName, imageTag, projectPath, cacheDir, env }) {
 			const runEnv: Record<string, string> = {
 				...(env ?? {}),
 			};
 			if (projectPath !== null) {
 				runEnv.SUMERU_PROJECT_PATH = projectPath;
 			}
-			const args = [
-				dockerBin,
-				"run",
-				"-d",
-				"--name",
-				containerName,
-				"--network",
-				"host",
-			];
+			const binds: Array<string> = [];
 			if (projectPath !== null) {
-				args.push("-v", `${projectPath}:/workspace:rw`);
-				args.push("-w", "/workspace");
+				binds.push(`${projectPath}:/workspace:rw`);
 			}
-			args.push(
-				"-v",
+			binds.push(
 				`${cacheDir}/pnpm-store:/cache/pnpm-store`,
-				"-v",
 				`${cacheDir}/npm:/cache/npm`,
-				"-v",
 				`${cacheDir}/uv:/cache/uv`,
-				"-v",
 				`${cacheDir}/pip:/cache/pip`,
 			);
-			for (const [key, value] of Object.entries(runEnv)) {
-				args.push("-e", `${key}=${value}`);
-			}
-			args.push(imageTag);
-			const result = await runCommand(args, workDir);
-			if (result.exitCode !== 0) {
-				throw new Error(`docker run failed: ${result.stderr || result.stdout}`);
-			}
-			const containerId = result.stdout.trim();
-			if (containerId.length === 0) {
-				throw new Error("docker run succeeded but returned no container id");
-			}
-			return { containerId };
-		},
-
-		async down({ projectName, composePath, workDir }) {
-			const result = await runCommand(
-				[
-					composeBin,
-					"compose",
-					"-f",
-					composePath,
-					"-p",
-					projectName,
-					"down",
-					"-t",
-					"2",
-				],
-				workDir,
-			);
-			if (result.exitCode !== 0) {
-				throw new Error(
-					`docker compose down failed: ${result.stderr || result.stdout}`,
-				);
+			try {
+				const docker = getDocker();
+				const createOpts: Docker.ContainerCreateOptions = {
+					name: containerName,
+					Image: imageTag,
+					Env: envToArray(runEnv),
+					HostConfig: {
+						NetworkMode: "host",
+						Binds: binds,
+					},
+				};
+				if (projectPath !== null) {
+					createOpts.WorkingDir = "/workspace";
+				}
+				const container = await docker.createContainer(createOpts);
+				await container.start();
+				return { containerId: container.id };
+			} catch (err) {
+				throw formatDockerError(err);
 			}
 		},
 
-		async rm({ projectName, composePath, workDir }) {
-			const result = await runCommand(
-				[
-					composeBin,
-					"compose",
-					"-f",
-					composePath,
-					"-p",
-					projectName,
-					"rm",
-					"-f",
-				],
-				workDir,
-			);
-			if (result.exitCode !== 0) {
-				throw new Error(
-					`docker compose rm failed: ${result.stderr || result.stdout}`,
-				);
+		async down({ projectName }) {
+			try {
+				const container = getDocker().getContainer(projectName);
+				await container.stop({ t: 2 });
+			} catch (err) {
+				const statusCode =
+					err && typeof err === "object" && "statusCode" in err
+						? (err as { statusCode?: number }).statusCode
+						: undefined;
+				if (statusCode === 304 || statusCode === 404) {
+					return;
+				}
+				throw formatDockerError(err);
+			}
+		},
+
+		async rm({ projectName }) {
+			try {
+				const container = getDocker().getContainer(projectName);
+				await container.remove({ force: true });
+			} catch (err) {
+				const statusCode =
+					err && typeof err === "object" && "statusCode" in err
+						? (err as { statusCode?: number }).statusCode
+						: undefined;
+				if (statusCode === 404) {
+					return;
+				}
+				throw formatDockerError(err);
 			}
 		},
 
 		async rmContainer(containerId) {
-			const result = await runCommand([dockerBin, "rm", "-f", containerId]);
-			if (result.exitCode !== 0) {
-				throw new Error(`docker rm failed: ${result.stderr || result.stdout}`);
+			try {
+				await getDocker().getContainer(containerId).remove({ force: true });
+			} catch (err) {
+				throw formatDockerError(err);
 			}
 		},
 
 		async stop(containerId) {
-			const result = await runCommand([
-				dockerBin,
-				"stop",
-				"-t",
-				"5",
-				containerId,
-			]);
-			if (result.exitCode !== 0) {
-				throw new Error(
-					`docker stop failed: ${result.stderr || result.stdout}`,
-				);
+			try {
+				await getDocker().getContainer(containerId).stop({ t: 5 });
+			} catch (err) {
+				throw formatDockerError(err);
 			}
 		},
 
 		async start(containerId) {
-			const result = await runCommand([dockerBin, "start", containerId]);
-			if (result.exitCode !== 0) {
-				throw new Error(
-					`docker start failed: ${result.stderr || result.stdout}`,
-				);
+			try {
+				await getDocker().getContainer(containerId).start();
+			} catch (err) {
+				throw formatDockerError(err);
 			}
 		},
 
 		exec({ containerId, command, env }) {
-			const args = [dockerBin, "exec", "-i", "-w", CONTAINER_WORKDIR];
-			if (env !== null) {
-				for (const [key, value] of Object.entries(env)) {
-					args.push("-e", `${key}=${value}`);
-				}
-			}
-			args.push(containerId, ...command);
-			const child = spawn(args[0] as string, args.slice(1), {
-				stdio: ["pipe", "pipe", "pipe"],
-			});
-			if (child.stdin === null || child.stdout === null) {
-				throw new Error("docker exec missing stdio pipes");
-			}
-			const stderrChunks: Buffer[] = [];
-			child.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
-			const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
+			const stdin = new PassThrough();
+			const stdout = new PassThrough();
+			const stderrChunks: Array<Buffer> = [];
+			const deferred: {
+				resolve:
+					| ((value: { exitCode: number | null; stderr: string }) => void)
+					| null;
+				reject: ((err: unknown) => void) | null;
+			} = { resolve: null, reject: null };
 			const exitPromise = new Promise<{
 				exitCode: number | null;
 				stderr: string;
 			}>((resolve, reject) => {
-				child.on("error", reject);
-				child.on("close", (code) => {
-					resolve({
-						exitCode: code,
-						stderr: Buffer.concat(stderrChunks).toString("utf-8"),
-					});
-				});
+				deferred.resolve = resolve;
+				deferred.reject = reject;
 			});
+			const resolveExit = (value: {
+				exitCode: number | null;
+				stderr: string;
+			}): void => {
+				deferred.resolve?.(value);
+			};
+			const rejectExit = (err: unknown): void => {
+				deferred.reject?.(err);
+			};
+
+			void (async () => {
+				try {
+					const docker = getDocker();
+					const container = docker.getContainer(containerId);
+					const execHandle = await container.exec({
+						Cmd: command,
+						AttachStdin: true,
+						AttachStdout: true,
+						AttachStderr: true,
+						WorkingDir: CONTAINER_WORKDIR,
+						Env: envToArray(env),
+					});
+					const stream = await execHandle.start({
+						hijack: true,
+						stdin: true,
+					});
+					const remoteStdout = new PassThrough();
+					const remoteStderr = new PassThrough();
+					docker.modem.demuxStream(stream, remoteStdout, remoteStderr);
+					remoteStdout.on("data", (chunk: Buffer) => {
+						stdout.write(chunk);
+					});
+					remoteStderr.on("data", (chunk: Buffer) => {
+						stderrChunks.push(Buffer.from(chunk));
+					});
+					stdin.pipe(stream);
+					stream.on("end", () => {
+						stdout.end();
+						void execHandle
+							.inspect()
+							.then((inspected) => {
+								resolveExit({
+									exitCode: inspected.ExitCode ?? null,
+									stderr: Buffer.concat(stderrChunks).toString("utf-8"),
+								});
+							})
+							.catch((err: unknown) => {
+								rejectExit(formatDockerError(err));
+							});
+					});
+					stream.on("error", (err: Error) => {
+						rejectExit(formatDockerError(err));
+					});
+				} catch (err) {
+					stdout.end();
+					rejectExit(formatDockerError(err));
+				}
+			})();
+
+			const rl = createInterface({ input: stdout, crlfDelay: Infinity });
 			const session: TransportExecSession = {
-				stdin: child.stdin,
+				stdin,
 				lines: rl,
 				waitForExit: () => exitPromise,
 			};
@@ -260,51 +385,70 @@ export function createDockerTransport(
 		},
 
 		async runOnce({ containerId, command, env }) {
-			const args = [dockerBin, "exec", "-i", "-w", CONTAINER_WORKDIR];
-			if (env !== null) {
-				for (const [key, value] of Object.entries(env)) {
-					args.push("-e", `${key}=${value}`);
-				}
+			try {
+				const docker = getDocker();
+				const container = docker.getContainer(containerId);
+				const execHandle = await container.exec({
+					Cmd: command,
+					AttachStdin: false,
+					AttachStdout: true,
+					AttachStderr: true,
+					WorkingDir: CONTAINER_WORKDIR,
+					Env: envToArray(env),
+				});
+				const stream = await execHandle.start({ hijack: true, stdin: false });
+				const output = await collectExecOutput(docker, stream);
+				const inspected = await execHandle.inspect();
+				return {
+					stdout: output.stdout,
+					stderr: output.stderr,
+					exitCode: inspected.ExitCode ?? 1,
+				};
+			} catch (err) {
+				throw formatDockerError(err);
 			}
-			args.push(containerId, ...command);
-			return runCommand(args, null, env);
 		},
 
 		async commit({ containerId, tag, labels }) {
-			const args = [dockerBin, "commit"];
-			if (labels !== null) {
-				for (const [key, value] of Object.entries(labels)) {
-					args.push("--change", `LABEL ${key}=${value}`);
+			try {
+				const { repo, tag: imageTag } = splitImageTag(tag);
+				const changes =
+					labels === null
+						? undefined
+						: Object.entries(labels).map(
+								([key, value]) => `LABEL ${key}=${value}`,
+							);
+				const result = await getDocker().getContainer(containerId).commit({
+					repo,
+					tag: imageTag,
+					changes,
+				});
+				const imageId =
+					typeof result === "object" &&
+					result !== null &&
+					"Id" in result &&
+					typeof (result as { Id: unknown }).Id === "string"
+						? (result as { Id: string }).Id
+						: "";
+				if (imageId.length === 0) {
+					throw new Error("docker commit succeeded but returned no image id");
 				}
+				return { imageId };
+			} catch (err) {
+				throw formatDockerError(err);
 			}
-			args.push(containerId, tag);
-			const result = await runCommand(args);
-			if (result.exitCode !== 0) {
-				throw new Error(
-					`docker commit failed: ${result.stderr || result.stdout}`,
-				);
-			}
-			const imageId = result.stdout.trim();
-			if (imageId.length === 0) {
-				throw new Error("docker commit succeeded but returned no image id");
-			}
-			return { imageId };
 		},
 
 		async inspectStatus(containerId) {
-			const result = await runCommand([
-				dockerBin,
-				"inspect",
-				"-f",
-				"{{.State.Running}}",
-				containerId,
-			]);
-			if (result.exitCode !== 0) {
+			try {
+				const info = await getDocker().getContainer(containerId).inspect();
+				if (info.State.Running) {
+					return "running";
+				}
+				return "stopped";
+			} catch {
 				return "stopped";
 			}
-			const running = result.stdout.trim();
-			if (running === "true") return "running";
-			return "stopped";
 		},
 	};
 }

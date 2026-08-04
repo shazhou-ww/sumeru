@@ -1,8 +1,11 @@
 description: 停止 session
+primary: resume-session
 steps:
 - type: exec
   command: |
+    . /app/spec/init-dind.sh
     export SID=$(sumeru session add test-proto --task 'Stop test' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo $SID > /tmp/stop_session_id && echo SID=$SID
+  timeout: 5m
   assert:
     type: regex
     conditions:

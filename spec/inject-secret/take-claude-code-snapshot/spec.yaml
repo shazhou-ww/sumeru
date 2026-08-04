@@ -1,6 +1,7 @@
 description: "对 claude-code session 创建 snapshot"
 steps:
   - command: |
+      . /app/spec/init-dind.sh
       sumeru provider add claude-provider --api-type anthropic --base-url https://api.anthropic.com 2>/dev/null || true
       sumeru model add claude-model --provider claude-provider --model claude-3-sonnet-20240229 2>/dev/null || true
       sumeru prototype add claude-proto --adapter claude-code --model claude-model 2>/dev/null || true

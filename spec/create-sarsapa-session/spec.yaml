@@ -1,11 +1,17 @@
 description: 创建 sarsapa session 用于协议验证
+primary: verify-text-only-turn
+branches:
+  - verify-token-usage
+  - verify-wire-tool-call-id
 steps:
 - type: exec
   command: |
+    . /app/spec/init-dind.sh
     sumeru provider add test-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true
     sumeru model add test-model --provider test-provider --model test-model-id 2>/dev/null || true
     sumeru prototype add test-proto --adapter sarsapa --model test-model --instructions "You are a helpful assistant" 2>/dev/null || true
     export SID=$(sumeru session add test-proto --task 'List the files in current directory' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo SID=$SID && echo $SID > /tmp/sarsapa_session_id
+  timeout: 5m
   assert:
     type: regex
     conditions:

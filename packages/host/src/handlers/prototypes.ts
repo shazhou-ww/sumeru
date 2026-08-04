@@ -101,22 +101,62 @@ async function upsertPrototype(
 	name: string,
 ): Promise<void> {
 	const existing = hostConfig.prototypes.get(name);
-	if (existing !== undefined) {
-		writeJson(
-			res,
-			409,
-			errorEnvelope("prototype_exists", `Prototype ${name} already exists`),
-		);
-		return;
-	}
 	let prototype: Prototype;
-	try {
-		prototype = await readPrototypeBody(req, name);
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		writeJson(res, 400, errorEnvelope("invalid_body", message));
-		return;
+
+	if (existing !== undefined) {
+		// Merge-update path: read partial body, merge with existing prototype
+		const contentType = req.headers["content-type"] ?? "";
+		let partial: Record<string, unknown>;
+		try {
+			if (contentType.includes("application/json")) {
+				partial = (await readJsonBody(req)) as Record<string, unknown>;
+			} else {
+				const raw = await readTextBody(req);
+				const { parse: parseYaml } = await import("yaml");
+				partial = parseYaml(raw) as Record<string, unknown>;
+			}
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			writeJson(res, 400, errorEnvelope("invalid_body", message));
+			return;
+		}
+		const current = existing.prototype;
+		const merged: Record<string, unknown> = {
+			name: current.name,
+			instructions: current.instructions,
+			model: current.model,
+			adapter: current.adapter,
+			image: current.image,
+			extensions: current.extensions,
+		};
+		if (current.defaults !== null) {
+			merged.defaults = { ...current.defaults };
+		}
+		// Only merge explicitly provided fields
+		if ("model" in partial) merged.model = partial.model;
+		if ("adapter" in partial) merged.adapter = partial.adapter;
+		if ("instructions" in partial) merged.instructions = partial.instructions;
+		if ("image" in partial) merged.image = partial.image;
+		if ("extensions" in partial) merged.extensions = partial.extensions;
+		if ("defaults" in partial) merged.defaults = partial.defaults;
+		try {
+			prototype = validatePrototype(merged, "request body", name);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			writeJson(res, 400, errorEnvelope("invalid_body", message));
+			return;
+		}
+	} else {
+		// Create path
+		try {
+			prototype = await readPrototypeBody(req, name);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			writeJson(res, 400, errorEnvelope("invalid_body", message));
+			return;
+		}
 	}
+
 	const manifest = getAdapterManifest(prototype.adapter);
 	if (manifest === null) {
 		writeJson(
@@ -173,12 +213,15 @@ async function upsertPrototype(
 	try {
 		await writePrototypeFile(hostConfig.prototypesDir, prototype);
 		const info = await reloadPrototypeInConfig(hostConfig, name);
-		writeJson(res, 201, prototypeEnvelope(info));
+		const statusCode = existing !== undefined ? 200 : 201;
+		writeJson(res, statusCode, prototypeEnvelope(info));
 	} catch (err) {
-		try {
-			await deletePrototypeFile(hostConfig.prototypesDir, name);
-		} catch {
-			// best-effort rollback when compose validation fails after yaml write
+		if (existing === undefined) {
+			try {
+				await deletePrototypeFile(hostConfig.prototypesDir, name);
+			} catch {
+				// best-effort rollback when compose validation fails after yaml write
+			}
 		}
 		writePrototypeError(res, err);
 	}
