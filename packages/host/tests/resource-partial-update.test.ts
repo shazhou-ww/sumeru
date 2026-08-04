@@ -162,6 +162,9 @@ describe("resource partial update routes", () => {
 			metadata: { tier: "fast" },
 		});
 
+		// --- Prototype tests (share provider + model from above) ---
+
+		// Create initial prototype via PUT
 		expect(
 			(
 				await request(
@@ -179,19 +182,28 @@ describe("resource partial update routes", () => {
 			).status,
 		).toBe(201);
 
-		// Prototype update now supports merge (returns 200 instead of 409)
+		// Prototype update supports merge (returns 200) — update instructions field
 		const partialPrototype = await request(
+			server,
+			"PUT",
+			"/prototypes/worker",
+			JSON.stringify({ instructions: "Updated instructions" }),
+		);
+		expect(partialPrototype.status).toBe(200);
+		expect(envelopeValue(partialPrototype.body)).toMatchObject({
+			name: "worker",
+			instructions: "Updated instructions",
+			model: "test-model",
+			adapter: "sarsapa",
+		});
+
+		// Adapter field is immutable — attempt to change it should fail
+		const adapterUpdate = await request(
 			server,
 			"PUT",
 			"/prototypes/worker",
 			JSON.stringify({ adapter: "claude-code" }),
 		);
-		expect(partialPrototype.status).toBe(200);
-		expect(envelopeValue(partialPrototype.body)).toMatchObject({
-			name: "worker",
-			instructions: "You are a helpful worker assistant",
-			model: "test-model",
-			adapter: "claude-code",
-		});
+		expect(adapterUpdate.status).toBe(400);
 	});
 });
