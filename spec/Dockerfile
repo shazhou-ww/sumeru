@@ -1,7 +1,7 @@
 FROM node:22-alpine
 
-# System deps: Docker for DinD + build tools for native modules
-RUN apk add --no-cache docker fuse-overlayfs fuse python3 make g++ \
+# System deps: Docker for DinD
+RUN apk add --no-cache docker fuse-overlayfs fuse \
     && corepack enable pnpm
 
 # Build project at /opt/sumeru (NOT /app — treespec mount-overlays /app at runtime)
@@ -13,7 +13,7 @@ RUN sed -i 's|link:../ocas/packages/cli-kit|0.5.0|g' pnpm-workspace.yaml package
     sed -i 's|link:../../../ocas/packages/cli-kit|0.5.0|g' packages/cli/package.json 2>/dev/null; \
     true
 
-# Install deps — compiles native modules (better-sqlite3) for Alpine/musl
+# Install deps (no native module compilation needed — uses node:sqlite)
 RUN pnpm install --no-frozen-lockfile
 
 # Build TypeScript → dist/ (treespec skips dist/ in build context)
