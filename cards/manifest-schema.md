@@ -117,7 +117,7 @@ Each prototype can have a `compose.yaml` at `prototypes/<name>/compose.yaml` tha
 | Package | File | What it does |
 |---------|------|--------------|
 | `@sumeru/core` | `packages/core/src/types.ts` | Canonical type definitions for all entities. |
-| `@sumeru/host` | `packages/host/src/sqlite-store.ts` | SQLite CRUD implementation (better-sqlite3). |
+| `@sumeru/host` | `packages/host/src/sqlite-store.ts` | SQLite CRUD implementation (node:sqlite). |
 | `@sumeru/host` | `packages/host/src/config.ts` | Loads host.yaml, prototypes, extensions, opens SQLite store. |
 | `@sumeru/host` | `packages/host/src/data-store.ts` | Prototype/extension YAML loading and hash computation. |
 
