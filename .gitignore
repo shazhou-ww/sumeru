@@ -10,6 +10,7 @@ data/
 
 # treespec trace output
 *.jsonl
-spec/images-prebuilt*.tar*
-spec/images-sarsapa.tar.gz
+
+# Adapter image artifacts (built by `pnpm run build:images`)
+images/
 prototypes/

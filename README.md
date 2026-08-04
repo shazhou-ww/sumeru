@@ -107,7 +107,8 @@ packages/
   adapter-codex/  — Codex CLI adapter
   adapter-claude-code/ — Claude Code adapter
   adapter-cursor-agent/ — Cursor Agent adapter
-  base/           — 基础 Docker image (Dockerfile)
+docker/           — 所有 Dockerfile（base + adapters）
+images/           — 构建产物（gitignored，由 build:images 生成）
 ```
 
 ## Docker 架构
@@ -137,15 +138,18 @@ sumeru/base:dev            ← node:24-slim + python 3.12 + 通用工具
 ```bash
 pnpm install           # 安装依赖
 pnpm run build         # 编译所有包
+pnpm run build:images  # 构建 Docker 镜像（可选，treespec 测试需要）
+pnpm run build:all     # build + build:images
 pnpm run check         # Biome lint
-npx vitest run         # 运行测试（321 tests）
+npx vitest run         # 运行测试
 npx tsc --noEmit       # 类型检查
 ```
 
 构建 Docker 镜像：
 ```bash
-docker build -t sumeru/sarsapa:dev -f packages/sarsapa/Dockerfile .
-docker build -t sumeru/hermes:dev -f packages/adapter-hermes/Dockerfile .
+pnpm run build:images           # 构建所有 adapter 镜像 → images/
+pnpm run build:images sarsapa   # 只构建 sarsapa
+pnpm run build:images --list    # 列出可用镜像
 ```
 
 ## 部署

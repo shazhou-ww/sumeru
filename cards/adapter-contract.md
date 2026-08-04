@@ -371,7 +371,7 @@ CMD ["sleep", "infinity"]
 
 ```bash
 # Build image
-docker build -t sumeru/my-adapter:dev -f packages/my-adapter/Dockerfile .
+docker build -t sumeru/my-adapter:dev -f docker/my-adapter.Dockerfile .
 
 # Test subcommands directly
 docker run --rm sumeru/my-adapter:dev sumeru-adapter info

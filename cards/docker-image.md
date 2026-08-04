@@ -2,10 +2,10 @@
 id: docker-image
 title: "Docker Image Build"
 sources:
-  - packages/sarsapa/Dockerfile
-  - packages/adapter-hermes/Dockerfile
-  - packages/adapter-claude-code/Dockerfile
-  - packages/adapter-codex/Dockerfile
+  - docker/sarsapa.Dockerfile
+  - docker/hermes.Dockerfile
+  - docker/claude-code.Dockerfile
+  - docker/codex.Dockerfile
   - packages/cli/src/image-build.ts
 tags: [sumeru, docker]
 created: 2026-06-28
@@ -14,11 +14,11 @@ updated: 2026-07-02
 
 # Docker Image Build
 
-> Each supported agent type has its own Dockerfile under `packages/adapter-<agent>/`. The `sumeru image build` CLI assembles dist artifacts and builds tagged images for host-driven `docker exec` invocation.
+> All Dockerfiles are in the `docker/` directory. Use `pnpm run build:images` to build all adapter images into the `images/` directory (gitignored).
 
 ## Overview
 
-V3 supports multiple agent runtimes: **sarsapa** (native), **hermes** (ACP), **claude-code**, and **codex**. Each has a dedicated Dockerfile in `packages/adapter-<agent>/Dockerfile`. The build process is handled by `sumeru image build <name> --agent <type>`, which stages monorepo artifacts into a `.build/` directory and runs `docker build`.
+All Dockerfiles are in the `docker/` directory. Build with `pnpm run build:images` or individually with `docker build -t sumeru/<name>:dev -f docker/<name>.Dockerfile .`.
 
 Docker image tags are **not** stored in a separate registry entity. Tags follow adapter naming: `sumeru/sarsapa:dev` for sarsapa, `sumeru/adapter-<name>:dev` for other adapters. The tag is referenced directly in `prototypes/<name>/compose.yaml`.
 
@@ -41,10 +41,11 @@ Artifacts staged into `.build/packages/`:
 
 | Agent | Dockerfile | Base Image | Key Extras |
 |-------|-----------|------------|------------|
-| sarsapa | `packages/sarsapa/Dockerfile` | `node:24-slim` | ripgrep, git, build-essential |
-| hermes | `packages/adapter-hermes/Dockerfile` | `node:22-slim` | hermes CLI (ACP), git, curl |
-| claude-code | `packages/adapter-claude-code/Dockerfile` | `node:22-slim` | Python (uv), Claude CLI, git |
-| codex | `packages/adapter-codex/Dockerfile` | `node:22-slim` | Codex CLI, git |
+| sarsapa | `docker/sarsapa.Dockerfile` | `sumeru/base:dev` | Native Sumeru agent |
+| hermes | `docker/hermes.Dockerfile` | `sumeru/base:dev` | Hermes CLI (ACP) |
+| claude-code | `docker/claude-code.Dockerfile` | `sumeru/base:dev` | Claude CLI |
+| codex | `docker/codex.Dockerfile` | `sumeru/base:dev` | Codex CLI |
+| cursor-agent | `docker/cursor-agent.Dockerfile` | `sumeru/base:dev` | Cursor Agent CLI |
 
 ## Runtime Model
 
@@ -80,10 +81,10 @@ services:
 
 | Package | File | What it does |
 |---------|------|--------------|
-| adapter package | `packages/sarsapa/Dockerfile` | Native sarsapa agent runtime image. |
-| adapter package | `packages/adapter-hermes/Dockerfile` | Hermes ACP agent runtime image. |
-| adapter package | `packages/adapter-claude-code/Dockerfile` | Claude Code CLI runtime image. |
-| adapter package | `packages/adapter-codex/Dockerfile` | Codex CLI runtime image. |
+| docker/ | `docker/sarsapa.Dockerfile` | Native sarsapa agent runtime image. |
+| docker/ | `docker/hermes.Dockerfile` | Hermes ACP agent runtime image. |
+| docker/ | `docker/claude-code.Dockerfile` | Claude Code CLI runtime image. |
+| docker/ | `docker/codex.Dockerfile` | Codex CLI runtime image. |
 | `@sumeru/cli` | `packages/cli/src/image-build.ts` | Build pipeline: staging and docker build. |
 
 ## See Also

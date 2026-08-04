@@ -8,6 +8,8 @@
 	"type": "module",
 	"scripts": {
 		"build": "proman build",
+		"build:images": "node scripts/build-images.mjs",
+		"build:all": "pnpm run build && pnpm run build:images",
 		"test": "proman test",
 		"test:ci": "proman test --concurrency 1",
 		"check": "proman check",
