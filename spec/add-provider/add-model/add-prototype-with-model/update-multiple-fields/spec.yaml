@@ -1,10 +1,10 @@
-description: 同时更新 prototype 多个字段
+description: 同时更新 prototype 多个字段（不含 adapter）
 steps:
 - type: exec
   command: |
     sumeru provider add update-provider --api-type openai --base-url https://api.update.com 2>/dev/null || true
     sumeru model add updated-model --provider update-provider --model updated-model-id 2>/dev/null || true
-    sumeru prototype update test-proto --model updated-model --adapter hermes
+    sumeru prototype update test-proto --model updated-model
   assert:
     type: regex
     conditions:
@@ -19,4 +19,4 @@ postcon:
       type: regex
       conditions:
       - path: stdout
-        regex: updated-model|hermes
+        regex: updated-model

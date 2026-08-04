@@ -1,5 +1,10 @@
 description: 基于 model 创建 prototype
 primary: create-session
+branches:
+  - update-prototype
+  - update-prototype-adapter-immutable
+  - update-multiple-fields
+  - remove-prototype
 steps:
 - type: exec
   command: sumeru prototype add test-proto --adapter sarsapa --model test-model --instructions "You are a helpful assistant"

@@ -1,0 +1,24 @@
+description: 验证 prototype 的 adapter 字段创建后不可变
+steps:
+- type: exec
+  command: |
+    # CLI no longer accepts --adapter for update (flag removed).
+    # Verify: passing --adapter should produce an error or be ignored.
+    sumeru prototype update test-proto --adapter hermes 2>&1 || true
+    # Also verify via API that adapter was not changed
+    sumeru prototype get test-proto --format json
+  assert:
+    type: regex
+    conditions:
+    - path: stdout
+      regex: '"adapter": "sarsapa"'
+postcon:
+- name: verify-adapter-unchanged
+  steps:
+  - type: exec
+    command: sumeru prototype get test-proto --format json
+    assert:
+      type: regex
+      conditions:
+      - path: stdout
+        regex: '"adapter": "sarsapa"'
