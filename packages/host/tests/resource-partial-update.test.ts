@@ -91,7 +91,7 @@ describe("resource partial update routes", () => {
 		return server;
 	}
 
-	it("supports partial PUT updates for provider and model; prototype is create-only (409 on duplicate)", async () => {
+	it("supports partial PUT updates for provider, model, and prototype (merge semantics)", async () => {
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-partial-"));
 		writeV3HostFixture(rootDir);
 		const server = await startTestServer(rootDir);
@@ -179,12 +179,19 @@ describe("resource partial update routes", () => {
 			).status,
 		).toBe(201);
 
+		// Prototype update now supports merge (returns 200 instead of 409)
 		const partialPrototype = await request(
 			server,
 			"PUT",
 			"/prototypes/worker",
 			JSON.stringify({ adapter: "claude-code" }),
 		);
-		expect(partialPrototype.status).toBe(409);
+		expect(partialPrototype.status).toBe(200);
+		expect(envelopeValue(partialPrototype.body)).toMatchObject({
+			name: "worker",
+			instructions: "You are a helpful worker assistant",
+			model: "test-model",
+			adapter: "claude-code",
+		});
 	});
 });

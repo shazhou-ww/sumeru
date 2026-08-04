@@ -1,7 +1,11 @@
 description: 创建多个 sessions
+primary: paginate-list
 steps:
 - type: exec
-  command: sumeru session add test-proto --task 'Test 2'
+  command: |
+    . /app/spec/init-dind.sh
+    sumeru session add test-proto --task 'Test 2'
+  timeout: 5m
   assert:
     type: regex
     conditions:

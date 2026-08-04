@@ -1,4 +1,9 @@
 description: 创建一个 model (依赖 provider 存在)
+primary: add-prototype-with-model
+branches:
+  - remove-model
+  - remove-provider-in-use
+  - update-model
 steps:
 - type: exec
   command: sumeru model add test-model --provider test-provider --model test-model-id

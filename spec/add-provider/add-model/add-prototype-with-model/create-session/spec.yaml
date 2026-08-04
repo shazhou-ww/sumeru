@@ -1,8 +1,19 @@
 description: 创建一个 session
+primary: send-message
+branches:
+  - create-multiple-sessions
+  - create-without-task
+  - delete-session
+  - execute-commands
+  - get-session
+  - list-sessions
+  - stop-session
 steps:
 - type: exec
-  command: export SID=$(sumeru session add test-proto --task 'Say hello' 2>&1 | grep
-    -o 'ses_[A-Z0-9]*' | head -1) && echo SID=$SID && echo $SID > /tmp/session_id
+  command: |
+    . /app/spec/init-dind.sh
+    export SID=$(sumeru session add test-proto --task 'Say hello' 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1) && echo SID=$SID && echo $SID > /tmp/session_id
+  timeout: 5m
   assert:
     type: regex
     conditions:

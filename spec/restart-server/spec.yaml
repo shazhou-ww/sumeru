@@ -1,4 +1,5 @@
 description: 重启 sumeru server
+primary: resume-after-restart
 steps:
 - type: exec
   command: sumeru server restart
