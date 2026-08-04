@@ -1110,6 +1110,10 @@ cli
 		description: "Watch turns (subscribe + history pull)",
 	})
 	.flag("system", { type: "boolean", description: "Include system prompt" })
+	.flag("trace", {
+		type: "boolean",
+		description: "Trace origin chain (include snapshot parent turns)",
+	})
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
 	.returns(
@@ -1190,8 +1194,13 @@ cli
 		const limit = (flags.limit as number | undefined) ?? 50;
 		const offset = (flags.offset as number | undefined) ?? 0;
 		const after = flags.after !== undefined ? Number(flags.after) : undefined;
+		const trace = Boolean(flags.trace);
 		try {
-			const envelope = await client.getTurns(args.id, { after, system });
+			const envelope = await client.getTurns(args.id, {
+				after,
+				system,
+				trace,
+			});
 			const all = envelope.value;
 			const page = all.slice(offset, offset + limit) as PaginatedArray<
 				Record<string, unknown>

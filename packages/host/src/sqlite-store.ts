@@ -9,7 +9,7 @@ import type {
 	Skill,
 } from "@sumeru/core";
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 const MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS providers (
@@ -96,6 +96,11 @@ const MIGRATION_V7 = `
 ALTER TABLE sessions ADD COLUMN initVersion TEXT;
 `;
 
+const MIGRATION_V8 = `
+ALTER TABLE sessions ADD COLUMN originSessionId TEXT;
+ALTER TABLE sessions ADD COLUMN originTurnCount INTEGER;
+`;
+
 export class ProviderInUseError extends Error {
 	readonly providerName: string;
 	readonly modelCount: number;
@@ -151,6 +156,8 @@ export type PersistSessionInput = {
 	createdAt: string;
 	exit: ExitSignal | null;
 	initVersion: string | null;
+	originSessionId: string | null;
+	originTurnCount: number | null;
 };
 
 export type PersistedSession = PersistSessionInput;
@@ -216,6 +223,8 @@ type SessionRow = {
 	createdAt: string;
 	exit: string | null;
 	initVersion: string | null;
+	originSessionId: string | null;
+	originTurnCount: number | null;
 };
 
 export function maskApiKey(key: string | null): string | null {
@@ -265,6 +274,9 @@ CREATE TABLE IF NOT EXISTS schema_version (
 		}
 		if (current < 7) {
 			db.exec(MIGRATION_V7);
+		}
+		if (current < 8) {
+			db.exec(MIGRATION_V8);
 		}
 		if (row === undefined) {
 			db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
@@ -505,8 +517,8 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 		persistSession(session) {
 			db.prepare(
 				`INSERT OR REPLACE INTO sessions
-         (id, prototype, project, task, model, status, image, containerName, createdAt, exit, initVersion)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, prototype, project, task, model, status, image, containerName, createdAt, exit, initVersion, originSessionId, originTurnCount)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			).run(
 				session.id,
 				session.prototype,
@@ -519,6 +531,8 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 				session.createdAt,
 				session.exit === null ? null : JSON.stringify(session.exit),
 				session.initVersion,
+				session.originSessionId,
+				session.originTurnCount,
 			);
 		},
 
@@ -650,5 +664,7 @@ function rowToPersistedSession(row: SessionRow): PersistedSession {
 		createdAt: row.createdAt,
 		exit: parseExitSignal(row.exit),
 		initVersion: row.initVersion ?? null,
+		originSessionId: row.originSessionId ?? null,
+		originTurnCount: row.originTurnCount ?? null,
 	};
 }

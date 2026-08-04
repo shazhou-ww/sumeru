@@ -66,6 +66,7 @@ export type Prototype = {
 			memory: string;
 		};
 	} | null;
+	origin?: { sessionId: string; turnCount: number } | null;
 };
 
 // === Extension ===

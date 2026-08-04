@@ -87,7 +87,7 @@ export type SessionManager = {
 	getSessionTurns(
 		id: string,
 		after: number | null,
-		options?: { includeSystem?: boolean },
+		options?: { includeSystem?: boolean; trace?: boolean },
 	): Array<Turn>;
 	hostRoot(): HostRootSnapshot;
 	destroyAll(): Promise<void>;
@@ -150,6 +150,8 @@ export function createSessionManager(input: {
 				initVersion: row.initVersion,
 				projectPath,
 				sessionEnv: {},
+				originSessionId: row.originSessionId,
+				originTurnCount: row.originTurnCount,
 			};
 			sessions.set(row.id, record);
 			adapters.set(row.id, createAdapterRuntime(row.id, eventLogDir));
@@ -272,6 +274,8 @@ export function createSessionManager(input: {
 				initVersion: null,
 				projectPath: projectResolution.projectPath,
 				sessionEnv,
+				originSessionId: prototype.prototype.origin?.sessionId ?? null,
+				originTurnCount: prototype.prototype.origin?.turnCount ?? null,
 			};
 			sessions.set(id, record);
 			persistManagedSession(record);
@@ -458,6 +462,7 @@ export function createSessionManager(input: {
 			hostConfig: input.hostConfig,
 			transport: input.transport,
 			getSession,
+			getTurnCount: (sessionId) => recorder.getTurnTotal(sessionId),
 			submitMessage,
 			updateSessionModel,
 			id,
@@ -926,12 +931,40 @@ export function createSessionManager(input: {
 	function getSessionTurns(
 		id: string,
 		after: number | null,
-		options?: { includeSystem?: boolean },
+		options?: { includeSystem?: boolean; trace?: boolean },
 	): Array<Turn> {
 		const record = sessions.get(id);
 		if (record === undefined) {
 			throw new Error("session_not_found");
 		}
+
+		if (options?.trace === true && record.originSessionId !== null) {
+			// Walk the origin chain and collect traced turns
+			const tracedRecords = recorder.getTracedTurns(id, (sessionId) => {
+				const session = sessions.get(sessionId);
+				if (session === null || session === undefined) {
+					return null;
+				}
+				if (
+					session.originSessionId === null ||
+					session.originTurnCount === null
+				) {
+					return null;
+				}
+				return {
+					sessionId: session.originSessionId,
+					turnCount: session.originTurnCount,
+				};
+			});
+			const turns = turnRecordsToV3(tracedRecords, {
+				includeSystem: options?.includeSystem,
+			});
+			if (after === null) {
+				return turns;
+			}
+			return turns.filter((turn) => turn.id > after);
+		}
+
 		const total = recorder.getTurnTotal(id);
 		const records = recorder.getTurns(id, total, 0);
 		const turns = turnRecordsToV3(records, {
@@ -1024,6 +1057,8 @@ function toPersistSessionInput(record: ManagedSession): PersistSessionInput {
 		createdAt: record.createdAt,
 		exit: record.exit,
 		initVersion: record.initVersion,
+		originSessionId: record.originSessionId,
+		originTurnCount: record.originTurnCount,
 	};
 }
 

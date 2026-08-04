@@ -213,6 +213,8 @@ describe("sqlite-store", () => {
 			createdAt: "2026-06-27T00:00:00.000Z",
 			exit: null,
 			initVersion: null,
+			originSessionId: null,
+			originTurnCount: null,
 		});
 
 		const listed = store.listPersistedSessions();

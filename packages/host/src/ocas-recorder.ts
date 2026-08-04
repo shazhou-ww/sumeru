@@ -68,6 +68,17 @@ export type OcasRecorder = {
 	getTurnTotal(sessionId: string): number;
 	/** Drop the session head pointer so its chain is no longer reachable. */
 	clear(sessionId: string): void;
+	/**
+	 * Walk up the origin chain, collecting turns from each session.
+	 * For each ancestor, only include the first `originTurnCount` turns.
+	 * For the leaf session (the requested one), include all its turns.
+	 * Each returned record gets a `sessionId` field so the caller knows which session it came from.
+	 * Handle broken chains gracefully (if origin session doesn't exist, just stop).
+	 */
+	getTracedTurns(
+		sessionId: string,
+		getOrigin: (id: string) => { sessionId: string; turnCount: number } | null,
+	): Array<TurnRecord & { sessionId: string }>;
 };
 
 /** Handle to an opened on-disk Sumeru CAS store plus its chain schema hash. */
@@ -168,10 +179,54 @@ export function createOcasRecorder(dataDir: string): OcasRecorder {
 		store.var.remove(chainHeadVarName(sessionId));
 	}
 
+	function getTracedTurns(
+		sessionId: string,
+		getOrigin: (id: string) => { sessionId: string; turnCount: number } | null,
+	): Array<TurnRecord & { sessionId: string }> {
+		const result: Array<TurnRecord & { sessionId: string }> = [];
+		let currentSessionId: string | null = sessionId;
+		// null = include all turns (leaf session); number = cap from child's origin
+		let turnLimit: number | null = null;
+
+		while (currentSessionId !== null) {
+			const records = turnRecords(currentSessionId);
+
+			if (turnLimit === null) {
+				// Leaf session: include all turns
+				for (const record of records) {
+					result.push({ ...record, sessionId: currentSessionId });
+				}
+			} else {
+				// Ancestor: include only up to turnLimit turns (the child's
+				// origin.turnCount — how many turns the child saw at snapshot time)
+				for (let i = 0; i < turnLimit && i < records.length; i++) {
+					const record = records[i];
+					if (record) {
+						result.push({ ...record, sessionId: currentSessionId });
+					}
+				}
+			}
+
+			// Walk to parent: the current session's origin tells us where to go
+			// next AND how many of the parent's turns to include (the turnCount
+			// stored in the current session's origin).
+			const origin = getOrigin(currentSessionId);
+			if (origin === null) {
+				break;
+			}
+			turnLimit = origin.turnCount;
+			currentSessionId = origin.sessionId;
+		}
+
+		// Reverse to get chronological order (oldest ancestor first)
+		return result.reverse();
+	}
+
 	return {
 		append,
 		getTurns,
 		getTurnTotal,
 		clear,
+		getTracedTurns,
 	};
 }

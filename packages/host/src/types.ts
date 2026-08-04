@@ -76,6 +76,8 @@ export type ManagedSession = SessionInfo & {
 	initVersion: string | null;
 	projectPath: string | null;
 	sessionEnv: Record<string, string>;
+	originSessionId: string | null;
+	originTurnCount: number | null;
 };
 
 export type SessionModelOverride =
@@ -144,6 +146,8 @@ export type HistoryValue = {
 	offset: number;
 	turns: Array<TurnRecord>;
 };
+
+export type TraceTurn = TurnRecord & { sessionId: string };
 
 export type SkillValue = {
 	name: string;
