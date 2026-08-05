@@ -10,7 +10,7 @@ import type {
 	Skill,
 } from "@sumeru/core";
 
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 const MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS providers (
@@ -117,6 +117,15 @@ CREATE TABLE IF NOT EXISTS adapters (
 );
 `;
 
+const MIGRATION_V10 = `
+CREATE TABLE IF NOT EXISTS prototypes (
+  name TEXT PRIMARY KEY NOT NULL,
+  adapter TEXT NOT NULL,
+  model TEXT,
+  instructions TEXT NOT NULL DEFAULT ''
+);
+`;
+
 export class ProviderInUseError extends Error {
 	readonly providerName: string;
 	readonly modelCount: number;
@@ -203,6 +212,21 @@ export type SqliteStore = {
 	uninstallAdapter(id: string): boolean;
 	getAdapter(id: string): Adapter | null;
 	listAdapters(): Array<Adapter>;
+	transaction<T>(fn: () => T): T;
+	createPrototype(input: {
+		name: string;
+		adapter: string;
+		model: string | null;
+		instructions: string;
+	}): void;
+	listPrototypesByAdapter(adapterId: string): Array<{
+		name: string;
+		adapter: string;
+		model: string | null;
+		instructions: string;
+	}>;
+	deletePrototypesByAdapter(adapterId: string): number;
+	listSessionsByPrototypes(prototypeNames: Array<string>): Array<string>;
 };
 
 type ProviderRow = {
@@ -242,6 +266,13 @@ type AdapterRow = {
 	defaultInstructions: string;
 	defaultModel: string | null;
 	installedAt: string;
+};
+
+type PrototypeRow = {
+	name: string;
+	adapter: string;
+	model: string | null;
+	instructions: string;
 };
 
 type SessionRow = {
@@ -313,6 +344,9 @@ CREATE TABLE IF NOT EXISTS schema_version (
 		}
 		if (current < 9) {
 			db.exec(MIGRATION_V9);
+		}
+		if (current < 10) {
+			db.exec(MIGRATION_V10);
 		}
 		if (row === undefined) {
 			db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
@@ -620,6 +654,50 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 				.prepare("SELECT * FROM adapters ORDER BY name ASC, hash ASC")
 				.all() as Array<AdapterRow>;
 			return rows.map(rowToAdapter);
+		},
+
+		transaction(fn) {
+			db.exec("BEGIN");
+			try {
+				const result = fn();
+				db.exec("COMMIT");
+				return result;
+			} catch (err) {
+				db.exec("ROLLBACK");
+				throw err;
+			}
+		},
+
+		createPrototype(input) {
+			db.prepare(
+				`INSERT INTO prototypes (name, adapter, model, instructions)
+         VALUES (?, ?, ?, ?)`,
+			).run(input.name, input.adapter, input.model, input.instructions);
+		},
+
+		listPrototypesByAdapter(adapterId) {
+			const rows = db
+				.prepare("SELECT * FROM prototypes WHERE adapter = ? ORDER BY name")
+				.all(adapterId) as Array<PrototypeRow>;
+			return rows;
+		},
+
+		deletePrototypesByAdapter(adapterId) {
+			const result = db
+				.prepare("DELETE FROM prototypes WHERE adapter = ?")
+				.run(adapterId);
+			return Number(result.changes);
+		},
+
+		listSessionsByPrototypes(prototypeNames) {
+			if (prototypeNames.length === 0) return [];
+			const placeholders = prototypeNames.map(() => "?").join(",");
+			const rows = db
+				.prepare(
+					`SELECT id FROM sessions WHERE prototype IN (${placeholders}) ORDER BY id`,
+				)
+				.all(...prototypeNames) as Array<{ id: string }>;
+			return rows.map((row) => row.id);
 		},
 	};
 }

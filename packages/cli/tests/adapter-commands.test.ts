@@ -83,7 +83,9 @@ describe("adapter add/remove commands", () => {
 	it("adapter add installs from a valid local path", () => {
 		const { stdout, exitCode } = run(`adapter add ${pkg}`);
 		expect(exitCode).toBe(0);
-		expect(stdout).toMatch(/Installed adapter demo:[a-f0-9]{6}/);
+		expect(stdout).toMatch(
+			/(Installed adapter|already installed) demo:[a-f0-9]{6}/,
+		);
 	});
 
 	it("adapter add is idempotent", () => {

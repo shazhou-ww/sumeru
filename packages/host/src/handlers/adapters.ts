@@ -58,8 +58,9 @@ export function createAdaptersHandler(hostConfig: LoadedHostConfig) {
 				return;
 			}
 			try {
-				const adapter = await store.installAdapter(source);
-				writeJson(res, 200, installedAdapterEnvelope(adapter));
+				const { adapter, isNew } = await store.installAdapter(source);
+				const status = isNew ? 201 : 200;
+				writeJson(res, status, installedAdapterEnvelope(adapter));
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				writeJson(res, 400, errorEnvelope("adapter_install_failed", message));
