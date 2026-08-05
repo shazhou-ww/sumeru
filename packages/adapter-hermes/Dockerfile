@@ -9,6 +9,11 @@ WORKDIR /home/node/adapter
 COPY dist/ ./dist/
 COPY package.json ./
 
+RUN mkdir -p /home/node/.local/bin && \
+    cd /home/node/adapter && \
+    ln -s /home/node/adapter/dist/main.js /home/node/.local/bin/sumeru-adapter && \
+    chmod +x /home/node/adapter/dist/main.js
 USER node
+WORKDIR /workspace
 ENTRYPOINT []
 CMD ["sleep", "infinity"]
