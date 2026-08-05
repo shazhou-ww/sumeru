@@ -3,6 +3,9 @@ primary: configure-snapshot-a
 steps:
   - type: exec
     command: |
+      # Clean up any cached adapter images to force rebuild
+      docker images --format '{{.Repository}}:{{.Tag}}' | grep 'sumeru/sarsapa:' | xargs -r docker rmi -f 2>/dev/null || true
+      
       PROTO="sarsapa-default"
       
       # Setup test provider and model
