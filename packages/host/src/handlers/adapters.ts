@@ -58,15 +58,8 @@ export function createAdaptersHandler(hostConfig: LoadedHostConfig) {
 				return;
 			}
 			try {
-				const beforeIds = new Set(
-					(await store.listAdapters()).map((adapter) => adapter.id),
-				);
 				const adapter = await store.installAdapter(source);
-				writeJson(
-					res,
-					beforeIds.has(adapter.id) ? 200 : 201,
-					installedAdapterEnvelope(adapter),
-				);
+				writeJson(res, 200, installedAdapterEnvelope(adapter));
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				writeJson(res, 400, errorEnvelope("adapter_install_failed", message));
