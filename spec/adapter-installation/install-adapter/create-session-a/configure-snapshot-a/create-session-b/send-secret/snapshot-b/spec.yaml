@@ -1,5 +1,7 @@
 description: Snapshot session B to create prototype B with secret context
 primary: session-c-reset
+branches:
+  - session-c-skip-reset
 steps:
   - type: exec
     command: |

@@ -12,7 +12,8 @@ WORKDIR /opt/sumeru
 RUN pnpm install --no-frozen-lockfile
 
 # Build TypeScript → dist/ (treespec skips dist/ in build context)
-RUN pnpm run build
+# Clear stale tsbuildinfo so tsc --build rebuilds everything from scratch
+RUN find packages -name 'tsconfig.tsbuildinfo' -delete && pnpm run build
 
 # Recreate bin symlinks (pnpm install ran before dist/ existed)
 RUN ln -sf /opt/sumeru/packages/cli/dist/main.js /opt/sumeru/node_modules/.bin/sumeru

@@ -1,5 +1,7 @@
 description: Adapter installation mainline test
 primary: install-adapter
+branches:
+  - cleanup-sessions
 cleanup: cleanup-sessions
 steps:
   - type: exec
