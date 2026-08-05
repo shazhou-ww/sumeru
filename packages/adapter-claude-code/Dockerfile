@@ -13,6 +13,7 @@ RUN mkdir -p /home/node/.local/bin && \
     cd /home/node/adapter && \
     ln -s /home/node/adapter/dist/main.js /home/node/.local/bin/sumeru-adapter && \
     chmod +x /home/node/adapter/dist/main.js
+ENV PATH="/home/node/.local/bin:${PATH}"
 USER node
 WORKDIR /workspace
 ENTRYPOINT []
