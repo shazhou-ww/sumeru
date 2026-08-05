@@ -25,8 +25,8 @@ RUN mkdir -p node_modules/@sumeru /home/node/.local/bin && \
     ln -s /home/node/adapter/sarsapa/dist/main.js /home/node/.local/bin/sumeru-adapter && \
     chmod +x /home/node/adapter/sarsapa/dist/main.js
 
-ENV PATH="/home/node/.local/bin:${PATH}"
+ENV PATH="/home/node/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 USER node
 WORKDIR /workspace
 ENTRYPOINT []
-CMD ["tail", "-f", "/dev/null"]
+CMD ["/usr/bin/tail", "-f", "/dev/null"]
