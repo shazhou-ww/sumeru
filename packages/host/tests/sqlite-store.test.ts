@@ -1,3 +1,4 @@
+import type { Adapter } from "@sumeru/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	maskApiKey,
@@ -213,6 +214,8 @@ describe("sqlite-store", () => {
 			createdAt: "2026-06-27T00:00:00.000Z",
 			exit: null,
 			initVersion: null,
+			originSessionId: null,
+			originTurnCount: null,
 		});
 
 		const listed = store.listPersistedSessions();
@@ -227,5 +230,45 @@ describe("sqlite-store", () => {
 
 		store.removeSession("ses_01ABCDEF");
 		expect(store.listPersistedSessions()).toHaveLength(0);
+	});
+
+	it("runs adapter CRUD lifecycle", () => {
+		store = openDatabase(":memory:");
+
+		const adapter: Adapter = {
+			id: "sarsapa:abc123",
+			name: "sarsapa",
+			hash: "abc123",
+			version: "0.4.1",
+			source: "./packages/sarsapa",
+			imageTag: "sumeru/sarsapa:abc123",
+			cliPath: "./dist/main.js",
+			defaultInstructions: "You are a helpful assistant.",
+			defaultModel: null,
+			installedAt: "2026-08-05T00:00:00.000Z",
+		};
+
+		store.installAdapter(adapter);
+		expect(store.getAdapter("sarsapa:abc123")).toEqual(adapter);
+		expect(store.listAdapters()).toEqual([adapter]);
+
+		const other: Adapter = {
+			...adapter,
+			id: "other:def456",
+			name: "other",
+			hash: "def456",
+			imageTag: "sumeru/other:def456",
+			defaultModel: "anthropic:claude-sonnet-4",
+		};
+		store.installAdapter(other);
+		const listed = store.listAdapters();
+		expect(listed).toHaveLength(2);
+		expect(listed.map((a) => a.id)).toEqual(["other:def456", "sarsapa:abc123"]);
+
+		expect(store.getAdapter("missing")).toBeNull();
+		expect(store.uninstallAdapter("sarsapa:abc123")).toBe(true);
+		expect(store.getAdapter("sarsapa:abc123")).toBeNull();
+		expect(store.listAdapters()).toEqual([other]);
+		expect(store.uninstallAdapter("missing")).toBe(false);
 	});
 });

@@ -1,0 +1,16 @@
+description: 对 session 创建 snapshot (docker commit + origin 记录)
+primary: trace-turns
+steps:
+  - type: exec
+    command: |
+      sumeru server start 2>&1 &
+      sleep 3
+      SID=$(cat /tmp/send_session_id)
+      echo "Taking snapshot of session $SID"
+      sumeru session snapshot $SID atest-snapshot 2>&1
+    timeout: 120s
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "Snapshot created"

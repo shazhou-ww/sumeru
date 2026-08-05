@@ -1,5 +1,7 @@
 description: 发送追加消息
 primary: list-turns
+branches:
+  - take-snapshot
 steps:
 - type: exec
   command: |

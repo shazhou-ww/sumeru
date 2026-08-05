@@ -53,6 +53,7 @@ export function createTurnsHandler(manager: SessionManager) {
 		}
 
 		const includeSystem = query.get("system") === "true";
+		const trace = query.get("trace") === "true";
 
 		const beforeRaw = query.get("before");
 		let beforeMs: number | null = null;
@@ -72,7 +73,7 @@ export function createTurnsHandler(manager: SessionManager) {
 			beforeMs = parsed;
 		}
 
-		let turns = manager.getSessionTurns(id, after, { includeSystem });
+		let turns = manager.getSessionTurns(id, after, { includeSystem, trace });
 		if (beforeMs !== null) {
 			turns = turns.filter((turn) => Date.parse(turn.timestamp) < beforeMs);
 		}

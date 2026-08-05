@@ -170,16 +170,61 @@ describe("adapters endpoints", () => {
 		}
 	});
 
-	it("GET /adapters/:name/models returns 404 for unknown adapter", async () => {
+	it("POST /adapters installs from a local package and DELETE removes it", async () => {
 		const rootDir = mkdtempSync(join(tmpdir(), "sumeru-adapters-"));
 		writeHostFixture(rootDir);
 		const server = await startTestServer(rootDir);
 
-		const result = await request(server, "GET", "/adapters/nonexistent/models");
-		expect(result.status).toBe(404);
-		expect(result.body).toMatchObject({
-			type: "@sumeru/error",
-			value: { error: "adapter_not_found" },
+		const pkg = mkdtempSync(join(tmpdir(), "adapter-pkg-"));
+		writeFileSync(
+			join(pkg, "sumeru-adapter.yaml"),
+			["name: demo", "version: 1.0.0", "cli: ./cli.js"].join("\n"),
+		);
+		writeFileSync(join(pkg, "readme.txt"), "hi");
+
+		const address = server.address();
+		if (address === null || typeof address === "string") {
+			throw new Error("server not listening");
+		}
+		const base = `http://127.0.0.1:${address.port}`;
+
+		const installRes = await fetch(`${base}/adapters`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ source: pkg }),
 		});
+		expect(installRes.status).toBe(201);
+		const installed = (await installRes.json()) as {
+			type: string;
+			value: { id: string; name: string };
+		};
+		expect(installed.type).toBe("@sumeru/adapter");
+		expect(installed.value.name).toBe("demo");
+		expect(installed.value.id).toMatch(/^demo:[a-f0-9]{6}$/);
+
+		const list = await request(server, "GET", "/adapters");
+		expect(list.status).toBe(200);
+		const listBody = list.body as { value: Array<{ id: string }> };
+		expect(listBody.value.some((a) => a.id === installed.value.id)).toBe(true);
+
+		const dup = await fetch(`${base}/adapters`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ source: pkg }),
+		});
+		expect(dup.status).toBe(200);
+
+		const removeRes = await fetch(
+			`${base}/adapters/${encodeURIComponent("demo")}`,
+			{ method: "DELETE" },
+		);
+		expect(removeRes.status).toBe(204);
+
+		const listAfter = await request(server, "GET", "/adapters");
+		const afterBody = listAfter.body as {
+			value: Array<{ name: string; id?: string }>;
+		};
+		// Falls back to registry when no installed adapters remain.
+		expect(afterBody.value.every((a) => a.id === undefined)).toBe(true);
 	});
 });

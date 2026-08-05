@@ -1,4 +1,5 @@
 import type {
+	Adapter,
 	Model,
 	Prototype,
 	Provider,
@@ -88,9 +89,13 @@ export type HostClient = {
 	getRoot(): Promise<Envelope<HostRootValue>>;
 
 	// Adapters
-	listAdapters(): Promise<Envelope<Array<AdapterInfo>>>;
-	getAdapter(name: string): Promise<Envelope<AdapterInfo>>;
+	listAdapters(): Promise<Envelope<Array<AdapterInfo | Adapter>>>;
+	getAdapter(name: string): Promise<Envelope<AdapterInfo | Adapter>>;
 	listAdapterModels(name: string): Promise<Envelope<Array<BuiltinModel>>>;
+	installAdapter(
+		source: string,
+	): Promise<{ status: number; envelope: Envelope<Adapter> }>;
+	removeAdapter(ref: string): Promise<void>;
 
 	// Prototypes
 	listPrototypes(): Promise<Envelope<Array<PrototypeListItem>>>;
@@ -189,7 +194,12 @@ export type HostClient = {
 	): Promise<Envelope<HistoryValue>>;
 	getTurns(
 		id: string,
-		options?: { after?: number; before?: string; system?: boolean },
+		options?: {
+			after?: number;
+			before?: string;
+			system?: boolean;
+			trace?: boolean;
+		},
 	): Promise<Envelope<Array<Turn>>>;
 	watchTurns(id: string): Promise<WatchTurnsResult>;
 	exportSession(id: string): Promise<ReadableStream<Uint8Array>>;
@@ -280,7 +290,7 @@ export function createHostClient(options: HostClientOptions): HostClient {
 
 		// Adapters
 		async listAdapters() {
-			const { json } = await requestJson<Array<AdapterInfo>>(
+			const { json } = await requestJson<Array<AdapterInfo | Adapter>>(
 				"GET",
 				"/adapters",
 				null,
@@ -288,7 +298,7 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			return json;
 		},
 		async getAdapter(name) {
-			const { json } = await requestJson<AdapterInfo>(
+			const { json } = await requestJson<AdapterInfo | Adapter>(
 				"GET",
 				`/adapters/${encodeURIComponent(name)}`,
 				null,
@@ -302,6 +312,15 @@ export function createHostClient(options: HostClientOptions): HostClient {
 				null,
 			);
 			return json;
+		},
+		async installAdapter(source) {
+			const { status, json } = await requestJson<Adapter>("POST", "/adapters", {
+				source,
+			});
+			return { status, envelope: json };
+		},
+		async removeAdapter(ref) {
+			await requestDelete(`/adapters/${encodeURIComponent(ref)}`);
 		},
 
 		// Prototypes
@@ -569,6 +588,9 @@ export function createHostClient(options: HostClientOptions): HostClient {
 			}
 			if (turnsOptions?.system === true) {
 				params.set("system", "true");
+			}
+			if (turnsOptions?.trace === true) {
+				params.set("trace", "true");
 			}
 			const qs = params.toString();
 			const path = `/sessions/${encodeURIComponent(id)}/turns${qs ? `?${qs}` : ""}`;

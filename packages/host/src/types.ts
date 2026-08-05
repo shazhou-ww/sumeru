@@ -6,6 +6,7 @@ import type {
 	Prototype,
 	SessionInfo,
 } from "@sumeru/core";
+import type { AdapterStore } from "./adapter-store.js";
 import type { TurnRecord } from "./ocas-recorder.js";
 import type { SqliteStore } from "./sqlite-store.js";
 
@@ -66,6 +67,7 @@ export type LoadedHostConfig = {
 	prototypes: Map<string, PrototypeInfo>;
 	extensions: Map<string, Extension>;
 	sqliteStore: SqliteStore;
+	adapterStore: AdapterStore;
 };
 
 export type ManagedSession = SessionInfo & {
@@ -76,6 +78,8 @@ export type ManagedSession = SessionInfo & {
 	initVersion: string | null;
 	projectPath: string | null;
 	sessionEnv: Record<string, string>;
+	originSessionId: string | null;
+	originTurnCount: number | null;
 };
 
 export type SessionModelOverride =
@@ -144,6 +148,8 @@ export type HistoryValue = {
 	offset: number;
 	turns: Array<TurnRecord>;
 };
+
+export type TraceTurn = TurnRecord & { sessionId: string };
 
 export type SkillValue = {
 	name: string;

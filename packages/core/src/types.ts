@@ -50,6 +50,20 @@ export type Skill = {
 	updatedAt: string;
 };
 
+// === Adapter (SQLite-backed, issue #344) ===
+export type Adapter = {
+	id: string; // name:hash (e.g. 'sarsapa:abc123')
+	name: string;
+	hash: string;
+	version: string;
+	source: string; // npm package name or local path
+	imageTag: string; // sumeru/<name>:<hash>
+	cliPath: string; // adapter CLI entry point (relative to package root)
+	defaultInstructions: string;
+	defaultModel: string | null;
+	installedAt: string;
+};
+
 // === Prototype ===
 export type Prototype = {
 	name: string;
@@ -66,6 +80,7 @@ export type Prototype = {
 			memory: string;
 		};
 	} | null;
+	origin?: { sessionId: string; turnCount: number } | null;
 };
 
 // === Extension ===

@@ -29,6 +29,7 @@ export async function runSessionCommand(input: {
 	hostConfig: LoadedHostConfig;
 	transport: Transport;
 	getSession(id: string): ManagedSession | null;
+	getTurnCount(id: string): number;
 	submitMessage(id: string, body: MessageRequest): Promise<void>;
 	updateSessionModel(id: string, model: ManagedSession["model"]): void;
 	id: string;
@@ -149,6 +150,7 @@ export async function runSessionCommand(input: {
 			if (source === undefined) {
 				throw new Error("prototype_not_found");
 			}
+			const turnCount = input.getTurnCount(input.id);
 			const prototype = { ...source.prototype, name: input.command.name };
 			await input.transport.commit({
 				containerId: record.containerId,
@@ -160,6 +162,7 @@ export async function runSessionCommand(input: {
 				record.prototype,
 				input.command.name,
 				imageTag,
+				{ sessionId: input.id, turnCount },
 			);
 			return {
 				mode: "sync",
@@ -296,6 +299,7 @@ async function registerSnapshotPrototype(
 	sourcePrototypeName: string,
 	snapshotName: string,
 	imageTag: string,
+	origin: { sessionId: string; turnCount: number } | null = null,
 ): Promise<void> {
 	const source = hostConfig.prototypes.get(sourcePrototypeName);
 	if (source === undefined) {
@@ -305,6 +309,7 @@ async function registerSnapshotPrototype(
 		...source.prototype,
 		name: snapshotName,
 		image: imageTag,
+		origin,
 	};
 	await writePrototypeFile(hostConfig.prototypesDir, prototype);
 	if (source.composePath !== null) {

@@ -1,0 +1,67 @@
+description: 验证 --trace 沿 origin chain 递归追溯父 session turns
+steps:
+  - type: exec
+    command: |
+      sumeru server start 2>&1 &
+      sleep 3
+      
+      # 从 snapshot 创建新 session (--skip-reset 保留 origin chain)
+      SNAP_OUTPUT=$(sumeru session add atest-snapshot --task 'What is 1+1?' --skip-reset 2>&1)
+      echo "$SNAP_OUTPUT"
+      SNAP_SID=$(echo "$SNAP_OUTPUT" | grep -oE 'ses_[0-9A-Z]+' | head -1)
+      echo "SNAP_SID=$SNAP_SID"
+      echo $SNAP_SID > /tmp/trace_session_id
+    timeout: 5m
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "SNAP_SID=ses_[0-9A-Z]+"
+  - type: exec
+    command: |
+      SNAP_SID=$(cat /tmp/trace_session_id)
+      
+      # 无 trace: 只拿到当前 session 的 turns
+      COUNT_NO_TRACE=$(sumeru session turns $SNAP_SID --format json | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d['value']))")
+      echo "no_trace_count=$COUNT_NO_TRACE"
+      
+      # 有 trace: 应该拿到父 session + 当前 session 的 turns
+      COUNT_TRACE=$(sumeru session turns $SNAP_SID --trace --format json | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d['value']))")
+      echo "trace_count=$COUNT_TRACE"
+      
+      # trace 应该 > no_trace (包含了父 session 的 turns)
+      if [ "$COUNT_TRACE" -gt "$COUNT_NO_TRACE" ]; then
+        echo "trace_expands=true"
+      else
+        echo "trace_expands=false (trace=$COUNT_TRACE, no_trace=$COUNT_NO_TRACE)"
+      fi
+    timeout: 30s
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "trace_expands=true"
+postcon:
+  - name: verify-trace-includes-parent
+    steps:
+      - type: exec
+        command: |
+          SNAP_SID=$(cat /tmp/trace_session_id)
+          sumeru session turns $SNAP_SID --trace --format json | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          turns = d['value']
+          sids = set()
+          for t in turns:
+              sid = t.get('sessionId')
+              if sid:
+                  sids.add(sid)
+          print(f'distinct_sessions={len(sids)}')
+          assert len(sids) >= 2, f'Expected >=2 sessions in trace, got {len(sids)}'
+          print('multi_session=true')
+          "
+        assert:
+          type: regex
+          conditions:
+            - path: stdout
+              regex: "multi_session=true"
