@@ -1,4 +1,4 @@
-name: sarsapa
+name: codex
 version: "0.3.2"
 cli: ./dist/main.js
 dockerfile: ./Dockerfile
