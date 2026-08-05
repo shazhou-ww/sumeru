@@ -29,4 +29,4 @@ ENV PATH="/home/node/.local/bin:${PATH}"
 USER node
 WORKDIR /workspace
 ENTRYPOINT []
-CMD ["sleep", "infinity"]
+CMD ["tail", "-f", "/dev/null"]
