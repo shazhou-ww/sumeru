@@ -2,7 +2,10 @@ description: Install sarsapa adapter using the new installation system
 primary: create-session-a
 steps:
   - type: exec
-    command: sumeru adapter add /app/packages/sarsapa
+    command: |
+      # Clean up any cached adapter images to force rebuild
+      docker images --format '{{.Repository}}:{{.Tag}}' | grep 'sumeru/sarsapa:' | xargs -r docker rmi -f 2>/dev/null || true
+      sumeru adapter add /app/packages/sarsapa
     timeout: 5m
     assert:
       type: regex
