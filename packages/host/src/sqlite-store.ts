@@ -585,7 +585,7 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 
 		installAdapter(adapter) {
 			db.prepare(
-				`INSERT INTO adapters (
+				`INSERT OR IGNORE INTO adapters (
           id, name, hash, version, source, imageTag, cliPath,
           defaultInstructions, defaultModel, installedAt
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
