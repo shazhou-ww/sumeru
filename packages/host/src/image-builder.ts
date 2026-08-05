@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { Adapter } from "@sumeru/core";
 import { readAdapterManifest } from "./adapter-manifest.js";
@@ -49,9 +49,12 @@ export async function buildAdapterImage(
 		return imageTag;
 	}
 
+	// Use project root as build context so Dockerfile can COPY from other packages
+	const projectRoot = resolve(packagePath, "../..");
+
 	try {
 		await execAsync(
-			`docker build -t ${imageTag} -f ${dockerfilePath} ${packagePath}`,
+			`docker build -t ${imageTag} -f ${dockerfilePath} ${projectRoot}`,
 		);
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);
