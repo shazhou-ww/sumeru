@@ -133,7 +133,7 @@ describe("image-builder", () => {
 			expect(mockEnsureDockerd).toHaveBeenCalled();
 			expect(mockExistsSync).toHaveBeenCalledWith("/tmp/demo/Dockerfile");
 			expect(mockExec).toHaveBeenCalledWith(
-				"docker build -t sumeru/demo:abc123 -f /tmp/demo/Dockerfile /tmp/demo",
+				"docker build -t sumeru/demo:abc123 -f /tmp/demo/Dockerfile /",
 				expect.any(Function),
 			);
 		});
