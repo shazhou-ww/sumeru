@@ -10,6 +10,7 @@ import type {
 	ProviderApiType,
 } from "@sumeru/core";
 import { parse as parseYaml } from "yaml";
+import { createAdapterStore } from "./adapter-store.js";
 import {
 	ensureDataDirs,
 	loadExtensionsFromDisk,
@@ -62,8 +63,16 @@ export async function loadHostConfig(
 			await validateComposeProjectVolume(info.composePath);
 		}
 	}
-	const sqliteStore = openDatabase(join(dataDir, "sumeru.db"));
+	const dbPath = join(dataDir, "sumeru.db");
+	const sqliteStore = openDatabase(dbPath);
 	await importSkillsFromFiles(sqliteStore, skillsDir);
+	const adapterStore = createAdapterStore(sqliteStore, {
+		listAdapterRefsInUse: () =>
+			[...prototypes.values()].map((info) => ({
+				adapterId: info.prototype.adapter,
+				prototypeName: info.prototype.name,
+			})),
+	});
 	return {
 		rootDir,
 		configPath,
@@ -75,6 +84,7 @@ export async function loadHostConfig(
 		prototypes,
 		extensions,
 		sqliteStore,
+		adapterStore,
 	};
 }
 

@@ -6,6 +6,7 @@ import type {
 	Prototype,
 	SessionInfo,
 } from "@sumeru/core";
+import type { AdapterStore } from "./adapter-store.js";
 import type { TurnRecord } from "./ocas-recorder.js";
 import type { SqliteStore } from "./sqlite-store.js";
 
@@ -66,6 +67,7 @@ export type LoadedHostConfig = {
 	prototypes: Map<string, PrototypeInfo>;
 	extensions: Map<string, Extension>;
 	sqliteStore: SqliteStore;
+	adapterStore: AdapterStore;
 };
 
 export type ManagedSession = SessionInfo & {

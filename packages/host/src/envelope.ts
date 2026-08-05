@@ -1,5 +1,6 @@
 import type { BuiltinModel } from "@sumeru/adapter-core";
 import type {
+	Adapter,
 	Extension,
 	Model,
 	Prototype,
@@ -67,6 +68,16 @@ export function adapterListEnvelope(
 }
 
 export function adapterEnvelope(adapter: AdapterInfo): Envelope<AdapterInfo> {
+	return envelope("@sumeru/adapter", adapter);
+}
+
+export function installedAdapterListEnvelope(
+	adapters: Array<Adapter>,
+): Envelope<Array<Adapter>> {
+	return envelope("@sumeru/adapter-list", adapters);
+}
+
+export function installedAdapterEnvelope(adapter: Adapter): Envelope<Adapter> {
 	return envelope("@sumeru/adapter", adapter);
 }
 

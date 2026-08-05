@@ -1,0 +1,6 @@
+name: sarsapa
+version: 0.3.2
+cli: ./dist/main.js
+dockerfile: ./Dockerfile
+default_instructions: "You are a helpful assistant."
+default_model: null

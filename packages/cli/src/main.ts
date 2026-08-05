@@ -110,7 +110,7 @@ const cli = createCLI({ name: "sumeru", version: "0.3.2" });
 // ─── Group descriptions (shown in top-level --help) ─────────────────────
 
 cli.command("server").describe("Manage the server process");
-cli.command("adapter").describe("Query adapter registry");
+cli.command("adapter").describe("Manage adapters");
 cli.command("provider").describe("Manage LLM providers");
 cli.command("model").describe("Manage LLM models");
 cli.command("prototype").describe("Manage agent prototypes");
@@ -243,18 +243,29 @@ cli
 cli
 	.command("adapter")
 	.command("list")
-	.describe("List registered adapters")
+	.describe("List installed adapters (falls back to built-in registry)")
 	.flag("limit", { type: "number", description: "Max results (default 50)" })
 	.flag("offset", { type: "number", description: "Skip first N results" })
 	.returns(
 		listSchema,
 		{
-			text: (value) =>
-				formatTableWithPagination(value, [
+			text: (value) => {
+				const rows = value as Array<Record<string, unknown>>;
+				const installed = rows.some((row) => typeof row.id === "string");
+				if (installed) {
+					return formatTableWithPagination(value, [
+						"id",
+						"name",
+						"version",
+						"source",
+					]);
+				}
+				return formatTableWithPagination(value, [
 					"name",
 					"providerMode",
 					"credentialEnv",
-				]),
+				]);
+			},
 		},
 		{ defaultFormat: "text" },
 	)
@@ -278,18 +289,86 @@ cli
 
 cli
 	.command("adapter")
+	.command("add")
+	.describe("Install an adapter from a local path or npm package")
+	.arg("source", "Local path or npm package spec")
+	.returns(
+		z.object({
+			id: z.string(),
+			alreadyInstalled: z.boolean(),
+			message: z.string(),
+		}),
+		{
+			text: (value) => {
+				const v = value as { message: string };
+				return `${v.message}\n`;
+			},
+		},
+		{ defaultFormat: "text" },
+	)
+	.action(async (args, _flags, ctx) => {
+		const client = await getClient();
+		try {
+			const { resolve } = await import("node:path");
+			const source = resolve(args.source);
+			const { status, envelope } = await client.installAdapter(source);
+			const adapter = envelope.value;
+			const alreadyInstalled = status === 200;
+			return {
+				id: adapter.id,
+				alreadyInstalled,
+				message: alreadyInstalled
+					? `Adapter ${adapter.id} already installed.`
+					: `Installed adapter ${adapter.id}`,
+			};
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("adapter")
+	.command("remove")
+	.describe("Uninstall an adapter by id or name prefix")
+	.arg("id", "Adapter id (name:hash) or name prefix")
+	.returns(messageSchema, "{{message}}", { defaultFormat: "text" })
+	.action(async (args, _flags, ctx) => {
+		const client = await getClient();
+		try {
+			await client.removeAdapter(args.id);
+			return { message: `Removed adapter ${args.id}` };
+		} catch (err) {
+			handleClientError(err, ctx);
+		}
+	});
+
+cli
+	.command("adapter")
 	.command("get")
 	.describe("Get an adapter by name")
 	.arg("name", "Adapter name")
 	.returns(
 		z.object({
 			name: z.string(),
-			providerMode: z.string(),
-			credentialEnv: z.string().nullable(),
+			providerMode: z.string().optional(),
+			credentialEnv: z.string().nullable().optional(),
+			id: z.string().optional(),
+			version: z.string().optional(),
+			source: z.string().optional(),
+			imageTag: z.string().optional(),
 		}),
 		{
 			text: (value) => {
 				const v = value as Record<string, unknown>;
+				if (typeof v.id === "string") {
+					return `${[
+						`ID: ${v.id}`,
+						`Name: ${v.name}`,
+						`Version: ${v.version}`,
+						`Source: ${v.source}`,
+						`Image: ${v.imageTag}`,
+					].join("\n")}\n`;
+				}
 				return `${[
 					`Name: ${v.name}`,
 					`Mode: ${v.providerMode}`,

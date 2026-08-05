@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import type {
+	Adapter,
 	ExitSignal,
 	Model,
 	ModelConfig,
@@ -9,7 +10,7 @@ import type {
 	Skill,
 } from "@sumeru/core";
 
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 const MIGRATION_V1 = `
 CREATE TABLE IF NOT EXISTS providers (
@@ -101,6 +102,21 @@ ALTER TABLE sessions ADD COLUMN originSessionId TEXT;
 ALTER TABLE sessions ADD COLUMN originTurnCount INTEGER;
 `;
 
+const MIGRATION_V9 = `
+CREATE TABLE IF NOT EXISTS adapters (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  hash TEXT NOT NULL,
+  version TEXT NOT NULL,
+  source TEXT NOT NULL,
+  imageTag TEXT NOT NULL,
+  cliPath TEXT NOT NULL,
+  defaultInstructions TEXT NOT NULL DEFAULT '',
+  defaultModel TEXT,
+  installedAt TEXT NOT NULL
+);
+`;
+
 export class ProviderInUseError extends Error {
 	readonly providerName: string;
 	readonly modelCount: number;
@@ -183,6 +199,10 @@ export type SqliteStore = {
 	persistSession(session: PersistSessionInput): void;
 	removeSession(id: string): void;
 	listPersistedSessions(): Array<PersistedSession>;
+	installAdapter(adapter: Adapter): void;
+	uninstallAdapter(id: string): boolean;
+	getAdapter(id: string): Adapter | null;
+	listAdapters(): Array<Adapter>;
 };
 
 type ProviderRow = {
@@ -209,6 +229,19 @@ type SkillRow = {
 	content: string;
 	created_at: string;
 	updated_at: string;
+};
+
+type AdapterRow = {
+	id: string;
+	name: string;
+	hash: string;
+	version: string;
+	source: string;
+	imageTag: string;
+	cliPath: string;
+	defaultInstructions: string;
+	defaultModel: string | null;
+	installedAt: string;
 };
 
 type SessionRow = {
@@ -277,6 +310,9 @@ CREATE TABLE IF NOT EXISTS schema_version (
 		}
 		if (current < 8) {
 			db.exec(MIGRATION_V8);
+		}
+		if (current < 9) {
+			db.exec(MIGRATION_V9);
 		}
 		if (row === undefined) {
 			db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(
@@ -546,6 +582,45 @@ function createSqliteStore(db: DatabaseSync): SqliteStore {
 				.all() as Array<SessionRow>;
 			return rows.map(rowToPersistedSession);
 		},
+
+		installAdapter(adapter) {
+			db.prepare(
+				`INSERT INTO adapters (
+          id, name, hash, version, source, imageTag, cliPath,
+          defaultInstructions, defaultModel, installedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			).run(
+				adapter.id,
+				adapter.name,
+				adapter.hash,
+				adapter.version,
+				adapter.source,
+				adapter.imageTag,
+				adapter.cliPath,
+				adapter.defaultInstructions,
+				adapter.defaultModel,
+				adapter.installedAt,
+			);
+		},
+
+		uninstallAdapter(id) {
+			const result = db.prepare("DELETE FROM adapters WHERE id = ?").run(id);
+			return result.changes > 0;
+		},
+
+		getAdapter(id) {
+			const row = db.prepare("SELECT * FROM adapters WHERE id = ?").get(id) as
+				| AdapterRow
+				| undefined;
+			return row === undefined ? null : rowToAdapter(row);
+		},
+
+		listAdapters() {
+			const rows = db
+				.prepare("SELECT * FROM adapters ORDER BY name ASC, hash ASC")
+				.all() as Array<AdapterRow>;
+			return rows.map(rowToAdapter);
+		},
 	};
 }
 
@@ -600,6 +675,21 @@ function rowToSkill(row: SkillRow): Skill {
 		content: row.content,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
+	};
+}
+
+function rowToAdapter(row: AdapterRow): Adapter {
+	return {
+		id: row.id,
+		name: row.name,
+		hash: row.hash,
+		version: row.version,
+		source: row.source,
+		imageTag: row.imageTag,
+		cliPath: row.cliPath,
+		defaultInstructions: row.defaultInstructions,
+		defaultModel: row.defaultModel,
+		installedAt: row.installedAt,
 	};
 }
 

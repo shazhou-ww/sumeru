@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+	Adapter,
 	AssistantTurn,
 	CustomProvider,
 	ExitBase,
@@ -41,11 +42,25 @@ describe("@sumeru/core — v3 type set conformance", () => {
 			apiKey: "sk-internal",
 		};
 
+		const adapter: Adapter = {
+			id: "sarsapa:abc123",
+			name: "sarsapa",
+			hash: "abc123",
+			version: "0.4.1",
+			source: "./packages/sarsapa",
+			imageTag: "sumeru/sarsapa:abc123",
+			cliPath: "./dist/main.js",
+			defaultInstructions: "You are a helpful assistant.",
+			defaultModel: null,
+			installedAt: "2026-08-05T00:00:00.000Z",
+		};
+
 		const prototype: Prototype = {
 			name: "software-engineer",
 			instructions: "You are a helpful assistant",
 			model: "anthropic:claude-sonnet-4",
-			adapter: "claude-code",
+			adapter: adapter.id,
+			image: adapter.imageTag,
 			extensions: null,
 			defaults: {
 				maxTurns: 40,
