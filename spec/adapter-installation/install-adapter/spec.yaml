@@ -1,0 +1,30 @@
+description: Install sarsapa adapter using the new installation system
+primary: create-session-a
+steps:
+  - type: exec
+    command: sumeru adapter add /app/packages/sarsapa
+    timeout: 5m
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "Installed adapter sarsapa:[a-f0-9]+"
+postcon:
+  - name: verify-adapter-installed
+    steps:
+      - type: exec
+        command: sumeru adapter list --format json
+        assert:
+          type: regex
+          conditions:
+            - path: stdout
+              regex: '"name":\s*"sarsapa"'
+  - name: verify-default-prototype-exists
+    steps:
+      - type: exec
+        command: sumeru prototype list --format json
+        assert:
+          type: regex
+          conditions:
+            - path: stdout
+              regex: '"sarsapa-default"'

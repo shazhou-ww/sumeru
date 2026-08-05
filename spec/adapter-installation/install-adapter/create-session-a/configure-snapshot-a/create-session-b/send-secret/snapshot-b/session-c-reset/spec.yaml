@@ -1,0 +1,21 @@
+description: Create session C from prototype B in reset mode, verify secret is forgotten
+steps:
+  - type: exec
+    command: |
+      SID=$(sumeru session add atest-proto-b --task "What is the secret code?" 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1)
+      echo $SID > /tmp/session_c_reset_id
+      # Wait for response
+      sleep 5
+      TURNS=$(sumeru session turns $SID --format json)
+      if echo "$TURNS" | grep -q "ALPHA-7742"; then
+        echo "SECRET_KNOWN=true (unexpected)"
+        exit 1
+      else
+        echo "SECRET_KNOWN=false (expected — reset cleared context)"
+      fi
+    timeout: 5m
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "SECRET_KNOWN=false"

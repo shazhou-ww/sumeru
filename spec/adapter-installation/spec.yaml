@@ -1,0 +1,12 @@
+description: Adapter installation mainline test
+primary: install-adapter
+cleanup: cleanup-sessions
+steps:
+  - type: exec
+    command: echo "Starting adapter installation mainline test"
+    timeout: 30s
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "Starting adapter installation mainline test"

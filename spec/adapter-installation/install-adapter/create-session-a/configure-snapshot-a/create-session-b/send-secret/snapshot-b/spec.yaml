@@ -1,0 +1,24 @@
+description: Snapshot session B to create prototype B with secret context
+primary: session-c-reset
+steps:
+  - type: exec
+    command: |
+      SID=$(cat /tmp/session_b_id)
+      sumeru session snapshot $SID atest-proto-b 2>&1
+      echo "SNAPSHOT_B=atest-proto-b"
+    timeout: 120s
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "Snapshot created"
+postcon:
+  - name: verify-prototype-b-exists
+    steps:
+      - type: exec
+        command: sumeru prototype get atest-proto-b --format json
+        assert:
+          type: regex
+          conditions:
+            - path: stdout
+              regex: '"name":\s*"atest-proto-b"'

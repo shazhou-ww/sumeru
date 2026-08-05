@@ -1,0 +1,26 @@
+description: Create session B from prototype A
+primary: send-secret
+steps:
+  - type: exec
+    command: |
+      SID=$(sumeru session add atest-proto-a 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1)
+      echo $SID > /tmp/session_b_id
+      echo "SESSION_B=$SID"
+    timeout: 5m
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "SESSION_B=ses_[A-Z0-9]+"
+postcon:
+  - name: verify-session-b-exists
+    steps:
+      - type: exec
+        command: |
+          SID=$(cat /tmp/session_b_id)
+          sumeru session get $SID --format json
+        assert:
+          type: regex
+          conditions:
+            - path: stdout
+              regex: '"id":\s*"ses_[A-Z0-9]+"'

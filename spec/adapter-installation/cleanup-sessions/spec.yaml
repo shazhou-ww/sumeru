@@ -1,0 +1,17 @@
+description: Remove all test sessions
+primary: cleanup-prototypes
+steps:
+  - type: exec
+    command: |
+      for f in /tmp/session_a_id /tmp/session_b_id /tmp/session_c_reset_id /tmp/session_c_skip_id; do
+        if [ -f "$f" ]; then
+          sumeru session remove $(cat $f) 2>/dev/null || true
+        fi
+      done
+      echo "All sessions removed"
+    timeout: 120s
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "All sessions removed"

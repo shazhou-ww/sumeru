@@ -1,0 +1,36 @@
+description: Remove adapter (deletes image and default prototype)
+steps:
+  - type: exec
+    command: sumeru adapter remove sarsapa
+    timeout: 120s
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "Removed adapter"
+postcon:
+  - name: verify-adapter-gone
+    steps:
+      - type: exec
+        command: sumeru adapter list --format json
+        assert:
+          type: regex
+          conditions:
+            - path: stdout
+              regex: '\\[\\]|"value":\\s*\\[\\]'
+  - name: verify-default-proto-gone
+    steps:
+      - type: exec
+        command: |
+          PROTOS=$(sumeru prototype list --format json)
+          if echo "$PROTOS" | grep -q "sarsapa-default"; then
+            echo "ERROR: sarsapa-default still exists"
+            exit 1
+          else
+            echo "OK: sarsapa-default removed"
+          fi
+        assert:
+          type: regex
+          conditions:
+            - path: stdout
+              regex: "OK: sarsapa-default removed"

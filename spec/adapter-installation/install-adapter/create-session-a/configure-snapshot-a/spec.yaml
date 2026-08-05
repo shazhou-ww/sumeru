@@ -1,0 +1,28 @@
+description: Configure session A with instructions and model, then snapshot to prototype A
+primary: create-session-b
+steps:
+  - type: exec
+    command: |
+      SID=$(cat /tmp/session_a_id)
+      # Add test provider and model
+      sumeru provider add test-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true
+      sumeru model add test-model --provider test-provider --model test-model-id 2>/dev/null || true
+      # Snapshot session to create prototype A
+      sumeru session snapshot $SID atest-proto-a 2>&1
+      echo "SNAPSHOT_A=atest-proto-a"
+    timeout: 120s
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "Snapshot created"
+postcon:
+  - name: verify-prototype-a-exists
+    steps:
+      - type: exec
+        command: sumeru prototype get atest-proto-a --format json
+        assert:
+          type: regex
+          conditions:
+            - path: stdout
+              regex: '"name":\s*"atest-proto-a"'

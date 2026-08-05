@@ -1,0 +1,21 @@
+description: Create session C from prototype B with --skip-reset, verify secret is remembered
+steps:
+  - type: exec
+    command: |
+      SID=$(sumeru session add atest-proto-b --task "What is the secret code?" --skip-reset 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1)
+      echo $SID > /tmp/session_c_skip_id
+      # Wait for response
+      sleep 5
+      TURNS=$(sumeru session turns $SID --format json)
+      if echo "$TURNS" | grep -q "ALPHA-7742"; then
+        echo "SECRET_KNOWN=true (expected — skip-reset preserved context)"
+      else
+        echo "SECRET_KNOWN=false (unexpected)"
+        exit 1
+      fi
+    timeout: 5m
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "SECRET_KNOWN=true"

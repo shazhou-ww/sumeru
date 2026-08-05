@@ -1,0 +1,14 @@
+description: Remove test prototypes
+primary: adapter-remove
+steps:
+  - type: exec
+    command: |
+      sumeru prototype remove atest-proto-a 2>/dev/null || true
+      sumeru prototype remove atest-proto-b 2>/dev/null || true
+      echo "Prototypes removed"
+    timeout: 60s
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "Prototypes removed"

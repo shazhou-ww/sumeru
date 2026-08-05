@@ -1,0 +1,25 @@
+description: Send secret message to session B
+primary: snapshot-b
+steps:
+  - type: exec
+    command: |
+      SID=$(cat /tmp/session_b_id)
+      sumeru session send $SID "Remember this secret code: ALPHA-7742. Acknowledge it."
+    timeout: 5m
+    assert:
+      type: regex
+      conditions:
+        - path: stdout
+          regex: "accepted message|ALPHA"
+postcon:
+  - name: verify-secret-in-turns
+    steps:
+      - type: exec
+        command: |
+          SID=$(cat /tmp/session_b_id)
+          sumeru session turns $SID --format json
+        assert:
+          type: regex
+          conditions:
+            - path: stdout
+              regex: "ALPHA-7742"
