@@ -4,47 +4,23 @@ steps:
   - type: exec
     command: |
       PROTO="sarsapa-default"
-      # Start dockerd for DinD (needed for upFromImage to create child containers)
-      dockerd --storage-driver=fuse-overlayfs > /tmp/dockerd.log 2>&1 &
-      sleep 3
-      # Get the image tag from the prototype's adapter field
-      echo "--- Debug: prototype get output ---"
-      PROTO_JSON=$(sumeru prototype get $PROTO --format json 2>&1)
-      echo "$PROTO_JSON"
-      # Extract adapter field (e.g., "sarsapa:3e8bb9") and construct image tag
-      ADAPTER_ID=$(echo "$PROTO_JSON" | grep '"adapter"' | sed 's/.*: *"\(.*\)".*/\1/')
-      echo "Extracted adapter ID: $ADAPTER_ID"
-      # Construct image tag: sumeru/<name>:<hash>
-      IMAGE_TAG="sumeru/${ADAPTER_ID}"
-      echo "Building image: $IMAGE_TAG"
-      # Rebuild adapter image in fresh dockerd (image was lost during DinD commit)
-      docker build --no-cache -t "$IMAGE_TAG" -f /app/packages/sarsapa/Dockerfile /app/packages/sarsapa 2>&1
-      # Create cache directories for bind mounts (may not persist through DinD commit)
-      mkdir -p /opt/sumeru/data/cache/{pnpm-store,npm,uv,pip}
-      # Setup test provider and model first
+      
+      # Setup test provider and model
       sumeru provider add test-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true
       sumeru model add test-model --provider test-provider --model test-model-id 2>/dev/null || true
+      
       # Update prototype with model
       sumeru prototype update $PROTO --model test-model 2>/dev/null || true
-      # Create session with debug output
-      echo "--- Creating session ---"
+      
+      # Create session
       OUTPUT=$(sumeru session add $PROTO 2>&1)
       echo "OUTPUT=$OUTPUT"
+      
+      # Extract session ID
       SID=$(echo "$OUTPUT" | grep -o 'ses_[A-Z0-9]*' | head -1)
-      echo "SID=$SID"
-      # Check container status
-      if [ -z "$SID" ]; then
-        echo "--- No session created, checking Docker ---"
-        docker ps -a --format '{{.ID}} {{.Image}} {{.Status}} {{.Names}}' | tail -5
-        echo "--- Recent container logs ---"
-        CONTAINER_ID=$(docker ps -a --format '{{.ID}}' | head -1)
-        if [ -n "$CONTAINER_ID" ]; then
-          docker logs "$CONTAINER_ID" 2>&1 | tail -20
-        fi
-      fi
       echo "$SID" > /tmp/session_a_id
       echo "SESSION_A=$SID PROTO=$PROTO"
-    timeout: 5m
+    timeout: 2m
     assert:
       type: regex
       conditions:

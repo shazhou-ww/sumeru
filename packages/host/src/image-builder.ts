@@ -49,18 +49,12 @@ export async function buildAdapterImage(
 		return imageTag;
 	}
 
-	// Use project root as build context so Dockerfile can COPY from other packages.
-	// In treespec DinD, /app is overlay-mounted without dist/. The built artifacts
-	// live at /opt/sumeru. Check both locations.
-	const resolvedRoot = resolve(packagePath, "../..");
-	const projectRoot =
-		resolvedRoot === "/app" && existsSync("/opt/sumeru")
-			? "/opt/sumeru"
-			: resolvedRoot;
+	// Build context must be project root so Dockerfile can COPY from sibling packages
+	const buildContext = resolve(packagePath, "../..");
 
 	try {
 		await execAsync(
-			`docker build -t ${imageTag} -f ${dockerfilePath} ${projectRoot}`,
+			`docker build -t ${imageTag} -f ${dockerfilePath} ${buildContext}`,
 		);
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err);
