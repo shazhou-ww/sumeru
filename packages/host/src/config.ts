@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve as pathResolve, sep } from "node:path";
 import type { ProviderMode } from "@sumeru/adapter-core";
 import type {
+	Adapter,
 	CustomProvider,
 	Extension,
 	HostConfig,
@@ -72,6 +73,21 @@ export async function loadHostConfig(
 				adapterId: info.prototype.adapter,
 				prototypeName: info.prototype.name,
 			})),
+		listSessionRefsInUse: () => {
+			const sessions = sqliteStore.listPersistedSessions();
+			return sessions.map((s) => {
+				const proto = prototypes.get(s.prototype);
+				return {
+					adapterId: proto?.prototype.adapter ?? "",
+					sessionId: s.id,
+				};
+			});
+		},
+		prototypesDir,
+		// Skip Docker build in tests — no daemon available
+		...(process.env.VITEST === "true"
+			? { buildImage: async (adapter: Adapter) => adapter.imageTag }
+			: {}),
 	});
 	return {
 		rootDir,

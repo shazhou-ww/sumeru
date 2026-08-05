@@ -138,7 +138,7 @@ describe("@sumeru/core — v3 type set conformance", () => {
 		expect(customProvider.apiType).toBe("openai");
 		expect(modelConfig.apiKey).toBeNull();
 		expect(modelWithCustom.provider).toEqual(customProvider);
-		expect(prototype.adapter).toBe("claude-code");
+		expect(prototype.adapter).toBe("sarsapa:abc123");
 		expect(sessionStatus).toBe("running");
 		expect(exitComplete.type).toBe("complete");
 		expect(exitTimeout.type).toBe("timeout");

@@ -1,5 +1,10 @@
+import { type ExecException, exec } from "node:child_process";
+import { existsSync } from "node:fs";
 import type { Adapter } from "@sumeru/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readAdapterManifest } from "../src/adapter-manifest.js";
+import { buildAdapterImage, imageExists } from "../src/image-builder.js";
+import { ensureDockerd } from "../src/transport.js";
 
 // Mock child_process before importing the module under test
 vi.mock("node:child_process", () => ({
@@ -21,12 +26,6 @@ vi.mock("../src/adapter-manifest.js", () => ({
 vi.mock("../src/transport.js", () => ({
 	ensureDockerd: vi.fn(),
 }));
-
-import { exec } from "node:child_process";
-import { existsSync } from "node:fs";
-import { readAdapterManifest } from "../src/adapter-manifest.js";
-import { buildAdapterImage, imageExists } from "../src/image-builder.js";
-import { ensureDockerd } from "../src/transport.js";
 
 const mockExec = vi.mocked(exec);
 const mockExistsSync = vi.mocked(existsSync);
@@ -57,8 +56,11 @@ describe("image-builder", () => {
 	describe("imageExists", () => {
 		it("returns true when docker image inspect succeeds (exit code 0)", async () => {
 			mockExec.mockImplementation((_cmd, callback) => {
-				callback(null, { stdout: "[]", stderr: "" } as any);
-				return undefined as any;
+				callback(null, { stdout: "[]", stderr: "" } as {
+					stdout: string;
+					stderr: string;
+				});
+				return undefined as unknown as import("node:child_process").ChildProcess;
 			});
 
 			const result = await imageExists("sumeru/demo:abc123");
@@ -71,11 +73,14 @@ describe("image-builder", () => {
 
 		it("returns false when docker image inspect fails (exit code 1)", async () => {
 			mockExec.mockImplementation((_cmd, callback) => {
-				callback(new Error("No such image"), {
-					stdout: "",
-					stderr: "No such image",
-				} as any);
-				return undefined as any;
+				callback(
+					new Error("No such image") as ExecException,
+					{
+						stdout: "",
+						stderr: "No such image",
+					} as { stdout: string; stderr: string },
+				);
+				return undefined as unknown as import("node:child_process").ChildProcess;
 			});
 
 			const result = await imageExists("sumeru/demo:abc123");
@@ -104,18 +109,21 @@ describe("image-builder", () => {
 				callCount++;
 				if (callCount === 1) {
 					// imageExists check — image not found
-					callback(new Error("No such image"), {
-						stdout: "",
-						stderr: "No such image",
-					} as any);
+					callback(
+						new Error("No such image") as ExecException,
+						{
+							stdout: "",
+							stderr: "No such image",
+						} as { stdout: string; stderr: string },
+					);
 				} else {
 					// docker build — success
 					callback(null, {
 						stdout: "Successfully built abc",
 						stderr: "",
-					} as any);
+					} as { stdout: string; stderr: string });
 				}
-				return undefined as any;
+				return undefined as unknown as import("node:child_process").ChildProcess;
 			});
 
 			const adapter = makeAdapter();
@@ -145,8 +153,11 @@ describe("image-builder", () => {
 
 			// imageExists → true (already built)
 			mockExec.mockImplementation((_cmd, callback) => {
-				callback(null, { stdout: "[]", stderr: "" } as any);
-				return undefined as any;
+				callback(null, { stdout: "[]", stderr: "" } as {
+					stdout: string;
+					stderr: string;
+				});
+				return undefined as unknown as import("node:child_process").ChildProcess;
 			});
 
 			const adapter = makeAdapter();
@@ -194,18 +205,24 @@ describe("image-builder", () => {
 				callCount++;
 				if (callCount === 1) {
 					// imageExists → not found
-					callback(new Error("No such image"), {
-						stdout: "",
-						stderr: "No such image",
-					} as any);
+					callback(
+						new Error("No such image") as ExecException,
+						{
+							stdout: "",
+							stderr: "No such image",
+						} as { stdout: string; stderr: string },
+					);
 				} else {
 					// docker build → failure
-					callback(new Error("Step 3/5: RUN npm build failed"), {
-						stdout: "",
-						stderr: "Step 3/5: RUN npm build failed",
-					} as any);
+					callback(
+						new Error("Step 3/5: RUN npm build failed") as ExecException,
+						{
+							stdout: "",
+							stderr: "Step 3/5: RUN npm build failed",
+						} as { stdout: string; stderr: string },
+					);
 				}
-				return undefined as any;
+				return undefined as unknown as import("node:child_process").ChildProcess;
 			});
 
 			const adapter = makeAdapter();
