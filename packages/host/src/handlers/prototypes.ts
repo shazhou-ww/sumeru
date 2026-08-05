@@ -196,17 +196,8 @@ async function upsertPrototype(
 				return;
 			}
 		}
-	} else if (manifest.providerMode !== "builtin-only") {
-		writeJson(
-			res,
-			400,
-			errorEnvelope(
-				"model_required",
-				`Prototype ${prototype.name} requires a model for adapter ${prototype.adapter}`,
-			),
-		);
-		return;
 	}
+	// Model validation deferred to chat time — session creation doesn't require a real model
 	if (prototype.extensions !== null) {
 		for (const extName of prototype.extensions) {
 			if (!hostConfig.extensions.has(extName)) {

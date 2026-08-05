@@ -199,7 +199,12 @@ export function resolveSessionModel(
 			? override
 			: (prototypeModelId ?? defaultModel);
 	if (ref === null) {
-		throw new Error("model_required");
+		// No model configured — return pseudo model. Real validation happens at chat time.
+		return {
+			provider: { name: "builtin", endpoint: "", apiType: "openai" },
+			name: "auto",
+			apiKey: null,
+		};
 	}
 
 	if (ref.startsWith(":")) {

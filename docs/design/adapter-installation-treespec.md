@@ -116,14 +116,17 @@ primary: configure-snapshot-a
 steps:
   - type: exec
     command: |
-      PROTO=$(sumeru prototype list --format json | python3 -c "
-      import json,sys
-      d=json.load(sys.stdin)
-      for p in d['value']:
-          if p['name'].startswith('sumeru/base/sarsapa'):
-              print(p['name']); break")
-      SID=$(sumeru session add $PROTO 2>&1 | grep -o 'ses_[A-Z0-9]*' | head -1)
-      echo $SID > /tmp/session_a_id
+      PROTO="sarsapa-default"
+      # Setup test provider and model first
+      sumeru provider add test-provider --api-type openai --base-url https://api.example.com 2>/dev/null || true
+      sumeru model add test-model --provider test-provider --model test-model-id 2>/dev/null || true
+      # Update prototype with model
+      sumeru prototype update $PROTO --model test-model 2>/dev/null || true
+      # Create session
+      OUTPUT=$(sumeru session add $PROTO 2>&1)
+      echo "OUTPUT=$OUTPUT"
+      SID=$(echo "$OUTPUT" | grep -o 'ses_[A-Z0-9]*' | head -1)
+      echo "$SID" > /tmp/session_a_id
       echo "SESSION_A=$SID PROTO=$PROTO"
     timeout: 5m
     assert:
