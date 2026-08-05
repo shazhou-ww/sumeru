@@ -138,19 +138,12 @@ sumeru/base:dev            ← node:24-slim + python 3.12 + 通用工具
 ```bash
 pnpm install           # 安装依赖
 pnpm run build         # 编译所有包
-pnpm run build:images  # 构建 Docker 镜像（可选，treespec 测试需要）
-pnpm run build:all     # build + build:images
 pnpm run check         # Biome lint
 npx vitest run         # 运行测试
 npx tsc --noEmit       # 类型检查
 ```
 
-构建 Docker 镜像：
-```bash
-pnpm run build:images           # 构建所有 adapter 镜像 → images/
-pnpm run build:images sarsapa   # 只构建 sarsapa
-pnpm run build:images --list    # 列出可用镜像
-```
+**注意：** Docker 镜像现在通过 `sumeru adapter add` 命令自动构建，不再需要手动运行 `build:images`。
 
 ## 部署
 
